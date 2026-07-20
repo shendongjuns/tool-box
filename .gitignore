@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+out/
+
+# 构建产物
+*.msi
+*.exe
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

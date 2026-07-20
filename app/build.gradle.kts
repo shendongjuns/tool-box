@@ -1,0 +1,39 @@
+// app 模块 — 主程序壳
+plugins {
+    kotlin("jvm")
+    kotlin("plugin.compose")
+    id("org.jetbrains.compose")
+}
+
+dependencies {
+    // Compose Desktop（包含 Material 2）
+    implementation(compose.desktop.currentOs)
+
+    // Material 3 + 图标（Phase 2 设计系统需要）
+    implementation(compose.material3)
+    implementation(compose.materialIconsExtended)
+
+    // 内部模块
+    implementation(project(":tool-api"))
+    implementation(project(":common"))
+    implementation(project(":platform"))
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.toolbox.MainKt"
+        nativeDistributions {
+            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
+            // CI 传入 -PappVersion=x.y.z，本地默认 1.0.0
+            packageVersion = project.findProperty("appVersion") as String? ?: "1.0.0"
+            packageName = "ToolBox"
+            description = "综合桌面工具箱"
+            vendor = "shendongjuns"
+
+            windows {
+                menuGroup = "ToolBox"
+                upgradeUuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+            }
+        }
+    }
+}
