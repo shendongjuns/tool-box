@@ -9,11 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.toolbox.common.theme.*
 import com.toolbox.tool.json.JsonFormatter
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 /**
  * JSON 格式化工具主界面 —— 左右分栏（输入 → 输出）。
@@ -22,7 +22,6 @@ import com.toolbox.tool.json.JsonFormatter
 fun JsonScreen() {
     var input by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
-    val clipboard = LocalClipboardManager.current
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -57,7 +56,8 @@ fun JsonScreen() {
                 )
             }, onClick = {
                 if (output.isNotBlank()) {
-                    clipboard.setText(AnnotatedString(output))
+                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                    clipboard.setContents(StringSelection(output), null)
                 }
             })
         }
