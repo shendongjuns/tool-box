@@ -1,7 +1,7 @@
 # ToolBox
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-7F52FF.svg)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Compose%20Desktop-1.11.1-4285F4.svg)](https://www.jetbrains.com/lp/compose-multiplatform/)
+[![Compose](https://img.shields.io/badge/Compose%20Desktop-1.9.3-4285F4.svg)](https://www.jetbrains.com/lp/compose-multiplatform/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 基于 Kotlin + Jetpack Compose Desktop 构建的现代桌面工具箱。简洁、克制、高效 —— 借鉴 Apple 设计语言。

@@ -1,6 +1,4 @@
 // tool-json 模块 — JSON 格式化工具
-@file:Suppress("DEPRECATION")
-
 plugins {
     kotlin("jvm")
     kotlin("plugin.compose")

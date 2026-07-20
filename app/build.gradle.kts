@@ -1,6 +1,4 @@
 // app 模块 — 主程序壳
-@file:Suppress("DEPRECATION")
-
 plugins {
     kotlin("jvm")
     kotlin("plugin.compose")
