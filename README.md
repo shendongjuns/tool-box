@@ -29,7 +29,7 @@
 ### 打包安装包
 
 ```bash
-./gradlew :app:createDistributableMsi
+./gradlew :app:createDistributable
 ```
 
 安装包生成在 `app/build/compose/binaries/main/msi/` 目录下。

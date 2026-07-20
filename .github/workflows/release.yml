@@ -31,7 +31,7 @@ jobs:
 
       - name: Build MSI
         shell: pwsh
-        run: .\gradlew.bat :app:createDistributableMsi -PappVersion=$env:APP_VERSION
+        run: .\gradlew.bat :app:createDistributable -PappVersion=$env:APP_VERSION
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
