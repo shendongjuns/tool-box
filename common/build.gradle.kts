@@ -1,4 +1,6 @@
 // common 模块 — 通用基础设施（设计系统、工具类、扩展函数）
+@file:Suppress("DEPRECATION")
+
 plugins {
     kotlin("jvm")
     kotlin("plugin.compose")

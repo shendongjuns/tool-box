@@ -1,4 +1,6 @@
 // tool-api 模块 — 工具接口定义
+@file:Suppress("DEPRECATION")
+
 plugins {
     kotlin("jvm")
     kotlin("plugin.compose")

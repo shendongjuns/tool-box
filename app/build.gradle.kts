@@ -1,4 +1,6 @@
 // app 模块 — 主程序壳
+@file:Suppress("DEPRECATION")
+
 plugins {
     kotlin("jvm")
     kotlin("plugin.compose")
@@ -6,10 +8,10 @@ plugins {
 }
 
 dependencies {
-    // Compose Desktop（包含 Material 2）
+    // Compose Desktop（提供 Skiko 原生库，不可省略）
     implementation(compose.desktop.currentOs)
 
-    // Material 3 + 图标（Phase 2 设计系统需要）
+    // Material 3 + 图标
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
 
