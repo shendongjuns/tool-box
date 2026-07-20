@@ -19,6 +19,7 @@ class NavigationState {
     /** 选中工具，同时自动展开侧边栏 */
     fun selectTool(tool: Tool) {
         selectedTool = tool
+        sidebarExpanded = true
     }
 
     /** 切换侧边栏展开/折叠 */

@@ -11,9 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.toolbox.api.Tool
-import com.toolbox.common.theme.ToolBoxColors
+import com.toolbox.common.theme.Spacing
 
 /**
  * 内容区域 —— 显示当前选中工具的界面。
@@ -29,22 +28,21 @@ fun ContentArea(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ToolBoxColors.Surface)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
-        // 顶部栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 侧边栏折叠时显示展开按钮
-            if (!sidebarExpanded) {
+        // 顶部栏：仅侧边栏折叠时渲染展开按钮
+        if (!sidebarExpanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 IconButton(onClick = onToggleSidebar) {
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "展开侧边栏",
-                        tint = ToolBoxColors.TextSecondary
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -52,7 +50,7 @@ fun ContentArea(
 
         // 内容区域
         if (tool != null) {
-            Box(modifier = Modifier.fillMaxSize().padding(32.dp)) {
+            Box(modifier = Modifier.fillMaxSize().padding(Spacing.page)) {
                 tool.Content()
             }
         } else {
@@ -65,12 +63,12 @@ fun ContentArea(
                     Text(
                         text = "ToolBox",
                         style = MaterialTheme.typography.headlineLarge,
-                        color = ToolBoxColors.TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "从侧边栏选择一个工具开始",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = ToolBoxColors.TextTertiary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

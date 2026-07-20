@@ -29,4 +29,16 @@ interface Tool {
     /** 工具主界面，由框架嵌入内容区 */
     @Composable
     fun Content()
+
+    /**
+     * 工具被选中时调用（可选覆写）。
+     * 适合初始化资源、注册快捷键等。
+     */
+    fun onSelected() {}
+
+    /**
+     * 工具被取消选中时调用（可选覆写）。
+     * 适合释放资源、注销监听器等。
+     */
+    fun onDeselected() {}
 }

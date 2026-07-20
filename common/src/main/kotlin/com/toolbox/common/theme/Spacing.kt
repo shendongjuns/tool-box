@@ -5,16 +5,16 @@ import androidx.compose.ui.unit.dp
 
 /**
  * ToolBox 间距规范 —— 基于 8px 网格。
- *
- * - 组件内边距   16.dp
- * - 卡片间距     16.dp
- * - 区域间距     24.dp
- * - 页面边距     32.dp
- * - 图标大小     20.dp（导航）、16.dp（操作）
  */
 object Spacing {
 
-    /** 组件内边距（按钮/输入框内边距） */
+    /** 微间距（图标间隙等） */
+    val xs: Dp = 4.dp
+
+    /** 小间距（紧凑内容内边距） */
+    val sm: Dp = 8.dp
+
+    /** 内边距（组件/按钮内边距） */
     val inner: Dp = 16.dp
 
     /** 卡片间距 */

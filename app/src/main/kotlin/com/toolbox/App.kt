@@ -3,6 +3,7 @@ package com.toolbox
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.toolbox.framework.navigation.ContentArea
@@ -21,6 +22,13 @@ fun App() {
         // 默认选中第一个工具
         selectedTool = tools.values.flatten().firstOrNull()
     } }
+
+    // 工具生命周期回调 —— 选中/取消选中时通知工具
+    val currentTool = navState.selectedTool
+    DisposableEffect(currentTool) {
+        currentTool?.onSelected()
+        onDispose { currentTool?.onDeselected() }
+    }
 
     ToolBoxTheme {
         Row(modifier = Modifier.fillMaxSize()) {

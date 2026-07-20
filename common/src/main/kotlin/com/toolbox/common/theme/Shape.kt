@@ -17,12 +17,3 @@ val ToolBoxShapes = Shapes(
     /** 弹窗 / 抽屉 */
     extraLarge = RoundedCornerShape(16.dp)
 )
-
-/** 按钮圆角（快捷引用） */
-val ButtonShape = RoundedCornerShape(8.dp)
-
-/** 卡片圆角（快捷引用） */
-val CardShape = RoundedCornerShape(12.dp)
-
-/** 弹窗圆角（快捷引用） */
-val DialogShape = RoundedCornerShape(16.dp)
