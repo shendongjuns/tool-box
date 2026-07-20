@@ -1,4 +1,4 @@
-package com.toolbox.framework.theme
+package com.toolbox.common.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes

@@ -1,8 +1,13 @@
-// common 模块 — 通用基础设施
+// common 模块 — 通用基础设施（设计系统、工具类、扩展函数）
 plugins {
     kotlin("jvm")
+    kotlin("plugin.compose")
+    id("org.jetbrains.compose")
 }
 
 dependencies {
-    // 后续按需添加：kotlinx-serialization、日志、测试等
+    // Compose 运行时 + Material 3（设计系统需要）
+    implementation(compose.runtime)
+    implementation(compose.material3)
+    implementation(compose.materialIconsExtended)
 }

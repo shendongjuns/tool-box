@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toolbox.api.Tool
 import com.toolbox.api.ToolCategory
-import com.toolbox.framework.theme.Spacing
-import com.toolbox.framework.theme.ToolBoxColors
+import com.toolbox.common.theme.Spacing
+import com.toolbox.common.theme.ToolBoxColors
 
 /**
  * 侧边栏组件 —— 分类 → 工具两级导航，Apple 风格。

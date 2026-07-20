@@ -1,4 +1,4 @@
-package com.toolbox.framework.theme
+package com.toolbox.common.theme
 
 import androidx.compose.ui.graphics.Color
 

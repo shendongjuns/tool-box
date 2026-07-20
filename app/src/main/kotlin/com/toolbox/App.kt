@@ -9,7 +9,7 @@ import com.toolbox.framework.navigation.ContentArea
 import com.toolbox.framework.navigation.NavigationState
 import com.toolbox.framework.navigation.Sidebar
 import com.toolbox.framework.plugin.ToolLoader
-import com.toolbox.framework.theme.ToolBoxTheme
+import com.toolbox.common.theme.ToolBoxTheme
 
 /**
  * 应用根 Composable —— 加载工具、管理导航状态、渲染框架布局。

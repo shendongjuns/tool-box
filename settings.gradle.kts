@@ -28,3 +28,6 @@ include(":common")
 
 // 平台相关（Windows）
 include(":platform")
+
+// ═══ 工具模块 ═══
+include(":tools:tool-json")

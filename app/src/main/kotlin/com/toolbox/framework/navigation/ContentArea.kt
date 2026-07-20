@@ -13,7 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.toolbox.api.Tool
-import com.toolbox.framework.theme.ToolBoxColors
+import com.toolbox.common.theme.ToolBoxColors
 
 /**
  * 内容区域 —— 显示当前选中工具的界面。
