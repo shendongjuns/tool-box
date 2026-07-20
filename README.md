@@ -8,10 +8,10 @@
 
 ## ✨ 特性
 
-- 🧰 **工具丰富** — JSON 格式化、编解码、文本处理、系统工具等
 - 🎨 **极简设计** — Apple 风格定制设计系统，干净克制
-- 🧩 **模块化架构** — 每个工具独立模块，通过 ServiceLoader 扩展
+- 🧩 **模块化架构** — 工具通过 ServiceLoader 插件化注册，独立模块互不干扰
 - 🪟 **Windows 原生** — 针对 Windows 优化，支持 MSI 安装包
+- 🚢 **CI/CD** — Tag 推送自动构建发布
 
 ## 🚀 快速开始
 
@@ -40,18 +40,10 @@
 tool-box/
 ├── app/               # 主程序壳 + 框架层（窗口、导航、插件加载）
 ├── tool-api/          # 工具接口定义（Tool、ToolCategory）
-├── tools/             # 工具实现模块
-│   └── tool-json/     #   JSON 格式化、压缩、校验
 ├── common/            # 共享设计系统 + 通用工具类
 ├── platform/          # 平台相关（Windows 注册表、进程管理等）
 └── .github/workflows/ # CI/CD（Tag 触发构建 → GitHub Release）
 ```
-
-## 🔧 内置工具
-
-| 工具 | 分类 | 说明 |
-|------|------|------|
-| JSON 格式化 | 数据处理 | JSON 格式化、压缩、校验 |
 
 ## 🏗️ 添加新工具
 

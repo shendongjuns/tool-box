@@ -17,9 +17,6 @@ dependencies {
     implementation(project(":tool-api"))
     implementation(project(":common"))
     implementation(project(":platform"))
-
-    // ═══ 工具模块 ═══
-    implementation(project(":tools:tool-json"))
 }
 
 compose.desktop {
