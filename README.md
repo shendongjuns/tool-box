@@ -32,7 +32,9 @@
 ./gradlew :app:createDistributable
 ```
 
-安装包生成在 `app/build/compose/binaries/main/msi/` 目录下。
+产物生成在 `app/build/compose/binaries/main/` 目录下：
+- 应用镜像（可直接运行）：`app/ToolBox/ToolBox.exe`
+- MSI 安装包：`msi/ToolBox-*.msi`（需 WiX Toolset，首次构建会自动下载）
 
 ## 📦 项目结构
 
