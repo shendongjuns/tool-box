@@ -21,16 +21,6 @@ dependencies {
     implementation(project(":platform"))
 }
 
-// ═══ 图标转换：hello.svg → icon.ico ═══
-val convertIcon by tasks.registering(IconConverter::class) {
-    group = "icon"
-    description = "将根目录 hello.svg 转换为多分辨率应用图标 icon.ico"
-    svgFile.set(project.file("src/main/resources/hello.svg"))
-    icoFile.set(project.file("src/main/resources/icon.ico"))
-}
-
-tasks.named("processResources") { dependsOn(convertIcon) }
-
 compose.desktop {
     application {
         mainClass = "djshen.toolbox.MainKt"
