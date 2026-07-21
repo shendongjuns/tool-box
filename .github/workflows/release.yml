@@ -37,7 +37,7 @@ jobs:
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
           .\gradlew.bat :app:createDistributable "-PappVersion=$VERSION"
-          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
+          .\gradlew.bat :app:packageDistributionForCurrentOS "-PappVersion=$VERSION"
 
       - name: Package ZIP
         shell: pwsh
