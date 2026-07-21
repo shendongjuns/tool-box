@@ -31,11 +31,11 @@
 ```bash
 # 应用镜像（可直接运行，无需安装）
 ./gradlew :app:createDistributable
-# 输出：app/build/compose/binaries/main/app/ToolBox/ToolBox.exe
+# 输出：app/build/compose/binaries/main/app/工具箱/工具箱.exe
 
-# MSI 安装包（需要 WiX Toolset）
+# MSI 安装包（本地使用，需要 WiX Toolset）
 ./gradlew :app:packageMsi
-# 输出：app/build/compose/binaries/main/msi/ToolBox-1.0.0.msi
+# 输出：app/build/compose/binaries/main/msi/工具箱-1.0.0.msi
 ```
 
 ## 📦 项目结构
@@ -67,7 +67,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-GitHub Actions 会自动构建 MSI 安装包并附加到新 Release。
+GitHub Actions 会自动构建并打包 ZIP 文件附加到新 Release。
 
 ## 📝 许可证
 
