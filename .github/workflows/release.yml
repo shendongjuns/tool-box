@@ -23,22 +23,31 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
+      - name: Uninstall system WiX 4
+        shell: pwsh
+        run: |
+          # 卸载 WiX 4（CI 自带），jpackage 只能使用 WiX 3
+          Get-Package -Name "*WiX*" -ErrorAction SilentlyContinue | Uninstall-Package -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Program Files (x86)\WiX Toolset*" -ErrorAction SilentlyContinue
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Name "*WiX*" -ErrorAction SilentlyContinue
+          Write-Host "WiX 4 removed, Compose plugin will use its own WiX 3"
+
       - name: Build
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
           .\gradlew.bat :app:createDistributable "-PappVersion=$VERSION"
+          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
 
       - name: Package ZIP
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          $src = "app\build\compose\binaries\main\app\工具箱"
-          $dest = "工具箱-$VERSION.zip"
-          Compress-Archive -Path "$src\*" -DestinationPath $dest
-          Write-Host "Created: $dest"
+          Compress-Archive -Path "app\build\compose\binaries\main\app\工具箱\*" -DestinationPath "工具箱-$VERSION.zip"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: 工具箱-*.zip
+          files: |
+            工具箱-*.zip
+            app/build/compose/binaries/main/msi/工具箱-*.msi
