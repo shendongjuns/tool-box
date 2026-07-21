@@ -34,11 +34,11 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          Compress-Archive -Path "app\build\compose\binaries\main\app\ToolBox" -DestinationPath "ToolBox-$VERSION.zip"
+          Compress-Archive -Path "app\build\compose\binaries\main\app\工具箱" -DestinationPath "ToolBox-$VERSION.zip"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ToolBox-*.zip
-            app/build/compose/binaries/main/msi/ToolBox-*.msi
+            app/build/compose/binaries/main/msi/工具箱-*.msi

@@ -31,11 +31,11 @@
 ```bash
 # 应用镜像（可直接运行，无需安装）
 ./gradlew :app:createDistributable
-# 输出：app/build/compose/binaries/main/app/ToolBox/ToolBox.exe
+# 输出：app/build/compose/binaries/main/app/工具箱/工具箱.exe
 
 # MSI 安装包（本地使用，需要 WiX Toolset）
 ./gradlew :app:packageMsi
-# 输出：app/build/compose/binaries/main/msi/ToolBox-1.0.0.msi
+# 输出：app/build/compose/binaries/main/msi/工具箱-1.0.0.msi
 ```
 
 ## 📦 项目结构
