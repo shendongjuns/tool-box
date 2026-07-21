@@ -28,7 +28,8 @@ compose.desktop {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
             // CI 传入 -PappVersion=x.y.z，本地默认 1.0.0
             packageVersion = project.findProperty("appVersion") as String? ?: "1.0.0"
-            packageName = "工具箱"
+            // 本地中文名，CI 传 -PpackageName=ToolBox 避免 jpackage 编码问题
+            packageName = project.findProperty("packageName") as String? ?: "工具箱"
             description = "综合桌面工具箱"
             vendor = "shendongjuns"
 
