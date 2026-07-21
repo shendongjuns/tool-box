@@ -26,15 +26,17 @@
 ./gradlew :app:run
 ```
 
-### 打包安装包
+### 打包
 
 ```bash
+# 应用镜像（可直接运行，无需安装）
 ./gradlew :app:createDistributable
-```
+# 输出：app/build/compose/binaries/main/app/ToolBox/ToolBox.exe
 
-产物生成在 `app/build/compose/binaries/main/` 目录下：
-- 应用镜像（可直接运行）：`app/ToolBox/ToolBox.exe`
-- MSI 安装包：`msi/ToolBox-*.msi`（需 WiX Toolset，首次构建会自动下载）
+# MSI 安装包（需要 WiX Toolset）
+./gradlew :app:packageMsi
+# 输出：app/build/compose/binaries/main/msi/ToolBox-1.0.0.msi
+```
 
 ## 📦 项目结构
 
