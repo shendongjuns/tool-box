@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import djshen.toolbox.api.Tool
@@ -46,18 +47,18 @@ fun Sidebar(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
-    // spring 弹簧动画，比 tween 更流畅自然
-    val offsetX by animateDpAsState(
-        targetValue = if (expanded) 0.dp else (-Spacing.sidebarWidth),
+    // spring 弹簧动画，width 变化会同时释放布局空间给内容区
+    val animatedWidth by animateDpAsState(
+        targetValue = if (expanded) Spacing.sidebarWidth else 0.dp,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-        label = "sidebarOffset"
+        label = "sidebarWidth"
     )
 
     Column(
         modifier = Modifier
-            .offset(x = offsetX)
-            .width(Spacing.sidebarWidth)
+            .width(animatedWidth)
             .fillMaxHeight()
+            .clipToBounds()
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(top = Spacing.section)
     ) {
