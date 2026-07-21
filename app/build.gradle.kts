@@ -29,7 +29,7 @@ compose.desktop {
             // CI 传入 -PappVersion=x.y.z，本地默认 1.0.0
             packageVersion = project.findProperty("appVersion") as String? ?: "1.0.0"
             packageName = "ToolBox"
-            description = "综合桌面工具箱"
+            description = "A modern desktop toolbox"
             vendor = "shendongjuns"
 
             windows {
