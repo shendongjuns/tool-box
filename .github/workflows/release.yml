@@ -33,10 +33,29 @@ jobs:
           echo "WIX=$wixDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Build MSI
+        id: build
         shell: pwsh
+        continue-on-error: true
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
           .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION" "-PpackageName=ToolBox"
+
+      - name: Print jpackage logs (debug)
+        shell: pwsh
+        run: |
+          $logDir = "app/build/compose/logs/packageMsi"
+          if (Test-Path $logDir) {
+            Get-ChildItem $logDir -Filter "*.txt" | ForEach-Object {
+              Write-Host "===== $($_.Name) ====="
+              Get-Content $_.FullName
+            }
+          } else {
+            Write-Host "No jpackage logs found"
+          }
+
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
