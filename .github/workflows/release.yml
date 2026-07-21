@@ -23,6 +23,12 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
+      - name: Remove system WiX 4 (jpackage 仅支持 WiX 3)
+        shell: pwsh
+        run: |
+          $newPath = ($env:PATH -split ';' | Where-Object { $_ -notlike '*WiX*' }) -join ';'
+          echo "$newPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+
       - name: Build MSI
         shell: pwsh
         run: |
@@ -32,4 +38,4 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/compose/binaries/main/msi/ToolBox-*.msi
+          files: app/build/compose/binaries/main/msi/工具箱-*.msi
