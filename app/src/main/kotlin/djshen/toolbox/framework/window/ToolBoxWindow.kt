@@ -1,7 +1,7 @@
 package djshen.toolbox.framework.window
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -20,7 +20,7 @@ object WindowConfig {
 }
 
 /**
- * 创建 ToolBox 主窗口。
+ * 创建 ToolBox 主窗口，居中弹出。
  *
  * @param content 窗口内容 Composable
  */
@@ -29,7 +29,7 @@ fun launchToolBoxWindow(content: @Composable () -> Unit) = application {
         onCloseRequest = ::exitApplication,
         title = "ToolBox",
         state = WindowState(
-            position = WindowPosition.PlatformDefault,
+            position = WindowPosition(Alignment.Center),
             size = DpSize(WindowConfig.defaultWidth, WindowConfig.defaultHeight)
         )
     ) {

@@ -1,6 +1,7 @@
 package djshen.toolbox.framework.navigation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
@@ -49,8 +50,14 @@ fun Sidebar(
 ) {
     AnimatedVisibility(
         visible = expanded,
-        enter = slideInHorizontally(initialOffsetX = { -it }),
-        exit = slideOutHorizontally(targetOffsetX = { -it })
+        enter = slideInHorizontally(
+            animationSpec = tween(150),
+            initialOffsetX = { -it }
+        ),
+        exit = slideOutHorizontally(
+            animationSpec = tween(150),
+            targetOffsetX = { -it }
+        )
     ) {
         Column(
             modifier = Modifier
