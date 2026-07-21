@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-2022
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -24,17 +24,17 @@ jobs:
           distribution: 'temurin'
 
       - name: Build
-        shell: pwsh
+        shell: bash
         run: |
-          $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          .\gradlew.bat :app:createDistributable "-PappVersion=$VERSION"
-          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
+          VERSION=${GITHUB_REF#refs/tags/v}
+          ./gradlew :app:createDistributable -PappVersion=$VERSION
+          ./gradlew :app:packageMsi -PappVersion=$VERSION
 
       - name: Package ZIP
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          Compress-Archive -Path "app\build\compose\binaries\main\app\工具箱\*" -DestinationPath "工具箱-$VERSION.zip"
+          Compress-Archive -Path "app\build\compose\binaries\main\app\工具箱" -DestinationPath "工具箱-$VERSION.zip"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
