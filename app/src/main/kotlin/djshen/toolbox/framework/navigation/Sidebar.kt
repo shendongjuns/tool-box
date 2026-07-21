@@ -1,9 +1,7 @@
 package djshen.toolbox.framework.navigation
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -48,24 +46,21 @@ fun Sidebar(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
-    AnimatedVisibility(
-        visible = expanded,
-        enter = slideInHorizontally(
-            animationSpec = tween(150),
-            initialOffsetX = { -it }
-        ),
-        exit = slideOutHorizontally(
-            animationSpec = tween(150),
-            targetOffsetX = { -it }
-        )
+    // spring 弹簧动画，比 tween 更流畅自然
+    val offsetX by animateDpAsState(
+        targetValue = if (expanded) 0.dp else (-Spacing.sidebarWidth),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+        label = "sidebarOffset"
+    )
+
+    Column(
+        modifier = Modifier
+            .offset(x = offsetX)
+            .width(Spacing.sidebarWidth)
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(top = Spacing.section)
     ) {
-        Column(
-            modifier = Modifier
-                .width(Spacing.sidebarWidth)
-                .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(top = Spacing.section)
-        ) {
             // 顶部区域：折叠按钮
             Row(
                 modifier = Modifier
@@ -143,7 +138,6 @@ fun Sidebar(
             }
         }
     }
-}
 
 /** 分类标题 */
 @Composable

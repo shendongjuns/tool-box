@@ -25,7 +25,7 @@ dependencies {
 val convertIcon by tasks.registering(IconConverter::class) {
     group = "icon"
     description = "将根目录 hello.svg 转换为多分辨率应用图标 icon.ico"
-    svgFile.set(rootProject.file("hello.svg"))
+    svgFile.set(project.file("src/main/resources/hello.svg"))
     icoFile.set(project.file("src/main/resources/icon.ico"))
 }
 
@@ -45,7 +45,7 @@ compose.desktop {
             windows {
                 menuGroup = "ToolBox"
                 upgradeUuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                shortcut = true
+                dirChooser = true
                 iconFile.set(project.file("src/main/resources/icon.ico"))
             }
         }
