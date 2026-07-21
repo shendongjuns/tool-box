@@ -1,7 +1,10 @@
 package djshen.toolbox.framework.window
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -20,14 +23,26 @@ object WindowConfig {
 }
 
 /**
- * 创建 ToolBox 主窗口，居中弹出。
+ * 创建主窗口，居中弹出，加载应用图标。
  *
  * @param content 窗口内容 Composable
  */
 fun launchToolBoxWindow(content: @Composable () -> Unit) = application {
+    val icon = remember {
+        val bytes = {}::class.java.classLoader
+            .getResourceAsStream("icon.ico")!!
+            .readBytes()
+        BitmapPainter(
+            org.jetbrains.skia.Image
+                .makeFromEncoded(bytes)
+                .toComposeImageBitmap()
+        )
+    }
+
     Window(
         onCloseRequest = ::exitApplication,
-        title = "ToolBox",
+        title = "工具箱",
+        icon = icon,
         state = WindowState(
             position = WindowPosition(Alignment.Center),
             size = DpSize(WindowConfig.defaultWidth, WindowConfig.defaultHeight)
