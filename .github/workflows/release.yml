@@ -23,11 +23,14 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Remove system WiX 4 (jpackage 仅支持 WiX 3)
+      - name: Install WiX 3
         shell: pwsh
         run: |
-          $newPath = ($env:PATH -split ';' | Where-Object { $_ -notlike '*WiX*' }) -join ';'
-          echo "$newPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+          $wixDir = "C:\wix3"
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile "$env:RUNNER_TEMP\wix3.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\wix3.zip" -DestinationPath $wixDir
+          echo "$wixDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+          echo "WIX=$wixDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Build MSI
         shell: pwsh
