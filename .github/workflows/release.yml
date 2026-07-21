@@ -27,9 +27,9 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION" "-PpackageName=ToolBox"
+          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/compose/binaries/main/msi/ToolBox-*.msi
+          files: app/build/compose/binaries/main/msi/工具箱-*.msi
