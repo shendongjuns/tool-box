@@ -54,7 +54,7 @@ tool-box/
 1. 在 `settings.gradle.kts` 中添加模块：`include(":tools:tool-xxx")`
 2. 创建模块目录和 `build.gradle.kts`
 3. 实现 `Tool` 接口，用 Compose 编写 UI
-4. 在 `META-INF/services/com.toolbox.api.Tool` 中注册
+4. 在 `META-INF/services/djshen.toolbox.api.Tool` 中注册
 5. 在 `app/build.gradle.kts` 中添加依赖：`implementation(project(":tools:tool-xxx"))`
 6. 运行 `./gradlew :app:run` 验证
 

@@ -23,7 +23,7 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "com.toolbox.MainKt"
+        mainClass = "djshen.toolbox.MainKt"
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
             // CI 传入 -PappVersion=x.y.z，本地默认 1.0.0
