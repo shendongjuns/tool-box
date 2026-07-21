@@ -23,39 +23,14 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Install WiX 3
-        shell: pwsh
-        run: |
-          $wixDir = "C:\wix3"
-          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile "$env:RUNNER_TEMP\wix3.zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\wix3.zip" -DestinationPath $wixDir
-          echo "$wixDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
-          echo "WIX=$wixDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-
       - name: Build MSI
-        id: build
         shell: pwsh
-        continue-on-error: true
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
+          $env:TMP = "C:\tmp"
+          $env:TEMP = "C:\tmp"
+          New-Item -ItemType Directory -Force -Path "C:\tmp" | Out-Null
           .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION" "-PpackageName=ToolBox"
-
-      - name: Print jpackage logs (debug)
-        shell: pwsh
-        run: |
-          $logDir = "app/build/compose/logs/packageMsi"
-          if (Test-Path $logDir) {
-            Get-ChildItem $logDir -Filter "*.txt" | ForEach-Object {
-              Write-Host "===== $($_.Name) ====="
-              Get-Content $_.FullName
-            }
-          } else {
-            Write-Host "No jpackage logs found"
-          }
-
-      - name: Fail if build failed
-        if: steps.build.outcome == 'failure'
-        run: exit 1
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
