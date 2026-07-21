@@ -23,17 +23,13 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Extract version from tag
+      - name: Build MSI
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          echo "APP_VERSION=$VERSION" >> $env:GITHUB_ENV
-
-      - name: Build MSI
-        shell: pwsh
-        run: .\gradlew.bat :app:packageMsi -PappVersion=$env:APP_VERSION
+          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/compose/binaries/main/msi/ToolBox-*.msi
+          files: app/build/compose/binaries/main/msi/工具箱-*.msi
