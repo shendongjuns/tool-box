@@ -41,7 +41,7 @@ fun launchToolBoxWindow(content: @Composable () -> Unit) = application {
 
     Window(
         onCloseRequest = ::exitApplication,
-        title = "工具箱",
+        title = "ToolBox",
         icon = icon,
         state = WindowState(
             position = WindowPosition(Alignment.Center),
