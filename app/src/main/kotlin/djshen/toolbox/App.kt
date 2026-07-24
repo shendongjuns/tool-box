@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import djshen.toolbox.common.ToolBoxSettings
 import djshen.toolbox.framework.navigation.ContentArea
 import djshen.toolbox.framework.navigation.NavigationState
 import djshen.toolbox.framework.navigation.Sidebar
@@ -17,6 +19,8 @@ import djshen.toolbox.common.theme.ToolBoxTheme
  */
 @Composable
 fun App() {
+    // 加载全局设置
+    LaunchedEffect(Unit) { ToolBoxSettings.load() }
     val tools = remember { ToolLoader.load() }
     val navState = remember { NavigationState().apply {
         // 默认选中第一个工具
@@ -41,6 +45,7 @@ fun App() {
             )
             ContentArea(
                 tool = navState.selectedTool,
+                allTools = tools.values.flatten(),
                 sidebarExpanded = navState.sidebarExpanded,
                 onToggleSidebar = { navState.toggleSidebar() }
             )

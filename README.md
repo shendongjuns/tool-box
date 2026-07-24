@@ -9,6 +9,7 @@
 ## ✨ 特性
 
 - 🎨 **极简设计** — Apple 风格定制设计系统，干净克制
+- 🗄️ **数据库管理** — MySQL SQL 客户端，语法高亮、自动补全、数据编辑
 - 🧩 **模块化架构** — 工具通过 ServiceLoader 插件化注册，独立模块互不干扰
 - 🪟 **Windows 原生** — 针对 Windows 优化，支持 MSI 安装包
 - 🚢 **CI/CD** — Tag 推送自动构建发布
@@ -46,6 +47,8 @@ tool-box/
 ├── tool-api/          # 工具接口定义（Tool、ToolCategory）
 ├── common/            # 共享设计系统 + 通用工具类
 ├── platform/          # 平台相关（Windows 注册表、进程管理等）
+├── tools/             # 工具模块
+│   └── tool-database/ # MySQL 数据库管理 SQL 客户端
 └── .github/workflows/ # CI/CD（Tag 触发构建 → GitHub Release）
 ```
 
@@ -63,8 +66,8 @@ tool-box/
 推送版本 Tag 即可触发自动构建：
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 GitHub Actions 会自动构建并打包 ZIP 文件附加到新 Release。

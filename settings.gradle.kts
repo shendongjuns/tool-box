@@ -26,5 +26,8 @@ include(":tool-api")
 // 通用基础设施
 include(":common")
 
-// 平台相关（Windows）
+// 平台相关（Windows）jix
 include(":platform")
+
+// 工具模块
+include(":tools:tool-database")

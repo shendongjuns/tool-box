@@ -8,68 +8,56 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import djshen.toolbox.api.Tool
 import djshen.toolbox.common.theme.Spacing
 
-/**
- * 内容区域 —— 显示当前选中工具的界面。
- *
- * 如果未选中工具，显示欢迎/占位页面。
- */
 @Composable
 fun ContentArea(
     tool: Tool?,
+    allTools: List<Tool>,
     sidebarExpanded: Boolean,
     onToggleSidebar: () -> Unit
 ) {
+    // 只保持最近使用的 2 个工具在组合中，平衡状态保留与内存占用
+    val lastTwo = remember { mutableListOf<Tool?>(null, null) }
+    if (tool != null && tool != lastTwo[0]) {
+        lastTwo[1] = lastTwo[0]
+        lastTwo[0] = tool
+    }
+
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
     ) {
-        // 顶部栏：仅侧边栏折叠时渲染展开按钮
         if (!sidebarExpanded) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onToggleSidebar) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "展开侧边栏",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Icon(Icons.Default.Menu, "展开侧边栏", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
-        // 内容区域
-        if (tool != null) {
-            Box(modifier = Modifier.fillMaxSize().padding(Spacing.page)) {
-                tool.Content()
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 只渲染最近使用的 2 个工具（当前 + 上一个），减少内存
+            lastTwo.filterNotNull().forEach { t ->
+                val active = t == tool
+                Box(
+                    modifier = if (active) Modifier.fillMaxSize()
+                    else Modifier.size(0.dp)
+                ) {
+                    key(t.id) { t.Content() }
+                }
             }
-        } else {
-            // 空状态 / 欢迎页
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "ToolBox",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "从侧边栏选择一个工具开始",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            if (tool == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ToolBox", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
+                        Text("从侧边栏选择一个工具开始", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

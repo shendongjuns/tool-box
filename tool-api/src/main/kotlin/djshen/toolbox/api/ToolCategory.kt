@@ -11,6 +11,9 @@ enum class ToolCategory(
     /** 数据处理：JSON、YAML、CSV、XML 等 */
     DATA("数据处理"),
 
+    /** 数据库管理：MySQL、Redis、ClickHouse 等 */
+    DATABASE("数据库管理"),
+
     /** 文本工具：正则、Diff、大小写转换等 */
     TEXT("文本工具"),
 

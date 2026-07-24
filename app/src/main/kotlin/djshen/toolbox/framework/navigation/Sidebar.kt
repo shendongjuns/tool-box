@@ -132,7 +132,7 @@ fun Sidebar(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "v1.0.0",
+                    text = "v1.1.0",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -210,3 +210,4 @@ private fun ToolItem(
         )
     }
 }
+

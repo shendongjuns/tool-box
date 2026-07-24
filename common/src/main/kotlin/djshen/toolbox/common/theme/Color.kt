@@ -27,6 +27,7 @@ object ToolBoxColors {
     val CategoryText   = Green
     val CategoryEncode = Purple
     val CategorySystem = Orange
+    val CategoryDatabase = Blue
     val CategoryOther  = Color(0xFF8E8E93)
 
     // ═══ 浅色主题 ═══
@@ -40,7 +41,7 @@ object ToolBoxColors {
     val LightTextSecondary      = Color(0xFF3A3A3C)
     val LightTextTertiary       = Color(0xFF8E8E93)
     val LightTextOnPrimary      = Color(0xFFFFFFFF)
-    val LightBackground         = Color(0xFFFFFFFF)
+    val LightBackground         = Color(0xFFF5F5F7)  // Apple SF background (warm off-white)
     val LightErrorContainer      = Color(0xFFFFD7D7)
     val LightScrim              = Color(0x33000000)
 

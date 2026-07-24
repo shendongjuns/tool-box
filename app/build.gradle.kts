@@ -19,6 +19,7 @@ dependencies {
     implementation(project(":tool-api"))
     implementation(project(":common"))
     implementation(project(":platform"))
+    implementation(project(":tools:tool-database"))
 }
 
 compose.desktop {
@@ -39,6 +40,19 @@ compose.desktop {
                 dirChooser = true
                 iconFile.set(project.file("src/main/resources/icon.ico"))
             }
+        }
+    }
+}
+
+// 打包时复制 tools/mysql 到 app image
+tasks.matching { it.name == "createDistributable" }.configureEach {
+    notCompatibleWithConfigurationCache("Copy tools uses Project references")
+    doLast {
+        val mysqlDir = project.rootProject.file("tools/mysql")
+        val appDir = layout.buildDirectory.dir("compose/binaries/main/app/ToolBox/tools/mysql").get().asFile
+        if (mysqlDir.exists()) {
+            appDir.mkdirs()
+            mysqlDir.copyRecursively(appDir, overwrite = true)
         }
     }
 }
