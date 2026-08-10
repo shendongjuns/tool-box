@@ -48,3 +48,6 @@ app.*.map.json
 .superpowers/
 docs/superpowers/
 .vscode/
+
+devtools_options.yaml
+.metadata
