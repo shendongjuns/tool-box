@@ -12,33 +12,47 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
-
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          java-version: '25'
-          distribution: 'temurin'
+          channel: stable
 
-      - name: Build
-        shell: pwsh
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Compress portable zip
+        shell: bash
         run: |
-          $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          .\gradlew.bat :app:createDistributable "-PappVersion=$VERSION"
-          .\gradlew.bat :app:packageMsi "-PappVersion=$VERSION"
+          cd build/windows/x64/runner/Release
+          # 用 * 而非 . ：7z 对 . 参数会生成带 ./ 前缀的条目（解压后出现 . 目录）
+          7z a ../../../../../ToolBox-portable.zip *
 
-      - name: Package ZIP
-        shell: pwsh
+      - name: Setup Inno Setup
+        uses: wangyucode/setup-innosetup@v2
+
+      - name: Build installer
+        env:
+          APP_VERSION: ${{ github.ref_name }}  # 例如 v1.2.0
         run: |
-          $VERSION = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          Compress-Archive -Path "app\build\compose\binaries\main\app\ToolBox" -DestinationPath "ToolBox-$VERSION.zip"
+          $ver = $env:APP_VERSION.TrimStart('v')
+          $env:APP_VERSION = $ver
+          iscc /DAppVersion=$ver .github/installer/toolbox.iss
 
-      - name: Upload to Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ToolBox-*.zip
-            app/build/compose/binaries/main/msi/ToolBox-*.msi
+            ToolBox-Setup-*.exe
+            ToolBox-portable.zip

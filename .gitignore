@@ -1,21 +1,48 @@
-# Gradle
-.gradle/
-.kotlin/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# IDE
-.idea/
-*.iml
-out/
-
-# 构建产物
-*.msi
-*.exe
+# Miscellaneous
+*.class
 *.log
-
-# 系统文件
+*.pyc
+*.swp
 .DS_Store
-Thumbs.db
-data/
-tools/mysql/bin/
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# 内部过程文档（SDD 工作区）
+.superpowers/

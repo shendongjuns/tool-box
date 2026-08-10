@@ -1,77 +1,124 @@
 # ToolBox
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-7F52FF.svg)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Compose%20Desktop-1.11.1-4285F4.svg)](https://www.jetbrains.com/lp/compose-multiplatform/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**现代桌面工具箱，AppFlowy 风格界面，基于 Flutter 构建。**
 
-基于 Kotlin + Jetpack Compose Desktop 构建的现代桌面工具箱。简洁、克制、高效 —— 借鉴 Apple 设计语言。
+ToolBox 是一款 Windows 桌面应用，采用 AppFlowy 风格的简洁界面与 VSCode 式顶部菜单导航。内置可插拔的工具框架，通过顶部「设置」菜单进入各功能页面，便于持续扩展。
 
-## ✨ 特性
+[![Flutter](https://img.shields.io/badge/Flutter-3.44.8-02569B.svg)](https://github.com/shendongjuns/tool-box)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://github.com/shendongjuns/tool-box)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/shendongjuns/tool-box/blob/main/LICENSE)
 
-- 🎨 **极简设计** — Apple 风格定制设计系统，干净克制
-- 🗄️ **数据库管理** — MySQL SQL 客户端，语法高亮、自动补全、数据编辑
-- 🧩 **模块化架构** — 工具通过 ServiceLoader 插件化注册，独立模块互不干扰
-- 🪟 **Windows 原生** — 针对 Windows 优化，支持 MSI 安装包
-- 🚢 **CI/CD** — Tag 推送自动构建发布
+## 特性
 
-## 🚀 快速开始
+- **AppFlowy 风格界面** —— 系统标题栏 + 纯色窗口，顶部 VSCode 式菜单导航（hover 提亮、下拉面板），明暗主题，基于 Material 定制主题、微软雅黑字体与 [Forui](https://pub.dev/packages/forui) 组件库构建。
+- **首页 + 设置菜单导航** —— 顶部「首页」常驻，点「设置」弹出下拉菜单进入各功能页面；多标签页架构预留。
+- **可扩展工具框架** —— 每个工具实现统一的 `Tool` 接口并在集中注册表中登记，新增工具只需几行代码即可接入，自动出现在设置下拉菜单中。
+- **存储目录管理** —— 首次启动引导设置数据存储目录（默认 `用户目录/tool-box`）；可在设置中更改目录，数据自动完整转移到新目录后重启应用。
+- **明暗主题** —— 默认跟随系统深浅色，支持手动切换。
+
+## 快速开始
 
 ### 环境要求
 
-- JDK 25+
-- Gradle（已包含 Wrapper）
+- [Flutter](https://docs.flutter.dev/get-started/install) **3.44+**（stable 通道）
+- **Windows 10/11**（应用目标平台为 Windows 桌面）
 
-### 运行
-
-```bash
-./gradlew :app:run
-```
-
-### 打包
+### 源码运行
 
 ```bash
-# 应用镜像（可直接运行，无需安装）
-./gradlew :app:createDistributable
-# 输出：app/build/compose/binaries/main/app/ToolBox/ToolBox.exe
-
-# MSI 安装包（本地使用，需要 WiX Toolset）
-./gradlew :app:packageMsi
-# 输出：app/build/compose/binaries/main/msi/ToolBox-1.0.0.msi
+flutter pub get
+flutter run -d windows
 ```
 
-## 📦 项目结构
+### 构建安装包
 
-```
-tool-box/
-├── app/               # 主程序壳 + 框架层（窗口、导航、插件加载）
-├── tool-api/          # 工具接口定义（Tool、ToolCategory）
-├── common/            # 共享设计系统 + 通用工具类
-├── platform/          # 平台相关（Windows 注册表、进程管理等）
-├── tools/             # 工具模块
-│   └── tool-database/ # MySQL 数据库管理 SQL 客户端
-└── .github/workflows/ # CI/CD（Tag 触发构建 → GitHub Release）
-```
-
-## 🏗️ 添加新工具
-
-1. 在 `settings.gradle.kts` 中添加模块：`include(":tools:tool-xxx")`
-2. 创建模块目录和 `build.gradle.kts`
-3. 实现 `Tool` 接口，用 Compose 编写 UI
-4. 在 `META-INF/services/djshen.toolbox.api.Tool` 中注册
-5. 在 `app/build.gradle.kts` 中添加依赖：`implementation(project(":tools:tool-xxx"))`
-6. 运行 `./gradlew :app:run` 验证
-
-## 🚢 发布
-
-推送版本 Tag 即可触发自动构建：
+先构建 release 产物：
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+flutter build windows --release
 ```
 
-GitHub Actions 会自动构建并打包 ZIP 文件附加到新 Release。
+再使用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 生成安装包（确保 `iscc` 已在 `PATH` 中）：
 
-## 📝 许可证
+```bash
+iscc /DAppVersion=1.2.0 .github/installer/toolbox.iss
+```
 
-MIT © shendongjuns
+安装脚本位于 `.github/installer/toolbox.iss`，安装包输出在 `output/` 目录下。推送 `v*` 标签时 GitHub Actions 自动构建并发布安装包（exe）与便携版（zip）。
+
+## 技术栈
+
+| 组件 | 选型 |
+| ---- | ---- |
+| UI 框架 | Flutter 3.44.8（Windows 桌面） |
+| UI 组件库 | [Forui](https://pub.dev/packages/forui) 0.25.0（shadcn 风格组件库） |
+| 主题 / 组件 | AppFlowy 风格界面（Material 定制主题 + 微软雅黑字体） |
+| 窗口管理 | [window_manager](https://pub.dev/packages/window_manager) |
+| 状态管理 | [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) 3.4.2（Riverpod） |
+| 文件选择 | [file_selector](https://pub.dev/packages/file_selector) |
+| 打包工具 | Inno Setup 6 + GitHub Actions |
+
+## 项目结构
+
+```
+lib/
+├── main.dart               # 入口（主题联动、首次启动引导）
+├── registry/               # 工具接口、分类与集中注册表
+│   ├── tool.dart           # Tool 接口，所有工具实现该接口
+│   ├── tool_category.dart  # 工具分类枚举
+│   └── toolbox_registry.dart  # 集中注册表 —— 在此登记工具
+├── ui/                     # 框架壳
+│   ├── shell/              # 顶部菜单导航（首页/设置下拉）+ 内容区
+│   ├── theme/              # AppFlowy 风格明暗主题（色板 + Forui 主题）
+│   └── window/             # 窗口初始化（系统标题栏、纯色窗口）
+└── features/               # 各业务工具
+    └── settings/           # 设置工具（存储目录配置）
+```
+
+## 如何添加新工具
+
+每个功能都是一个注册进注册表的工具，共三步：
+
+1. **实现 `Tool` 接口**（`lib/registry/tool.dart`）：
+
+   ```dart
+   class MyTool extends Tool {
+     @override
+     String get id => 'tool-my-feature';
+
+     @override
+     String get name => '我的工具';
+
+     @override
+     String get description => '该工具的功能说明';
+
+     @override
+     ToolCategory get category => ToolCategory.system;
+
+     @override
+     Set<PlatformType> get supportedPlatforms => {PlatformType.windows};
+
+     @override
+     Widget buildContent(BuildContext context) => const MyView();
+   }
+   ```
+
+2. **在 `ToolboxRegistry.registerAll()` 中注册**（`lib/registry/toolbox_registry.dart`）—— 一行即可：
+
+   ```dart
+   @override
+   List<Tool> registerAll() => _tools; // 将你的工具实例加入 _tools 列表
+   ```
+
+3. **声明 `supportedPlatforms`** —— 注册表按当前平台过滤工具，未声明支持的工具会在不支持的平台上自动隐藏。
+
+注册后工具自动出现在顶部「设置」下拉菜单中，点击进入对应页面，无需其他接线。
+
+## 数据存储
+
+- **配置**：`%APPDATA%\tool-box\settings.json`（数据目录路径）
+- **数据**：默认 `用户目录\tool-box`，可在「设置 → 常规」中更改（更改后数据自动转移并重启应用）
+
+## 许可证
+
+[MIT](LICENSE) © shendongjuns
