@@ -32,7 +32,7 @@ cd build\windows\x64\runner\Release
 
 - `toolbox.iss` 使用 `{autopf}`（Program Files）作为默认安装目录，普通用户安装时 Inno Setup 会自动请求提权，无需管理员预先设置。
 - 安装器内置中文简体语言（`chinesesimp`），默认勾选「创建桌面快捷方式」，安装完成后可勾选立即启动。
-- 脚本中的 `MyAppSourceDir` 默认值 `build\windows\x64\runner\Release` 与 `flutter build windows --release` 的产物路径一致；若构建产物在其他位置，可用 `iscc /DMyAppSourceDir=...` 覆盖。
+- 脚本中的 `MyAppSourceDir` 默认值 `..\..\build\windows\x64\runner\Release`（相对脚本目录上两级到仓库根）与 `flutter build windows --release` 的产物路径一致；若构建产物在其他位置，可用 `iscc /DMyAppSourceDir=...` 覆盖（相对脚本目录的路径）。
 
 ## CI 自动发布
 

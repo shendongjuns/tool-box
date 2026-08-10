@@ -4,8 +4,9 @@
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0"
 #endif
+; 相对路径基于本 iss 文件目录（.github/installer/），上两级到仓库根再进 build。
 #ifndef MyAppSourceDir
-  #define MyAppSourceDir "build\windows\x64\runner\Release"
+  #define MyAppSourceDir "..\..\build\windows\x64\runner\Release"
 #endif
 #define MyAppPublisher "shendongjuns"
 #define MyAppExeName "toolbox.exe"
