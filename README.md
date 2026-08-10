@@ -13,7 +13,7 @@ ToolBox 是一款 Windows 桌面应用，采用 AppFlowy 风格的简洁界面�
 - **AppFlowy 风格界面** —— 系统标题栏 + 纯色窗口，顶部 VSCode 式菜单导航（hover 提亮、下拉面板），明暗主题，基于 Material 定制主题、微软雅黑字体与 [Forui](https://pub.dev/packages/forui) 组件库构建。
 - **首页 + 设置菜单导航** —— 顶部「首页」常驻，点「设置」弹出下拉菜单进入各功能页面；多标签页架构预留。
 - **可扩展工具框架** —— 每个工具实现统一的 `Tool` 接口并在集中注册表中登记，新增工具只需几行代码即可接入，自动出现在设置下拉菜单中。
-- **存储目录管理** —— 首次启动引导设置数据存储目录（默认 `用户目录/tool-box`）；可在设置中更改目录，数据自动完整转移到新目录后重启应用。
+- **数据存储于安装目录** —— 所有应用数据（配置/文件）存放于 exe 所在目录，无需配置。
 - **明暗主题** —— 默认跟随系统深浅色，支持手动切换。
 
 ## 快速开始
@@ -55,7 +55,6 @@ iscc /DAppVersion=1.2.0 .github/installer/toolbox.iss
 | 主题 / 组件 | AppFlowy 风格界面（Material 定制主题 + 微软雅黑字体） |
 | 窗口管理 | [window_manager](https://pub.dev/packages/window_manager) |
 | 状态管理 | [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) 3.4.2（Riverpod） |
-| 文件选择 | [file_selector](https://pub.dev/packages/file_selector) |
 | 打包工具 | Inno Setup 6 + GitHub Actions |
 
 ## 项目结构
@@ -116,8 +115,7 @@ lib/
 
 ## 数据存储
 
-- **配置**：`%APPDATA%\tool-box\settings.json`（数据目录路径）
-- **数据**：默认 `用户目录\tool-box`，可在「设置 → 常规」中更改（更改后数据自动转移并重启应用）
+所有应用数据（配置/文件）存放于 **exe 所在目录**（安装目录），无需额外配置。
 
 ## 许可证
 

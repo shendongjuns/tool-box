@@ -62,6 +62,8 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
   @override
   Widget build(BuildContext context) {
     final selected = ref.watch(selectedToolProvider);
+    final registry = ref.watch(toolboxRegistryProvider);
+    final tools = registry.availableTools();
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -80,13 +82,14 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
               ref.read(selectedToolProvider.notifier).goHome();
             },
           ),
-          // 设置菜单项（点击展开下拉）
-          _MenuBarItem(
-            key: _settingsKey,
-            label: '设置',
-            active: _menuEntry != null,
-            onTap: _toggleMenu,
-          ),
+          // 设置菜单项（点击展开下拉；无工具时隐藏）
+          if (tools.isNotEmpty)
+            _MenuBarItem(
+              key: _settingsKey,
+              label: '设置',
+              active: _menuEntry != null,
+              onTap: _toggleMenu,
+            ),
           const Spacer(),
           // 当前页面名（仅选中工具时显示）
           if (selected != null)

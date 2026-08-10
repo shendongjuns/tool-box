@@ -70,6 +70,24 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('无工具时不显示设置按钮', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppflowyTheme.light(),
+          home: FTheme(
+            data: buildForuiTheme(Brightness.light),
+            child: const ShellView(),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('首页'), findsOneWidget);
+    expect(find.text('设置'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('点击设置打开下拉菜单，选择工具切换内容区，首页可返回', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
