@@ -44,9 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# 内部过程文档（SDD 工作区）
+# 内部过程文档与本地配置（不上传仓库，本地保留）
 .superpowers/
-
-# �ڲ������ĵ��뱾������
 docs/superpowers/
 .vscode/
