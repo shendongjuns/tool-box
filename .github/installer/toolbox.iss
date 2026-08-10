@@ -26,7 +26,9 @@ SolidCompression=yes
 WizardStyle=modern
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 中文语言文件随仓库提供（官方发行版不带 ChineseSimplified.isl），
+; 相对路径基于本 iss 文件所在目录（.github/installer/）。
+Name: "chinesesimp"; MessagesFile: "Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"
