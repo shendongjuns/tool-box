@@ -39,8 +39,10 @@ jobs:
           # 用 * 而非 . ：7z 对 . 参数会生成带 ./ 前缀的条目（解压后出现 . 目录）
           7z a ../../../../../ToolBox-portable.zip *
 
-      - name: Setup Inno Setup
-        uses: wangyucode/setup-innosetup@v2
+      # wangyucode/setup-innosetup action 已不可用（repository not found），
+      # 改用 windows-latest 自带 chocolatey 安装 Inno Setup 6。
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
 
       - name: Build installer
         env:
@@ -48,7 +50,7 @@ jobs:
         run: |
           $ver = $env:APP_VERSION.TrimStart('v')
           $env:APP_VERSION = $ver
-          iscc /DAppVersion=$ver .github/installer/toolbox.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$ver .github/installer/toolbox.iss
 
       - name: Release
         uses: softprops/action-gh-release@v2
