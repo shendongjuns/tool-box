@@ -46,3 +46,7 @@ app.*.map.json
 
 # 鍐呴儴杩囩▼鏂囨。锛圫DD 宸ヤ綔鍖猴級
 .superpowers/
+
+# 内部过程文档与本地配置
+docs/superpowers/
+.vscode/
