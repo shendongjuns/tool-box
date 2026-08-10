@@ -23,6 +23,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # windows/ 平台目录不随仓库提交（仅保留 app_icon.ico），
+      # 构建前用 flutter create 重新生成模板；
+      # create 对已存在的 app_icon.ico 自动跳过，图标保持不变。
+      - name: Generate windows platform
+        run: flutter create --project-name toolbox --org com.djshen.toolbox --platforms windows .
+
       - name: Analyze
         run: flutter analyze
 
@@ -30,7 +36,13 @@ jobs:
         run: flutter test
 
       - name: Build Windows
-        run: flutter build windows --release
+        env:
+          APP_VERSION: ${{ github.ref_name }}  # 例如 v1.2.0
+        run: |
+          $ver = $env:APP_VERSION.TrimStart('v')
+          # 显式传 --build-name：windows/ 平台目录由 flutter create 重新
+          # 生成（Runner.rc 为模板默认 1.0.0），不传则 exe 版本错误。
+          flutter build windows --release --build-name $ver --build-number 1
 
       - name: Compress portable zip
         shell: bash

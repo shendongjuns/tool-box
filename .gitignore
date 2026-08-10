@@ -1,53 +1,33 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter/Dart
 .dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
 .pub/
+.pub-cache/
+.flutter-plugins-dependencies
 /build/
 /coverage/
 
-# Symbolication related
-app.*.symbols
+# Windows 平台目录（构建时由 flutter create 重新生成；仅保留 app_icon.ico）
+windows/*
+!windows/runner/resources/
 
-# Obfuscation related
-app.*.map.json
+# Windows 平台构建产物（原 windows/.gitignore 合并）
+windows/flutter/ephemeral/
+x64/
+x86/
+*.suo
+*.user
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# 编辑器
+.idea/
+.vscode/
+*.iml
 
-# 内部过程文档与本地配置（不上传仓库，本地保留）
+# 内部过程文档与本地配置
 .superpowers/
 docs/superpowers/
-.vscode/
-
 devtools_options.yaml
 .metadata
+
+# 系统/通用
+.DS_Store
+*.log
