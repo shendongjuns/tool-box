@@ -26,8 +26,12 @@ jobs:
       # windows/ 平台目录不随仓库提交（仅保留 app_icon.ico），
       # 构建前用 flutter create 重新生成模板；
       # create 对已存在的 app_icon.ico 自动跳过，图标保持不变。
+      # 注意：create 会重新生成已删除的 test/widget_test.dart（模板
+      # 引用 MyApp 导致 analyze 失败），生成后删除。
       - name: Generate windows platform
-        run: flutter create --project-name toolbox --org com.djshen.toolbox --platforms windows .
+        run: |
+          flutter create --project-name toolbox --org com.djshen.toolbox --platforms windows .
+          Remove-Item test\widget_test.dart -ErrorAction SilentlyContinue
 
       - name: Analyze
         run: flutter analyze
