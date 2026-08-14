@@ -91,9 +91,11 @@ void main() {
   testWidgets('点击设置打开下拉菜单，选择工具切换内容区，首页可返回', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
-    // 打开下拉菜单：直接显示工具项（不显示分类名）
+    // 打开下拉菜单：工具按分类分组（分类标题 + 工具项）
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
+    expect(find.text('数据库管理'), findsOneWidget);
+    expect(find.text('其他工具'), findsOneWidget);
     expect(find.text('工具一'), findsOneWidget);
     expect(find.text('工具二'), findsOneWidget);
     // 选择「工具二」→ 内容区切换
@@ -104,6 +106,26 @@ void main() {
     await tester.tap(find.text('首页'));
     await tester.pumpAndSettle();
     expect(find.text('内容区:工具二'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('点击主题按钮循环切换主题模式', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.pumpWidget(buildApp());
+    // 初始为跟随系统
+    expect(find.byIcon(Icons.brightness_auto), findsOneWidget);
+    // 系统 → 浅色
+    await tester.tap(find.byIcon(Icons.brightness_auto));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.light_mode), findsOneWidget);
+    // 浅色 → 深色
+    await tester.tap(find.byIcon(Icons.light_mode));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.dark_mode), findsOneWidget);
+    // 深色 → 系统
+    await tester.tap(find.byIcon(Icons.dark_mode));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.brightness_auto), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 }

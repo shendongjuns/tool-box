@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'navigation_controller.dart';
 import 'top_nav_bar.dart';
 
-/// AppFlowy 风格布局：顶部横向导航栏 + 内容区。
+/// 壳层布局：顶部菜单导航栏 + 内容区。
 class ShellView extends ConsumerWidget {
   const ShellView({super.key});
 

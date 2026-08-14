@@ -14,9 +14,6 @@ class AppflowyColors {
     required this.primary,
     required this.primaryHover,
     required this.border,
-    required this.borderHover,
-    required this.success,
-    required this.warning,
     required this.error,
   });
 
@@ -30,9 +27,6 @@ class AppflowyColors {
   final Color primary;
   final Color primaryHover;
   final Color border;
-  final Color borderHover;
-  final Color success;
-  final Color warning;
   final Color error;
 
   static const light = AppflowyColors._(
@@ -46,9 +40,6 @@ class AppflowyColors {
     primary: Color(0xFF0092D6),
     primaryHover: Color(0xFF0078C0),
     border: Color(0xFFE4E8F5),
-    borderHover: Color(0xFFCED3E6),
-    success: Color(0xFF48A982),
-    warning: Color(0xFFE0A046),
     error: Color(0xFFE85D5D),
   );
 
@@ -63,9 +54,6 @@ class AppflowyColors {
     primary: Color(0xFF4EC1FF),
     primaryHover: Color(0xFF80D2FF),
     border: Color(0xFF3D404F),
-    borderHover: Color(0xFF54596E),
-    success: Color(0xFF71BD9F),
-    warning: Color(0xFFE8A24E),
     error: Color(0xFFF27676),
   );
 }

@@ -35,6 +35,15 @@ class _FakeRegistry extends ToolRegistry {
       ];
 }
 
+class _DuplicateRegistry extends ToolRegistry {
+  @override
+  List<Tool> registerAll() => [
+        _FakeTool('dup', {PlatformType.windows}),
+        _FakeTool('dup', {PlatformType.windows}),
+        _FakeTool('unique', {PlatformType.windows}),
+      ];
+}
+
 void main() {
   // flutter test 默认 defaultTargetPlatform 为 android，
   // 本项目为 Windows 桌面应用，显式固定为 windows 平台进行过滤验证。
@@ -57,6 +66,12 @@ void main() {
       );
     }
     expect(available, contains('desktop-tool'));
+  });
+
+  test('availableTools 按 id 去重并保持顺序', () {
+    final registry = _DuplicateRegistry();
+    final ids = registry.availableTools().map((t) => t.id).toList();
+    expect(ids, ['dup', 'unique']);
   });
 
   test('ToolCategory 六分类展示名', () {
