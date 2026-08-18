@@ -1,19 +1,21 @@
-# Dart / Flutter 工具与构建产物
+# ========== Dart / Flutter 构建产物与缓存 ==========
 .dart_tool/
 .pub/
 .flutter-plugins-dependencies
 /build/
 /coverage/
 
-# 编辑器 / IDE
+# ========== 编辑器 / IDE ==========
 .idea/
 .vscode/
 *.iml
 
-# 系统 / 通用
+# ========== 系统 / 通用 ==========
 .DS_Store
+Thumbs.db
 *.log
 
-# 内部过程文档（AI 辅助开发产物，不入库）
+# ========== AI 辅助开发产物（不入库） ==========
+.zcode/
 .superpowers/
 docs/superpowers/
