@@ -7,7 +7,7 @@ import 'package:toolbox/ui/theme/appflowy_colors.dart';
 import 'package:toolbox/ui/theme/theme_controller.dart';
 import 'navigation_controller.dart';
 
-/// 顶部导航栏（VSCode 菜单栏风格）：「首页」「设置」文字菜单项。
+/// 顶部导航栏（VSCode 菜单栏风格）：「首页」+ 每个有工具的分类一个菜单项。
 /// 点击菜单项展开下拉面板（自绘 Overlay：圆角/阴影/hover 高亮），
 /// 选择工具进入对应功能页面。
 class TopNavBar extends ConsumerStatefulWidget {
@@ -18,8 +18,11 @@ class TopNavBar extends ConsumerStatefulWidget {
 }
 
 class _TopNavBarState extends ConsumerState<TopNavBar> {
-  /// 设置菜单锚点（定位下拉面板）。
-  final GlobalKey _settingsKey = GlobalKey();
+  /// 每个分类菜单的锚点（定位下拉面板）。
+  final Map<ToolCategory, GlobalKey> _anchors = {
+    for (final c in ToolCategory.values) c: GlobalKey(),
+  };
+  ToolCategory? _openCategory;
   OverlayEntry? _menuEntry;
 
   @override
@@ -31,23 +34,30 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
   void _closeMenu() {
     _menuEntry?.remove();
     _menuEntry = null;
+    _openCategory = null;
   }
 
-  void _toggleMenu() {
-    if (_menuEntry != null) {
+  void _toggleMenu(ToolCategory category) {
+    if (_openCategory == category) {
       _closeMenu();
       return;
     }
-    final box = _settingsKey.currentContext?.findRenderObject() as RenderBox?;
+    _closeMenu();
+    final anchor = _anchors[category]!;
+    final box = anchor.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
     final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
     final registry = ref.read(toolboxRegistryProvider);
-    final tools = registry.availableTools();
+    final tools = registry
+        .availableTools()
+        .where((t) => t.category == category)
+        .toList();
 
+    _openCategory = category;
     _menuEntry = OverlayEntry(
-      builder: (_) => _SettingsMenu(
+      builder: (_) => _CategoryMenu(
         anchorOffset: offset,
         anchorSize: box.size,
         tools: tools,
@@ -69,6 +79,12 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
+    // 有工具的分类（保持枚举声明顺序）。
+    final categories = [
+      for (final c in ToolCategory.values)
+        if (tools.any((t) => t.category == c)) c,
+    ];
+
     return Container(
       height: 48,
       color: scheme.surface,
@@ -84,13 +100,13 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
               ref.read(selectedToolProvider.notifier).goHome();
             },
           ),
-          // 设置菜单项（点击展开下拉；无工具时隐藏）
-          if (tools.isNotEmpty)
+          // 每个分类一个菜单项（无工具的分类不显示）
+          for (final category in categories)
             _MenuBarItem(
-              key: _settingsKey,
-              label: '设置',
-              active: _menuEntry != null,
-              onTap: _toggleMenu,
+              key: _anchors[category],
+              label: category.displayName,
+              active: _openCategory == category,
+              onTap: () => _toggleMenu(category),
             ),
           const Spacer(),
           // 当前页面名（仅选中工具时显示）
@@ -227,10 +243,10 @@ class _MenuBarItem extends StatelessWidget {
   }
 }
 
-/// 设置下拉面板（Overlay）：VSCode 菜单风格 —— 圆角面板 + 阴影 + 边框，
-/// 菜单项 hover 高亮，工具按分类分隔。
-class _SettingsMenu extends StatelessWidget {
-  const _SettingsMenu({
+/// 分类下拉面板（Overlay）：VSCode 菜单风格 —— 圆角面板 + 阴影 + 边框，
+/// 菜单项 hover 高亮。单个下拉只列出所属分类的工具。
+class _CategoryMenu extends StatelessWidget {
+  const _CategoryMenu({
     required this.anchorOffset,
     required this.anchorSize,
     required this.tools,
@@ -247,12 +263,6 @@ class _SettingsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
-    // 工具按分类分组（仅含工具的分类，保持枚举顺序）。
-    final grouped = <ToolCategory, List<Tool>>{};
-    for (final tool in tools) {
-      grouped.putIfAbsent(tool.category, () => []).add(tool);
-    }
 
     return Stack(
       children: [
@@ -286,47 +296,17 @@ class _SettingsMenu extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 工具按分类分组展示（分类标题 + 工具项）。
-                  for (final category in ToolCategory.values)
-                    if (grouped.containsKey(category)) ...[
-                      _CategoryHeader(label: category.displayName),
-                      for (final tool in grouped[category]!)
-                        _MenuItem(
-                          label: tool.name,
-                          onTap: () => onSelect(tool),
-                        ),
-                    ],
+                  for (final tool in tools)
+                    _MenuItem(
+                      label: tool.name,
+                      onTap: () => onSelect(tool),
+                    ),
                 ],
               ),
             ),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 分类标题：小号次级文字，上下留白。
-class _CategoryHeader extends StatelessWidget {
-  const _CategoryHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppflowySpacing.m,
-        AppflowySpacing.m,
-        AppflowySpacing.m,
-        AppflowySpacing.s,
-      ),
-      child: Text(
-        label,
-        style: textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
-      ),
     );
   }
 }
@@ -361,4 +341,3 @@ class _MenuItem extends StatelessWidget {
     );
   }
 }
-

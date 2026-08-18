@@ -1,4 +1,5 @@
 enum ToolCategory {
+  work('工作'),
   data('数据处理'),
   database('数据库管理'),
   text('文本工具'),

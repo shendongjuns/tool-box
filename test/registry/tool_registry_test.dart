@@ -74,8 +74,9 @@ void main() {
     expect(ids, ['dup', 'unique']);
   });
 
-  test('ToolCategory 六分类展示名', () {
-    expect(ToolCategory.values.length, 6);
+  test('ToolCategory 七分类展示名', () {
+    expect(ToolCategory.values.length, 7);
+    expect(ToolCategory.work.displayName, '工作');
     expect(ToolCategory.database.displayName, '数据库管理');
   });
 }
