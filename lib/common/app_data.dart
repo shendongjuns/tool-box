@@ -1,24 +1,13 @@
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
-
-/// 应用数据目录：优先使用用户可写的数据目录，便携模式回退到 exe 目录。
+/// 应用数据目录：统一存放于安装目录下的 `data` 子目录。
+///
+/// 无论压缩包解压运行还是 exe 安装运行，所有数据均写入 exe 同级目录下的
+/// `data/`，保证两种分发方式的数据位置一致，且备份时只需整体备份 `data/`。
 class AppDataDir {
   AppDataDir._();
 
   /// 应用数据目录（配置/文件存放于此）。
-  ///
-  /// 正常安装时使用系统用户数据目录（如 Windows `%APPDATA%`，可写、无需
-  /// 管理员权限）；获取失败或便携模式下回退到 exe 所在目录。
-  static Future<String> get path async {
-    try {
-      final dir = await getApplicationSupportDirectory();
-      await dir.create(recursive: true);
-      return dir.path;
-    } on Exception {
-      final fallback = File(Platform.resolvedExecutable).parent;
-      await fallback.create(recursive: true);
-      return fallback.path;
-    }
-  }
+  static String get path =>
+      '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}data';
 }
