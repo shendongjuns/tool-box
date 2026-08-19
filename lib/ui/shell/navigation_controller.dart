@@ -1,16 +1,70 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:toolbox/registry/tool.dart';
 
-final selectedToolProvider =
-    NotifierProvider<NavigationController, Tool?>(NavigationController.new);
+/// 页面导航状态：打开的页面会话与当前激活页。
+///
+/// [openIds] 为页面打开顺序（单实例去重）；[activeId] 为当前激活页，
+/// `null` 表示首页。页面以工具 id 为 key（注册表每次可能新建 Tool 实例，
+/// 不能用实例引用做比较）。
+class PageNavState {
+  const PageNavState({
+    required this.openIds,
+    required this.activeId,
+  });
 
-/// 导航状态：当前选中工具。
-class NavigationController extends Notifier<Tool?> {
+  final List<String> openIds;
+  final String? activeId;
+
+  bool get isHome => activeId == null;
+
+  PageNavState copyWith({List<String>? openIds, String? activeId}) =>
+      PageNavState(openIds: openIds ?? this.openIds, activeId: activeId);
+}
+
+final pageNavProvider = NotifierProvider<PageNavController, PageNavState>(
+  PageNavController.new,
+);
+
+/// 页面会话导航：打开/切换/回首页/关闭。
+///
+/// 切换与回首页只改变激活页，**已打开页面保活**（widget 树不销毁）；
+/// 仅 [close] 关闭页面会话，页面状态随之释放。
+class PageNavController extends Notifier<PageNavState> {
   @override
-  Tool? build() => null; // 默认显示首页（null = 首页）
+  PageNavState build() => const PageNavState(openIds: [], activeId: null);
 
-  void select(Tool tool) => state = tool;
+  /// 打开页面（未打开则加入并按打开顺序激活）。
+  void open(String toolId) {
+    final openIds = [...state.openIds];
+    if (!openIds.contains(toolId)) openIds.add(toolId);
+    state = PageNavState(openIds: openIds, activeId: toolId);
+  }
 
-  /// 返回首页（取消选中工具）。
-  void goHome() => state = null;
+  /// 切换到已打开的页面。
+  void activate(String toolId) {
+    if (!state.openIds.contains(toolId)) return;
+    state = state.copyWith(activeId: toolId);
+  }
+
+  /// 回首页（已打开页面保持打开）。
+  void goHome() {
+    if (state.isHome) return;
+    state = state.copyWith(activeId: null);
+  }
+
+  /// 关闭页面：从打开列表移除；关闭的是当前页时切到相邻页
+  /// （优先前一页），无剩余页面回首页。
+  void close(String toolId) {
+    final openIds = state.openIds.where((id) => id != toolId).toList();
+    if (state.activeId != toolId) {
+      state = PageNavState(openIds: openIds, activeId: state.activeId);
+      return;
+    }
+    if (openIds.isEmpty) {
+      state = const PageNavState(openIds: [], activeId: null);
+      return;
+    }
+    final closedIndex = state.openIds.indexOf(toolId);
+    final nextIndex = closedIndex > 0 ? closedIndex - 1 : 0;
+    state = PageNavState(openIds: openIds, activeId: openIds[nextIndex]);
+  }
 }

@@ -36,11 +36,55 @@ class _TestTool extends Tool {
   Widget buildContent(BuildContext context) => Center(child: Text('内容区:$_name'));
 }
 
+/// 带自增计数的假工具：用于验证页面切换后 State 保活。
+class _CounterTool extends Tool {
+  @override
+  String get id => 'counter';
+  @override
+  String get name => '计数器';
+  @override
+  String get description => '测试状态保活';
+  @override
+  ToolCategory get category => ToolCategory.work;
+  @override
+  Set<PlatformType> get supportedPlatforms => {PlatformType.windows};
+  @override
+  Widget buildContent(BuildContext context) => const _CounterPage();
+}
+
+class _CounterPage extends StatefulWidget {
+  const _CounterPage();
+
+  @override
+  State<_CounterPage> createState() => _CounterPageState();
+}
+
+class _CounterPageState extends State<_CounterPage> {
+  int _count = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('计数:$_count'),
+          TextButton(
+            onPressed: () => setState(() => _count++),
+            child: const Text('加一'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TestRegistry extends ToolRegistry {
   @override
   List<Tool> registerAll() => [
         _TestTool('t1', '工具一', ToolCategory.database),
         _TestTool('t2', '工具二', ToolCategory.other),
+        _CounterTool(),
       ];
 }
 
@@ -67,7 +111,7 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppflowyTheme.light(),
-          // FSidebar 需要 FTheme 提供样式（与 main.dart 的生产包裹一致）。
+          // FTheme 需要提供样式（与 main.dart 的生产包裹一致）。
           home: FTheme(
             data: buildForuiTheme(Brightness.light),
             child: const ShellView(),
@@ -80,10 +124,12 @@ void main() {
     await tester.pumpWidget(buildApp());
     // 顶部「首页」常驻，每个有工具的分类一个菜单项
     expect(find.text('首页'), findsOneWidget);
+    expect(find.text('工作'), findsOneWidget);
     expect(find.text('数据库管理'), findsOneWidget);
     expect(find.text('其他工具'), findsOneWidget);
-    // 默认显示首页（内容区占位），未选中工具
-    expect(find.text('内容区:工具一'), findsNothing);
+    // 默认显示首页占位，未打开任何页面（无标签条）
+    expect(find.text('内容待定').hitTestable(), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -105,32 +151,78 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('点击分类菜单展开下拉，选择工具切换内容区，首页可返回', (tester) async {
+  testWidgets('打开工具出现标签条，回首页后页面保活可切回', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
-    // 打开「数据库管理」下拉：只列出该分类下的工具
+    // 打开「数据库管理」→「工具一」
     await tester.tap(find.text('数据库管理'));
     await tester.pumpAndSettle();
-    expect(find.text('工具一'), findsOneWidget);
-    expect(find.text('工具二'), findsNothing);
-    // 选择「工具一」→ 内容区切换
     await tester.tap(find.text('工具一'));
     await tester.pumpAndSettle();
-    expect(find.text('内容区:工具一'), findsOneWidget);
-    // 点击「首页」返回
+    // 内容区显示工具一，标签条出现（工具一 + 关闭按钮）
+    expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    // 点「首页」：首页可见，但页面保活（标签条仍在，可切回）
     await tester.tap(find.text('首页'));
     await tester.pumpAndSettle();
-    expect(find.text('内容区:工具一'), findsNothing);
+    expect(find.text('内容待定').hitTestable(), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    // 点标签切回工具一
+    await tester.tap(find.text('工具一'));
+    await tester.pumpAndSettle();
+    expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('不同分类下拉只列出本分类工具', (tester) async {
+  testWidgets('切换工具后页面 State 保活（计数不丢失）', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
+    // 打开「工作」→「计数器」，点两次「加一」
+    await tester.tap(find.text('工作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('计数器'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加一'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加一'));
+    await tester.pumpAndSettle();
+    expect(find.text('计数:2'), findsOneWidget);
+    // 打开「工具一」：当前页切走
+    await tester.tap(find.text('数据库管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('工具一'));
+    await tester.pumpAndSettle();
+    // 切回「计数器」标签：State 保活，计数仍为 2
+    await tester.tap(find.text('计数器'));
+    await tester.pumpAndSettle();
+    expect(find.text('计数:2'), findsOneWidget);
+    expect(find.text('计数:0'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('关闭当前页回退相邻页，关闭最后一页回首页', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.pumpWidget(buildApp());
+    // 打开两个页面：工具一、工具二（当前为工具二）
+    await tester.tap(find.text('数据库管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('工具一'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('其他工具'));
     await tester.pumpAndSettle();
-    expect(find.text('工具二'), findsOneWidget);
-    expect(find.text('工具一'), findsNothing);
+    await tester.tap(find.text('工具二'));
+    await tester.pumpAndSettle();
+    // 关闭当前页「工具二」（最后一个标签的 ×）：回退到「工具一」
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    expect(find.text('内容区:工具二'), findsNothing);
+    expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
+    // 关闭最后一页「工具一」：回首页，无标签条
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pumpAndSettle();
+    expect(find.text('内容区:工具一'), findsNothing);
+    expect(find.byIcon(Icons.close), findsNothing);
+    expect(find.text('内容待定').hitTestable(), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 

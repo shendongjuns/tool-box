@@ -63,7 +63,7 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
         tools: tools,
         onSelect: (tool) {
           _closeMenu();
-          ref.read(selectedToolProvider.notifier).select(tool);
+          ref.read(pageNavProvider.notifier).open(tool.id);
         },
         onDismiss: _closeMenu,
       ),
@@ -73,7 +73,7 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = ref.watch(selectedToolProvider);
+    final nav = ref.watch(pageNavProvider);
     final registry = ref.watch(toolboxRegistryProvider);
     final tools = registry.availableTools();
     final scheme = Theme.of(context).colorScheme;
@@ -85,6 +85,17 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
         if (tools.any((t) => t.category == c)) c,
     ];
 
+    // 当前激活页对应的工具名。
+    Tool? activeTool;
+    if (nav.activeId != null) {
+      for (final tool in tools) {
+        if (tool.id == nav.activeId) {
+          activeTool = tool;
+          break;
+        }
+      }
+    }
+
     return Container(
       height: 48,
       color: scheme.surface,
@@ -94,10 +105,10 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
           // 首页菜单项
           _MenuBarItem(
             label: '首页',
-            active: selected == null,
+            active: nav.isHome,
             onTap: () {
               _closeMenu();
-              ref.read(selectedToolProvider.notifier).goHome();
+              ref.read(pageNavProvider.notifier).goHome();
             },
           ),
           // 每个分类一个菜单项（无工具的分类不显示）
@@ -110,11 +121,11 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
             ),
           const Spacer(),
           // 当前页面名（仅选中工具时显示）
-          if (selected != null)
+          if (activeTool != null)
             Padding(
               padding: const EdgeInsets.only(right: AppflowySpacing.xl),
               child: Text(
-                selected.name,
+                activeTool.name,
                 style: textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
