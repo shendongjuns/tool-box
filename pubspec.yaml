@@ -37,6 +37,8 @@ dependencies:
   flutter_riverpod: ^3.4.2
   forui: ^0.25.0
   file_picker: ^12.0.0
+  dartssh2: ^3.2.0
+  xterm: ^4.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
