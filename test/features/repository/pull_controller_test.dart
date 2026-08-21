@@ -72,7 +72,7 @@ void main() {
         'checkout',
         '--non-interactive',
         'https://x/proj-V1.0',
-        '${tempDir.path}${Platform.pathSeparator}tz',
+        '${tempDir.path}${Platform.pathSeparator}proj-V1.0',
       ],
     );
     final statuses = container.read(repoPullControllerProvider);
@@ -80,7 +80,7 @@ void main() {
     expect(statuses['r2'], PullStatus.success);
   });
 
-  test('目标目录已存在且非空时跳过，不执行 svn', () async {
+  test('目标目录已存在且非空时执行 svn update', () async {
     final calls = <List<String>>[];
     final container = containerWith(
       (List<String> args, {Duration timeout = const Duration(minutes: 10)}) async {
@@ -100,12 +100,14 @@ void main() {
         .read(repoPullControllerProvider.notifier)
         .pullGroup(group);
 
-    expect(summary!.skipped, 1);
-    expect(summary.success, 0);
-    expect(calls, isEmpty);
+    expect(summary!.success, 1);
+    expect(summary.skipped, 0);
+    // 已有代码 → 执行 update 而非 checkout。
+    expect(calls, hasLength(1));
+    expect(calls.first.first, 'update');
     expect(
       container.read(repoPullControllerProvider)['r1'],
-      PullStatus.skipped,
+      PullStatus.success,
     );
   });
 

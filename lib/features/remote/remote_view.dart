@@ -38,7 +38,6 @@ class _RemoteViewState extends ConsumerState<RemoteView> {
     if (activeId != null && !sessions.containsKey(activeId)) {
       activeId = sessions.isNotEmpty ? sessions.keys.last : null;
     }
-    final activeHandle = activeId == null ? null : sessions[activeId];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -108,8 +107,19 @@ class _RemoteViewState extends ConsumerState<RemoteView> {
                                   setState(() => _panelVisible = true),
                             ),
                           ),
-                        if (activeHandle != null)
-                          Expanded(child: _SessionContent(handle: activeHandle)),
+                        if (sessions.isNotEmpty)
+                          Expanded(
+                            child: IndexedStack(
+                              index: sessions.keys.toList().indexOf(activeId!),
+                              children: [
+                                for (final entry in sessions.entries)
+                                  _SessionContent(
+                                    key: ValueKey(entry.value.connection.id),
+                                    handle: entry.value,
+                                  ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
             ),
@@ -729,7 +739,7 @@ class _SessionTabState extends State<_SessionTab> {
 
 /// 单个会话内容：状态提示 + 终端/文件视图切换。
 class _SessionContent extends ConsumerStatefulWidget {
-  const _SessionContent({required this.handle});
+  const _SessionContent({super.key, required this.handle});
 
   final SshSessionHandle handle;
 
@@ -1247,6 +1257,11 @@ class _MonitorViewState extends ConsumerState<_MonitorView> {
                 _GpuRow(history: state.history),
                 const SizedBox(height: AppflowySpacing.m),
               ],
+              // 华为昇腾 NPU 趋势（有 NPU 数据时显示）。
+              if (latest.npus.isNotEmpty) ...[
+                _NpuRow(history: state.history),
+                const SizedBox(height: AppflowySpacing.m),
+              ],
               // TOP 进程（固定高度，内部滚动）。
               SizedBox(
                 height: 240,
@@ -1481,6 +1496,110 @@ class _GpuRow extends StatelessWidget {
       if (v > max) max = v;
     }
     return max > 0 ? max : 100;
+  }
+}
+
+/// 华为昇腾 NPU 趋势：每芯片 AI Core / HBM / 功耗 三卡并排。
+class _NpuRow extends StatelessWidget {
+  const _NpuRow({required this.history});
+
+  final List<MonitorMetrics> history;
+
+  @override
+  Widget build(BuildContext context) {
+    final latest = history.isEmpty ? null : history.last;
+    if (latest == null || latest.npus.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < latest.npus.length; i++) ...[
+          // NPU 信息行：名称 + 温度 + 健康状态。
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppflowySpacing.m),
+            child: Text(
+              'NPU ${i + 1}：${latest.npus[i].name}'
+              '${latest.npus[i].tempC > 0 ? ' · ${latest.npus[i].tempC.toStringAsFixed(0)}°C' : ''}'
+              ' · ${latest.npus[i].health.isEmpty ? 'OK' : latest.npus[i].health}',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: _healthColor(latest.npus[i].health),
+                  ),
+            ),
+          ),
+          // AI Core / HBM / 功耗 三卡并排。
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _GpuTrend(
+                  label: 'AI Core',
+                  color: const Color(0xFF7B1FA2),
+                  value:
+                      '${latest.npus[i].aiCorePercent.toStringAsFixed(0)}%',
+                  series: [
+                    for (final m in history)
+                      if (i < m.npus.length) m.npus[i].aiCorePercent,
+                  ],
+                  unitMax: 100,
+                ),
+              ),
+              const SizedBox(width: AppflowySpacing.m),
+              Expanded(
+                child: _GpuTrend(
+                  label: 'HBM',
+                  color: const Color(0xFF00897B),
+                  value: '${latest.npus[i].hbmPercent.toStringAsFixed(0)}%',
+                  series: [
+                    for (final m in history)
+                      if (i < m.npus.length) m.npus[i].hbmPercent,
+                  ],
+                  unitMax: 100,
+                ),
+              ),
+              const SizedBox(width: AppflowySpacing.m),
+              // 功耗趋势卡：功率为 NA（<=0）时隐藏。
+              if (latest.npus[i].powerWatts > 0) ...[
+                Expanded(
+                  child: _GpuTrend(
+                    label: '功耗',
+                    color: const Color(0xFFEF6C00),
+                    value:
+                        '${latest.npus[i].powerWatts.toStringAsFixed(0)} W',
+                    series: [
+                      for (final m in history)
+                        if (i < m.npus.length) m.npus[i].powerWatts,
+                    ],
+                    unitMax: _maxOf([
+                      for (final m in history)
+                        if (i < m.npus.length) m.npus[i].powerWatts,
+                    ]),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppflowySpacing.m),
+        ],
+      ],
+    );
+  }
+
+  double _maxOf(List<double> values) {
+    var max = 0.0;
+    for (final v in values) {
+      if (v > max) max = v;
+    }
+    return max > 0 ? max : 100;
+  }
+
+  /// 健康状态颜色：OK 绿、Warning 橙、Alarm/Critical 红。
+  Color _healthColor(String health) {
+    final h = health.toLowerCase();
+    if (h.contains('warning')) return const Color(0xFFEF6C00);
+    if (h.contains('alarm') || h.contains('critical')) {
+      return const Color(0xFFC62828);
+    }
+    return const Color(0xFF2E7D32);
   }
 }
 

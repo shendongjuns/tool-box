@@ -71,10 +71,14 @@ class MonitorCollector {
       'echo "\$pid \$cmd \$cpu \$mem"; '
       'done; '
       "echo '==GPU=='; nvidia-smi --query-gpu=name,utilization.gpu,memory.used,"
-      'memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits 2>/dev/null';
+      'memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits 2>/dev/null; '
+      // 华为昇腾 NPU：探测 npu-smi 存在则采集默认 info 表格
+      // （部分机型如 310P 的 -t 查询受限，默认表格最通用）。
+      "echo '==NPU=='; if command -v npu-smi >/dev/null 2>&1; then "
+      'npu-smi info 2>/dev/null; fi';
 
   static final _sectionRe = RegExp(
-    r'^==(?:MEM|DF|NET|LOAD|NPROC|PS|GPU)==$',
+    r'^==(?:MEM|DF|NET|LOAD|NPROC|PS|GPU|NPU)==$',
     multiLine: true,
   );
 
@@ -111,6 +115,10 @@ class MonitorCollector {
     final loadText = part(4);
     final psText = part(6);
     final gpuText = part(7);
+
+    // 华为昇腾 NPU：默认 info 表格交给解析器。
+    final npuText = part(8);
+    final npus = parseNpuSmi(npuText ?? '');
 
     // CPU 核心数。
     final cpuCores = int.tryParse(part(5)?.trim() ?? '') ?? 1;
@@ -171,6 +179,7 @@ class MonitorCollector {
       swapTotalBytes: swapTotal,
       disks: disks,
       gpus: gpus,
+      npus: npus,
       netRxBytesPerSec: rxPerSec,
       netTxBytesPerSec: txPerSec,
       load1: load1,

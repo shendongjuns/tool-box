@@ -100,6 +100,20 @@ String deriveRepoName(String rawUrl, {String? version}) {
   return name.isEmpty ? url : name;
 }
 
+/// 取地址末段的**完整目录名**（含版本号、去 `.git` 与尾部斜杠）。
+///
+/// 例如 `https://x/svn/example_group/branches/proj-V1.0` → `proj-V1.0`。
+/// SVN 拉取目标目录用此名，保留版本号。
+String deriveRepoDirName(String rawUrl) {
+  var url = rawUrl.trim();
+  url = _stripTrailingSlash(url);
+  var name = url.split(RegExp(r'[/:]')).last;
+  if (name.toLowerCase().endsWith('.git')) {
+    name = name.substring(0, name.length - 4);
+  }
+  return name.isEmpty ? url : name;
+}
+
 /// 解析仓库地址模板：将 `{version}` 替换为 `V` + 版本号（V 为固定前缀）。
 String resolveUrl(String url, String? version) {
   final v = normalizeVersion(version);

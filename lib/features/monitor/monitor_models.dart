@@ -34,9 +34,39 @@ class GpuUsage {
   final double memUsedMiB;
   final double memTotalMiB;
   final double tempC;
-
   /// 当前功耗（瓦）。
   final double powerWatts;
+}
+
+/// 华为昇腾 NPU 状态。
+class NpuUsage {
+  const NpuUsage({
+    required this.index,
+    required this.name,
+    required this.aiCorePercent,
+    required this.hbmPercent,
+    required this.powerWatts,
+    required this.tempC,
+    required this.health,
+  });
+
+  final int index;
+  final String name;
+
+  /// AI Core 使用率（0-100）。
+  final double aiCorePercent;
+
+  /// HBM 内存使用率（0-100）。
+  final double hbmPercent;
+
+  /// 功耗（瓦）。
+  final double powerWatts;
+
+  /// 温度（°C）。
+  final double tempC;
+
+  /// 健康状态（OK / Warning / Alarm / Critical / UNKNOWN）。
+  final String health;
 }
 
 /// TOP 进程。
@@ -65,6 +95,7 @@ class MonitorMetrics {
     required this.swapTotalBytes,
     required this.disks,
     required this.gpus,
+    this.npus = const [],
     required this.netRxBytesPerSec,
     required this.netTxBytesPerSec,
     required this.load1,
@@ -82,6 +113,7 @@ class MonitorMetrics {
   final int swapTotalBytes;
   final List<DiskUsage> disks;
   final List<GpuUsage> gpus;
+  final List<NpuUsage> npus;
   final double netRxBytesPerSec;
   final double netTxBytesPerSec;
   final double load1;
@@ -174,7 +206,94 @@ List<GpuUsage> parseNvidiaSmi(String text) {
   return result;
 }
 
-/// 解析 /proc/net/dev 为接口 -> {rx,tx} 字节的映射（跳过 lo）。
+/// 解析 `npu-smi info` 默认表格输出为 NPU 列表。
+///
+/// 表格每 NPU 两行：
+///   `| N  Name  | Health | Power(W)  Temp(C)  Hugepages |`  （NPU 行）
+///   `| C  Dev   | Bus-Id | AICore(%) Memory-Usage(MB)   |`  （Chip 行）
+/// 按 `|` 切分、按 NPU 行（首列是数字）分组，Chip 行取 AICore/Memory。
+List<NpuUsage> parseNpuSmi(String text) {
+  final result = <NpuUsage>[];
+  final lines = text.split('\n');
+
+  List<String> cells(String line) =>
+      line.split('|').map((e) => e.trim()).toList();
+
+  String? curName;
+  String? curHealth;
+  String? curPower;
+  String? curTemp;
+  String? curAicore;
+  String? curMemory;
+
+  void flush() {
+    if (curName == null) return;
+    // Memory-Usage 形如 `3154 / 21527` 或 `0 / 0`。
+    final memParts =
+        (curMemory ?? '').split('/').map((e) => e.trim()).toList();
+    final memUsed = double.tryParse(memParts.isNotEmpty ? memParts[0] : '') ?? 0;
+    final memTotal =
+        double.tryParse(memParts.length > 1 ? memParts[1] : '') ?? 0;
+    result.add(NpuUsage(
+      index: result.length,
+      name: curName!,
+      aiCorePercent: double.tryParse(curAicore ?? '') ?? 0,
+      // HBM 使用率 = 已用 / 总量 * 100。
+      hbmPercent: memTotal > 0 ? memUsed / memTotal * 100 : 0,
+      powerWatts: double.tryParse(curPower ?? '') ?? 0,
+      tempC: double.tryParse(curTemp ?? '') ?? 0,
+      health: curHealth ?? '',
+    ));
+    curName = null;
+    curHealth = null;
+    curPower = null;
+    curTemp = null;
+    curAicore = null;
+    curMemory = null;
+  }
+
+  for (final line in lines) {
+    final c = cells(line);
+    if (c.length < 4) continue; // [0] 行首空 + [1][2][3]
+    // c[1] 形如 `1       310P3`（id + 名称）或 `0       0`（chip + dev）。
+    final c1First = c[1].split(RegExp(r'\s+')).first;
+    final isNumeric = int.tryParse(c1First) != null;
+    // 排除进程表行：c[2] 是纯数字 PID、c[3] 是进程名（非数值）。
+    final c2IsPid = int.tryParse(c[2]) != null;
+    final c3First = c[3].split(RegExp(r'\s+')).first;
+    final c3IsValue = int.tryParse(c3First) != null || c3First == 'NA';
+    // NPU 行：c[1] 首段是数字，c[2] 是 Health（非 PID、非 Bus-Id），
+    // c[3] 是 Power/Temp（数值或 NA）。
+    if (isNumeric &&
+        !c2IsPid &&
+        !c[2].startsWith('NPU') &&
+        !c[2].startsWith('Chip') &&
+        !c[2].contains(':') &&
+        !c[2].contains('.') &&
+        c3IsValue) {
+      flush();
+      final c1Parts = c[1].split(RegExp(r'\s+'));
+      curName = c1Parts.length > 1 ? c1Parts[1] : 'NPU $c1First';
+      curHealth = c[2];
+      // c[3] 含 Power/Temp/Hugepages：`90.4  48  0 / 0`。
+      final p3 = c[3].split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+      curPower = p3.isNotEmpty ? p3[0] : null;
+      curTemp = p3.length > 1 ? p3[1] : null;
+    }
+    // Chip 行：c[1] 首段是数字，c[2] 是 Bus-Id（含冒号/点）。
+    else if (isNumeric &&
+        (c[2].contains(':') || c[2].contains('.'))) {
+      // c[3] 含 AICore/Memory：`0  3154 / 21527`。
+      final p3 = c[3].split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+      curAicore = p3.isNotEmpty ? p3[0] : null;
+      // 内存是 aicore 之后的 `3154 / 21527`。
+      curMemory = p3.skip(1).join(' ');
+    }
+  }
+  flush();
+
+  return result;
+}
 Map<String, (int rx, int tx)> parseNetDev(String text) {
   final result = <String, (int, int)>{};
   for (final line in text.split('\n')) {

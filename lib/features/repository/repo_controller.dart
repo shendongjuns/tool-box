@@ -83,6 +83,55 @@ class RepoController extends Notifier<List<RepoGroup>> {
     _persist();
   }
 
+  /// 设置指定 SSH 连接的远程拉取绑定（远程目录 + SVN 账号）。
+  void setGroupRemote(
+    String id,
+    String connectionId, {
+    String? remotePath,
+    String? svnUsername,
+    String? svnPassword,
+  }) {
+    _group(id);
+    final rp = remotePath?.trim();
+    String? clean(String? v) =>
+        (v == null || v.trim().isEmpty) ? null : v.trim();
+    state = [
+      for (final g in state)
+        if (g.id == id) ...[
+          if (rp == null || rp.isEmpty)
+            RepoGroup(
+              id: g.id,
+              name: g.name,
+              version: g.version,
+              localPath: g.localPath,
+              remotes: {...g.remotes}..remove(connectionId),
+              activeRemoteConnId: connectionId,
+              repos: g.repos,
+            )
+          else
+            RepoGroup(
+              id: g.id,
+              name: g.name,
+              version: g.version,
+              localPath: g.localPath,
+              remotes: {
+                ...g.remotes,
+                connectionId: RepoRemoteBinding(
+                  remotePath: rp,
+                  svnUsername: clean(svnUsername),
+                  svnPassword: clean(svnPassword),
+                ),
+              },
+              activeRemoteConnId: connectionId,
+              repos: g.repos,
+            ),
+        ]
+        else
+          g,
+    ];
+    _persist();
+  }
+
   void deleteGroup(String id) {
     state = state.where((g) => g.id != id).toList();
     _persist();

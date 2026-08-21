@@ -163,4 +163,31 @@ void main() {
     expect(added, 1);
     expect(container.read(repoGroupsProvider).single.repos, hasLength(2));
   });
+
+  test('setGroupRemote 按连接分别保存绑定，切换连接互不影响', () {
+    final container = makeContainer();
+    final notifier = container.read(repoGroupsProvider.notifier);
+    notifier.addGroup('group');
+    final groupId = container.read(repoGroupsProvider).single.id;
+
+    // 连接 A 绑定目录1
+    notifier.setGroupRemote(groupId, 'conn-a',
+        remotePath: '/home/a', svnUsername: 'ua', svnPassword: 'pa');
+    // 连接 B 绑定目录2
+    notifier.setGroupRemote(groupId, 'conn-b',
+        remotePath: '/home/b', svnUsername: 'ub', svnPassword: 'pb');
+
+    final group = container.read(repoGroupsProvider).single;
+    expect(group.remotes['conn-a']!.remotePath, '/home/a');
+    expect(group.remotes['conn-a']!.svnUsername, 'ua');
+    expect(group.remotes['conn-b']!.remotePath, '/home/b');
+    expect(group.remotes['conn-b']!.svnUsername, 'ub');
+
+    // 清空连接 B 目录 → 移除 B 绑定，A 保留。
+    notifier.setGroupRemote(groupId, 'conn-b', remotePath: '');
+    final after = container.read(repoGroupsProvider).single;
+    expect(after.remotes.containsKey('conn-b'), isFalse);
+    expect(after.remotes['conn-a']!.remotePath, '/home/a');
+  });
+
 }

@@ -64,12 +64,40 @@ class Repo {
 
 /// 仓库分组：一组仓库 + 共享的版本变量 + 本地落地文件夹。
 @immutable
+/// 单个 SSH 连接的远程拉取绑定（远程目录 + SVN 账号）。
+class RepoRemoteBinding {
+  const RepoRemoteBinding({
+    required this.remotePath,
+    this.svnUsername,
+    this.svnPassword,
+  });
+
+  final String remotePath;
+  final String? svnUsername;
+  final String? svnPassword;
+
+  Map<String, dynamic> toJson() => {
+        'remotePath': remotePath,
+        'svnUsername': svnUsername,
+        'svnPassword': svnPassword,
+      };
+
+  factory RepoRemoteBinding.fromJson(Map<String, dynamic> json) =>
+      RepoRemoteBinding(
+        remotePath: json['remotePath'] as String? ?? '',
+        svnUsername: json['svnUsername'] as String?,
+        svnPassword: json['svnPassword'] as String?,
+      );
+}
+
 class RepoGroup {
   const RepoGroup({
     required this.id,
     required this.name,
     required this.version,
     this.localPath,
+    this.remotes = const {},
+    this.activeRemoteConnId,
     required this.repos,
   });
 
@@ -81,12 +109,20 @@ class RepoGroup {
 
   /// 本地落地文件夹（一键拉取的根目录）；为 null 表示未绑定。
   final String? localPath;
+
+  /// 远程拉取绑定：SSH 连接 id -> 绑定（远程目录 + SVN 账号）。
+  final Map<String, RepoRemoteBinding> remotes;
+
+  /// 当前远程拉取目标连接（上次使用的）；为 null 时取第一个绑定。
+  final String? activeRemoteConnId;
   final List<Repo> repos;
 
   RepoGroup copyWith({
     String? name,
     String? version,
     String? localPath,
+    Map<String, RepoRemoteBinding>? remotes,
+    String? activeRemoteConnId,
     List<Repo>? repos,
   }) =>
       RepoGroup(
@@ -94,6 +130,8 @@ class RepoGroup {
         name: name ?? this.name,
         version: version ?? this.version,
         localPath: localPath ?? this.localPath,
+        remotes: remotes ?? this.remotes,
+        activeRemoteConnId: activeRemoteConnId ?? this.activeRemoteConnId,
         repos: repos ?? this.repos,
       );
 
@@ -102,18 +140,43 @@ class RepoGroup {
         'name': name,
         'version': version,
         'localPath': localPath,
+        'remotes': remotes.map((k, v) => MapEntry(k, v.toJson())),
+        'activeRemoteConnId': activeRemoteConnId,
         'repos': repos.map((e) => e.toJson()).toList(),
       };
 
-  factory RepoGroup.fromJson(Map<String, dynamic> json) => RepoGroup(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        version: json['version'] as String?,
-        localPath: json['localPath'] as String?,
-        repos: (json['repos'] as List<dynamic>? ?? const [])
-            .map((e) => Repo.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  factory RepoGroup.fromJson(Map<String, dynamic> json) {
+    // 兼容旧字段：remoteConnectionId/remotePath/svn* 迁移到 remotes。
+    final legacyConn = json['remoteConnectionId'] as String?;
+    final legacyPath = json['remotePath'] as String?;
+    final remotes = <String, RepoRemoteBinding>{};
+    final jsonRemotes = json['remotes'];
+    if (jsonRemotes is Map<String, dynamic>) {
+      jsonRemotes.forEach((k, v) {
+        if (v is Map<String, dynamic>) {
+          remotes[k] = RepoRemoteBinding.fromJson(v);
+        }
+      });
+    }
+    if (legacyConn != null && legacyPath != null && legacyPath.isNotEmpty) {
+      remotes.putIfAbsent(legacyConn, () => RepoRemoteBinding(
+            remotePath: legacyPath,
+            svnUsername: json['svnUsername'] as String?,
+            svnPassword: json['svnPassword'] as String?,
+          ));
+    }
+    return RepoGroup(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      version: json['version'] as String?,
+      localPath: json['localPath'] as String?,
+      remotes: remotes,
+      activeRemoteConnId: json['activeRemoteConnId'] as String?,
+      repos: (json['repos'] as List<dynamic>? ?? const [])
+          .map((e) => Repo.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }
 
 /// 归一化版本号：去除首部 V/v 并去空白；空值返回 null。

@@ -105,4 +105,27 @@ eth0: 1500 0 0 0 0 0 0 0 3000 0 0 0 0 0 0 0
       expect(procs[1].name, 'nginx: worker process');
     });
   });
+
+  group('parseNpuSmi', () {
+    test('解析 npu-smi info 表格（310P 真实输出）', () {
+      const text = '''
+| npu-smi 25.0.rc1.1                     Version: 25.0.rc1.1 |
+| NPU     Name                  | Health  | Power(W)  Temp(C)  Hugepages |
+| Chip    Device                | Bus-Id  | AICore(%) Memory-Usage(MB) |
+| 1       310P3                 | OK      | NA        44        605 / 605 |
+| 0       0                     | 0000:01:00.0 | 0    3154 / 21527 |
+| NPU     Chip                  | Process id | Process name | Process memory(MB) |
+| 1       0                     | 3077486   | example_engine | 1358 |
+''';
+      final npus = parseNpuSmi(text);
+      // 只解析出 1 个 NPU（进程表行被排除）。
+      expect(npus, hasLength(1));
+      expect(npus.single.name, '310P3');
+      expect(npus.single.health, 'OK');
+      expect(npus.single.aiCorePercent, 0);
+      expect(npus.single.tempC, 44);
+      expect(npus.single.powerWatts, 0); // NA
+      expect(npus.single.hbmPercent, closeTo(3154 / 21527 * 100, 0.1));
+    });
+  });
 }

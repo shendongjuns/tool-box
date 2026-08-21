@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toolbox/features/remote/ssh_session.dart';
+import 'package:toolbox/features/remote/transfer_controller.dart';
+import 'package:toolbox/features/remote/transfer_worker.dart';
 import 'package:toolbox/ui/theme/appflowy_colors.dart';
 
 /// SFTP 文件浏览视图：路径可编辑直达，支持上传/下载/新建目录/删除/
@@ -29,6 +32,12 @@ class _SftpViewState extends ConsumerState<SftpView> {
   Timer? _suggestDebounce;
   bool _loading = false;
   bool _connected = false;
+
+  /// 排序字段：name / date / size。
+  String _sortField = 'name';
+
+  /// 是否升序。
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -166,18 +175,34 @@ class _SftpViewState extends ConsumerState<SftpView> {
       final filtered = entries
           .where((e) => e.filename != '.' && e.filename != '..')
           .toList()
-        ..sort((a, b) {
-          final aDir = _isDir(a);
-          final bDir = _isDir(b);
-          if (aDir != bDir) return aDir ? -1 : 1;
-          return a.filename.toLowerCase().compareTo(b.filename.toLowerCase());
-        });
+        ..sort(_compareEntries);
       setState(() => _entries = filtered);
     } catch (e) {
       _showMessage('加载目录失败：$e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// 按当前排序字段比较两个条目（目录始终优先，其次按字段）。
+  int _compareEntries(SftpName a, SftpName b) {
+    final aDir = _isDir(a);
+    final bDir = _isDir(b);
+    if (aDir != bDir) return aDir ? -1 : 1;
+    int result;
+    switch (_sortField) {
+      case 'date':
+        final at = a.attr.modifyTime ?? 0;
+        final bt = b.attr.modifyTime ?? 0;
+        result = at.compareTo(bt);
+      case 'size':
+        final as = a.attr.size ?? 0;
+        final bs = b.attr.size ?? 0;
+        result = as.compareTo(bs);
+      default:
+        result = a.filename.toLowerCase().compareTo(b.filename.toLowerCase());
+    }
+    return _sortAsc ? result : -result;
   }
 
   bool _isDir(SftpName name) => name.attr.type == SftpFileType.directory;
@@ -191,7 +216,8 @@ class _SftpViewState extends ConsumerState<SftpView> {
     }
     final picked = await FilePicker.pickFiles();
     if (picked.isEmpty) return;
-    final sftp = await widget.handle.sftp();
+    final conn = widget.handle.connection;
+    final transfer = ref.read(transferTasksProvider.notifier);
     var success = 0;
     final failures = <String>[];
     for (final file in picked) {
@@ -200,19 +226,60 @@ class _SftpViewState extends ConsumerState<SftpView> {
         failures.add('${file.name}：无法获取本地路径');
         continue;
       }
-      try {
-        final bytes = await File(localPath).readAsBytes();
-        final remote = await sftp.open(
-          _join(file.name),
-          mode: SftpFileOpenMode.write |
-              SftpFileOpenMode.create |
-              SftpFileOpenMode.truncate,
-        );
-        await remote.writeBytes(bytes);
-        await remote.close();
+      final localFile = File(localPath);
+      final total = await localFile.length();
+      final taskId = transfer.add(
+        file.name,
+        TransferDirection.upload,
+        totalBytes: total,
+      );
+      // 后台 isolate 传输，避免 socket 事件风暴阻塞主 isolate UI。
+      final port = startTransferWorker(TransferRequest(
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        useKeyAuth: conn.useKeyAuth,
+        privateKeyPath: conn.privateKeyPath,
+        keyPassphrase: conn.keyPassphrase,
+        direction: 'upload',
+        localPath: localPath,
+        remotePath: _join(file.name),
+        totalBytes: total,
+      ));
+      final completer = Completer<String?>();
+      SendPort? cancelPort;
+      port.listen((msg) {
+        final list = msg as List<Object?>;
+        final type = list[0] as String;
+        if (type == 'cancelPort') {
+          cancelPort = list[1] as SendPort;
+          transfer.setCancelPort(taskId, cancelPort!);
+        } else if (type == 'progress') {
+          // dartssh2 回报累计字节，任务 totalBytes 已在创建时设置。
+          transfer.updateProgress(taskId, list[1] as int);
+        } else if (type == 'done') {
+          transfer.finish(taskId, TransferStatus.done);
+          if (!completer.isCompleted) completer.complete(null);
+          port.close();
+        } else if (type == 'cancelled') {
+          transfer.finish(taskId, TransferStatus.cancelled);
+          if (!completer.isCompleted) completer.complete('取消');
+          port.close();
+        } else if (type == 'error') {
+          final err = '${list[1]}';
+          transfer.finish(taskId, TransferStatus.failed, error: err);
+          if (!completer.isCompleted) completer.complete(err);
+          port.close();
+        }
+      });
+      final err = await completer.future;
+      if (err == null) {
         success++;
-      } catch (e) {
-        failures.add('${file.name}：$e');
+      } else if (err == '取消') {
+        // 用户取消，不计失败。
+      } else {
+        failures.add('${file.name}：$err');
       }
     }
     if (failures.isEmpty) {
@@ -232,34 +299,80 @@ class _SftpViewState extends ConsumerState<SftpView> {
       return;
     }
     try {
-      // 大文件不支持一次性读进内存，流式分块写盘。
-      // file_picker 12 的 saveFile 必须传完整 bytes（不适合大文件），
-      // 改用目录选择器选保存目录，再拼文件名流式写入。
       final dirPath = await FilePicker.getDirectoryPath(
         dialogTitle: '选择保存位置',
       );
       if (dirPath == null || dirPath.isEmpty) return;
 
-      final sftp = await widget.handle.sftp();
-      final remote =
-          await sftp.open(_join(name.filename), mode: SftpFileOpenMode.read);
       final localFile =
           File('$dirPath${Platform.pathSeparator}${name.filename}');
-      final sink = localFile.openWrite();
-      try {
-        await for (final chunk in remote.read()) {
-          sink.add(chunk);
+      // 先查远端文件大小（进度总量）。
+      final total = await _remoteSize(name.filename);
+      // 后台 isolate 用系统 scp 传输（原生速度，不卡 UI）。
+      final conn = widget.handle.connection;
+      final transfer = ref.read(transferTasksProvider.notifier);
+      final taskId = transfer.add(
+        name.filename,
+        TransferDirection.download,
+        totalBytes: total,
+      );
+      final port = startTransferWorker(TransferRequest(
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        useKeyAuth: conn.useKeyAuth,
+        privateKeyPath: conn.privateKeyPath,
+        keyPassphrase: conn.keyPassphrase,
+        direction: 'download',
+        localPath: localFile.path,
+        remotePath: _join(name.filename),
+        totalBytes: total,
+      ));
+      port.listen((msg) {
+        final list = msg as List<Object?>;
+        final type = list[0] as String;
+        if (type == 'cancelPort') {
+          transfer.setCancelPort(taskId, list[1] as SendPort);
+        } else if (type == 'total') {
+          transfer.updateTotal(taskId, list[1] as int);
+        } else if (type == 'progress') {
+          // dartssh2 回报累计字节，任务 totalBytes 已由 total 消息设置。
+          transfer.updateProgress(taskId, list[1] as int);
+        } else if (type == 'done') {
+          transfer.finish(taskId, TransferStatus.done);
+          _showMessage('已下载 ${name.filename}');
+          port.close();
+        } else if (type == 'cancelled') {
+          transfer.finish(taskId, TransferStatus.cancelled);
+          _showMessage('已取消下载');
+          port.close();
+        } else if (type == 'error') {
+          transfer.finish(taskId, TransferStatus.failed, error: '${list[1]}');
+          _showMessage('下载失败：${list[1]}');
+          port.close();
         }
-        await sink.flush();
-      } finally {
-        await sink.close();
-        try {
-          await remote.close();
-        } catch (_) {}
-      }
-      _showMessage('已下载 ${name.filename}');
+      });
     } catch (e) {
       _showMessage('下载失败：$e');
+    }
+  }
+
+  /// 查询远端文件大小（用独立短连接）。
+  Future<int> _remoteSize(String filename) async {
+    try {
+      final client = await defaultSshConnector(widget.handle.connection);
+      final sftp = await client.sftp();
+      final remote = await sftp.open(
+        _join(filename),
+        mode: SftpFileOpenMode.read,
+      );
+      final size = (await remote.stat()).size ?? 0;
+      await remote.close();
+      await client.close();
+      return size;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -368,7 +481,7 @@ class _SftpViewState extends ConsumerState<SftpView> {
     try {
       final sftp = await widget.handle.sftp();
       if (_isDir(name)) {
-        await sftp.rmdir(_join(name.filename));
+        await _recursiveDelete(sftp, _join(name.filename));
       } else {
         await sftp.remove(_join(name.filename));
       }
@@ -377,6 +490,21 @@ class _SftpViewState extends ConsumerState<SftpView> {
     } catch (e) {
       _showMessage('删除失败：$e');
     }
+  }
+
+  /// 递归删除远程目录（含所有子文件/子目录）。
+  Future<void> _recursiveDelete(SftpClient sftp, String path) async {
+    final entries = await sftp.listdir(path);
+    for (final entry in entries) {
+      if (entry.filename == '.' || entry.filename == '..') continue;
+      final childPath = '$path/${entry.filename}';
+      if (entry.attr.type == SftpFileType.directory) {
+        await _recursiveDelete(sftp, childPath);
+      } else {
+        await sftp.remove(childPath);
+      }
+    }
+    await sftp.rmdir(path);
   }
 
   /// 查看文件详情：类型/大小/权限/修改时间/所属用户组，并可下载/删除/改权限。
@@ -524,6 +652,27 @@ class _SftpViewState extends ConsumerState<SftpView> {
     );
   }
 
+  /// 弹出传输记录窗口（当前/历史上传下载任务与进度）。
+  void _showTransferHistory() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('传输记录'),
+        content: const SizedBox(
+          width: 420,
+          height: 300,
+          child: _TransferPanel(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -572,6 +721,34 @@ class _SftpViewState extends ConsumerState<SftpView> {
                 tooltip: '刷新',
                 onPressed: _refresh,
               ),
+              // 排序：字段下拉 + 升降序切换。
+              DropdownButton<String>(
+                value: _sortField,
+                underline: const SizedBox.shrink(),
+                icon: const Icon(Icons.sort, size: 18),
+                items: const [
+                  DropdownMenuItem(value: 'name', child: Text('名称')),
+                  DropdownMenuItem(value: 'date', child: Text('日期')),
+                  DropdownMenuItem(value: 'size', child: Text('大小')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    setState(() => _sortField = v);
+                    _refresh();
+                  }
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  _sortAsc ? Icons.arrow_upward : Icons.arrow_downward,
+                  size: 18,
+                ),
+                tooltip: _sortAsc ? '升序' : '降序',
+                onPressed: () {
+                  setState(() => _sortAsc = !_sortAsc);
+                  _refresh();
+                },
+              ),
               TextButton.icon(
                 icon: const Icon(Icons.create_new_folder_outlined, size: 16),
                 label: const Text('新建目录'),
@@ -581,6 +758,12 @@ class _SftpViewState extends ConsumerState<SftpView> {
                 icon: const Icon(Icons.upload_file, size: 16),
                 label: const Text('上传'),
                 onPressed: _upload,
+              ),
+              // 传输记录按钮：查看当前/历史上传下载进度。
+              IconButton(
+                icon: const Icon(Icons.history, size: 18),
+                tooltip: '传输记录',
+                onPressed: _showTransferHistory,
               ),
             ],
           ),
@@ -781,5 +964,140 @@ class _SuggestionList extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 传输任务面板：显示上传/下载任务列表与进度条。
+class _TransferPanel extends ConsumerWidget {
+  const _TransferPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    // 内部监听任务列表，仅本面板 rebuild，不影响整个文件视图。
+    final tasks = ref.watch(transferTasksProvider);
+    if (tasks.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppflowySpacing.m,
+        0,
+        AppflowySpacing.m,
+        AppflowySpacing.s,
+      ),
+      padding: const EdgeInsets.all(AppflowySpacing.s),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppflowyRadius.m),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('传输任务', style: textTheme.labelMedium),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.delete_sweep_outlined, size: 14),
+                label: const Text('清空已完成'),
+                onPressed: () =>
+                    ref.read(transferTasksProvider.notifier).clearFinished(),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppflowySpacing.xs),
+          for (final task in tasks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppflowySpacing.xs),
+              child: Row(
+                children: [
+                  Icon(
+                    task.direction == TransferDirection.upload
+                        ? Icons.upload
+                        : Icons.download,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: AppflowySpacing.s),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.fileName,
+                          style: textTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(AppflowyRadius.xs),
+                          child: LinearProgressIndicator(
+                            value: task.progress,
+                            minHeight: 6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppflowySpacing.s),
+                  SizedBox(
+                    width: 70,
+                    child: Text(
+                      _taskStatusText(task),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: _taskStatusColor(task, scheme),
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                  // 终止按钮（传输中显示）。
+                  if (task.status == TransferStatus.running ||
+                      task.status == TransferStatus.pending)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      tooltip: '终止',
+                      onPressed: () =>
+                          ref.read(transferTasksProvider.notifier).cancel(task.id),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _taskStatusText(TransferTask task) {
+    switch (task.status) {
+      case TransferStatus.done:
+        return '完成';
+      case TransferStatus.failed:
+        return '失败';
+      case TransferStatus.cancelled:
+        return '取消';
+      case TransferStatus.pending:
+        return '等待';
+      case TransferStatus.running:
+        // 传输中（scp 无逐字节进度，进度 0 时显示"传输中"）。
+        return task.progress > 0
+            ? '${(task.progress * 100).toStringAsFixed(0)}%'
+            : '传输中';
+    }
+  }
+
+  Color _taskStatusColor(TransferTask task, ColorScheme scheme) {
+    switch (task.status) {
+      case TransferStatus.done:
+        return const Color(0xFF2E7D32);
+      case TransferStatus.failed:
+      case TransferStatus.cancelled:
+        return const Color(0xFFC62828);
+      case TransferStatus.pending:
+      case TransferStatus.running:
+        return scheme.onSurfaceVariant;
+    }
   }
 }
