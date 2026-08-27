@@ -1520,11 +1520,10 @@ class _TerminalHost extends StatelessWidget {
           handle.terminal,
           focusNode: focusNode,
           autofocus: true,
-          // 走硬件键盘监听路径：CustomKeyboardListener 在 onKeyEvent
-          // 返回 ignored 且带字符时自动 textInput 送达终端。
-          // 普通字符/中文 IME 上屏都能输入；Windows 下 TextInput 通道
-          // attach 不稳定，故不用默认的 CustomTextEdit 通道。
-          hardwareKeyboardOnly: true,
+          // 走默认 CustomTextEdit（TextInput 通道）：Windows 中文 IME
+          // 上屏文本只通过 flutter/textinput 送达，硬件键盘 KeyEvent
+          // 收不到中文（引擎压制 WM_CHAR 转换）。vendor 的 xterm 已补
+          // viewId，修复 Flutter 3.32+ 下 attach 失败。
           controller: controller,
           onKeyEvent: _handleKeyEvent,
       onSecondaryTapUp: (details, cell) async {

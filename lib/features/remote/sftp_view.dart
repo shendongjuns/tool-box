@@ -30,7 +30,6 @@ class _SftpViewState extends ConsumerState<SftpView> {
   String _path = '/';
   late final TextEditingController _pathController;
   final FocusNode _pathFocus = FocusNode();
-  final ScrollController _toolbarScroll = ScrollController();
   List<SftpName>? _entries;
   List<_PathSuggestion> _suggestions = const [];
   Timer? _suggestDebounce;
@@ -58,7 +57,6 @@ class _SftpViewState extends ConsumerState<SftpView> {
     _suggestDebounce?.cancel();
     _pathController.dispose();
     _pathFocus.dispose();
-    _toolbarScroll.dispose();
     super.dispose();
   }
 
@@ -700,24 +698,19 @@ class _SftpViewState extends ConsumerState<SftpView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 路径栏（可编辑直达）+ 操作按钮。
-        // 文件面板只有约一半窗口宽度；工具栏横向可滚动并带滚动条，
-        // 窄宽度下不溢出，用户也能看到可滚动。
+        // 文件面板只有约一半窗口宽度；工具栏横向可滚动（无滚动条），
+        // 窄宽度下不溢出。
         Padding(
           padding: const EdgeInsets.all(MochiCatSpacing.md),
-          child: Scrollbar(
-            controller: _toolbarScroll,
-            thumbVisibility: true,
-            scrollbarOrientation: ScrollbarOrientation.bottom,
-            child: SingleChildScrollView(
-              controller: _toolbarScroll,
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _ToolIcon(
-                    icon: AppIcons.goUp,
-                    tooltip: '上一级',
-                    onPressed: _isRoot ? null : _goUp,
-                  ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _ToolIcon(
+                  icon: AppIcons.goUp,
+                  tooltip: '上一级',
+                  onPressed: _isRoot ? null : _goUp,
+                ),
                   SizedBox(
                     width: 180,
                     child: TextField(
@@ -805,7 +798,6 @@ class _SftpViewState extends ConsumerState<SftpView> {
               ),
             ),
           ),
-        ),
         // 路径自动补全建议列表：仅在输入框聚焦且有建议时显示，
         // 失焦或路径跳转后自动隐藏，不占用多余空间。
         if (_pathFocus.hasFocus && _suggestions.isNotEmpty)

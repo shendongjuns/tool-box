@@ -39,7 +39,8 @@ dependencies:
   file_picker: ^12.0.0
   dartssh2:
     path: lib/third_party/dartssh2
-  xterm: ^4.0.0
+  xterm:
+    path: lib/third_party/xterm
 dev_dependencies:
   flutter_test:
     sdk: flutter
