@@ -124,11 +124,10 @@ packages:
   dartssh2:
     dependency: "direct main"
     description:
-      name: dartssh2
-      sha256: "899788ebece4ff6fa3fec8d52d4879f835c850a96ba19826a9ee69b71e413342"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.2.0"
+      path: "lib/third_party/dartssh2"
+      relative: true
+    source: path
+    version: "3.3.1"
   dbus:
     dependency: transitive
     description:

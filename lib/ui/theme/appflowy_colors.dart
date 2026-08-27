@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// AppFlowy 色板常量（浅色/深色各一套）。
-/// 来源：AppFlowy 主题源码（primitive + semantic token）。
+///
+/// 注意：数值已替换为「糯米猫」设计语义色板，作为兼容层保留类名，
+/// 使旧页面代码直接获得新配色；新代码应优先使用 MochiCatPalette。
 class AppflowyColors {
   const AppflowyColors._({
     required this.surface,
@@ -31,30 +33,30 @@ class AppflowyColors {
 
   static const light = AppflowyColors._(
     surface: Color(0xFFFFFFFF),
-    layer01: Color(0xFFF8FAFF),
-    layer02: Color(0xFFE4E8F5),
-    layer03: Color(0xFFCED3E6),
-    textPrimary: Color(0xFF21232A),
-    textSecondary: Color(0xFF6F748C),
-    textTertiary: Color(0xFF989EB7),
-    primary: Color(0xFF0092D6),
-    primaryHover: Color(0xFF0078C0),
-    border: Color(0xFFE4E8F5),
-    error: Color(0xFFE85D5D),
+    layer01: Color(0xFFF8F7FC),
+    layer02: Color(0xFFE8E4EF),
+    layer03: Color(0xFFF2EEFB),
+    textPrimary: Color(0xFF302D42),
+    textSecondary: Color(0xFF88839B),
+    textTertiary: Color(0xFF9C97AC),
+    primary: Color(0xFF7857C8),
+    primaryHover: Color(0xFF6D4BBB),
+    border: Color(0xFFE8E4EF),
+    error: Color(0xFFDF6D7D),
   );
 
   static const dark = AppflowyColors._(
-    surface: Color(0xFF21232A),
-    layer01: Color(0xFF272930),
-    layer02: Color(0xFF32343F),
-    layer03: Color(0xFF3D404F),
-    textPrimary: Color(0xFFF8FAFF),
-    textSecondary: Color(0xFFB5BBD3),
-    textTertiary: Color(0xFF989EB7),
-    primary: Color(0xFF4EC1FF),
-    primaryHover: Color(0xFF80D2FF),
-    border: Color(0xFF3D404F),
-    error: Color(0xFFF27676),
+    surface: Color(0xFF272634),
+    layer01: Color(0xFF2B2A39),
+    layer02: Color(0xFF373548),
+    layer03: Color(0xFF332E46),
+    textPrimary: Color(0xFFE9E6F1),
+    textSecondary: Color(0xFF9C97AC),
+    textTertiary: Color(0xFF88839B),
+    primary: Color(0xFFA889EF),
+    primaryHover: Color(0xFFB79BF2),
+    border: Color(0xFF373548),
+    error: Color(0xFFE8808F),
   );
 }
 

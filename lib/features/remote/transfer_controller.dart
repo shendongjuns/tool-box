@@ -1,6 +1,7 @@
 import 'dart:isolate';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:toolbox/features/remote/transfer_store.dart';
 
 /// 传输方向。
 enum TransferDirection { upload, download }
@@ -49,6 +50,32 @@ class TransferTask {
         status: status ?? this.status,
         error: error ?? this.error,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'fileName': fileName,
+        'direction': direction.name,
+        'totalBytes': totalBytes,
+        'transferredBytes': transferredBytes,
+        'status': status.name,
+        'error': error,
+      };
+
+  factory TransferTask.fromJson(Map<String, dynamic> json) => TransferTask(
+        id: json['id'] as String,
+        fileName: json['fileName'] as String,
+        direction: _directionFrom(json['direction'] as String?),
+        totalBytes: json['totalBytes'] as int? ?? 0,
+        transferredBytes: json['transferredBytes'] as int? ?? 0,
+        status: _statusFrom(json['status'] as String?),
+        error: json['error'] as String?,
+      );
+
+  static TransferDirection _directionFrom(String? name) =>
+      TransferDirection.values.asNameMap()[name] ?? TransferDirection.upload;
+
+  static TransferStatus _statusFrom(String? name) =>
+      TransferStatus.values.asNameMap()[name] ?? TransferStatus.failed;
 }
 
 /// 传输任务列表（全局，跨会话共享）。
@@ -60,20 +87,66 @@ final transferTasksProvider =
 int _transferSeq = 0;
 
 class TransferController extends Notifier<List<TransferTask>> {
-  /// 任务 id -> 取消通道（scp worker 的 cancelPort）。
+  /// 任务 id -> 取消通道（传输 worker 的 cancelPort）。
   final Map<String, SendPort> _cancelPorts = {};
 
+  /// 任务 id -> 启动函数（由 UI 注册，创建传输 worker）。
+  final Map<String, Future<void> Function()> _starters = {};
+
+  /// 是否有任务正在传输（队列调度用）。
+  bool _running = false;
+
+  /// 待启动队列（FIFO）。
+  final List<String> _queue = [];
+
   @override
-  List<TransferTask> build() => const [];
+  List<TransferTask> build() {
+    final loaded = ref.watch(transferStoreProvider).load();
+    if (loaded.isEmpty) return const [];
+    // 重启后无 worker 运行：把未完成任务标为失败，避免出现永远"传输中"。
+    return [
+      for (final t in loaded)
+        if (t.status == TransferStatus.pending ||
+            t.status == TransferStatus.running)
+          t.copyWith(status: TransferStatus.failed, error: '应用重启，传输中断')
+        else
+          t,
+    ];
+  }
+
+  void _persist() => ref.read(transferStoreProvider).save(state);
 
   /// 注册任务的取消通道。
   void setCancelPort(String id, SendPort port) {
     _cancelPorts[id] = port;
   }
 
-  /// 终止任务（向 worker 发取消消息）。
+  /// 标记任务开始（worker 开始传输时调用，状态置 running）。
+  void start(String id) {
+    state = [
+      for (final t in state)
+        if (t.id == id) t.copyWith(status: TransferStatus.running) else t,
+    ];
+    _persist();
+  }
+
+  /// 终止任务：立即标记为取消 + 通知 worker 中断传输。
   void cancel(String id) {
-    _cancelPorts.remove(id)?.send(['cancel']);
+    // 立即标记状态（用户取消即时生效，不依赖 worker 响应）。
+    state = [
+      for (final t in state)
+        if (t.id == id)
+          t.copyWith(status: TransferStatus.cancelled)
+        else
+          t,
+    ];
+    // 通知 worker 中断（若还在运行）。
+    _cancelPorts[id]?.send(['cancel']);
+    _cancelPorts.remove(id);
+    // 若还在排队（未启动），从队列移除并调度下一个。
+    _queue.remove(id);
+    _starters.remove(id);
+    _persist();
   }
 
   /// 新增任务，返回任务 id。
@@ -94,7 +167,42 @@ class TransferController extends Notifier<List<TransferTask>> {
         status: TransferStatus.pending,
       ),
     ];
+    _persist();
     return id;
+  }
+
+  /// 将任务加入传输队列并注册启动器。
+  ///
+  /// 可无限追加（不限制并发）：队列空闲时自动启动下一个，逐个排队传输。
+  void enqueue(String id, Future<void> Function() starter) {
+    _starters[id] = starter;
+    _queue.add(id);
+    _pumpQueue();
+  }
+
+  /// 队列调度：若无任务运行，启动队首任务。
+  void _pumpQueue() {
+    if (_running || _queue.isEmpty) return;
+    final id = _queue.removeAt(0);
+    final starter = _starters.remove(id);
+    if (starter == null) {
+      // 启动器缺失（异常），直接跳下一个。
+      _pumpQueue();
+      return;
+    }
+    _running = true;
+    start(id);
+    // 异步启动 starter；完成/失败后复位并调度下一个。
+    Future.microtask(() async {
+      try {
+        await starter();
+      } catch (_) {
+        // starter 内部已处理错误（finish）。
+      } finally {
+        _running = false;
+        _pumpQueue();
+      }
+    });
   }
 
   /// 更新任务进度。
@@ -110,6 +218,7 @@ class TransferController extends Notifier<List<TransferTask>> {
         else
           t,
     ];
+    _persist();
   }
 
   /// 设置任务总量（下载时由 worker 回报文件大小）。
@@ -118,6 +227,7 @@ class TransferController extends Notifier<List<TransferTask>> {
       for (final t in state)
         if (t.id == id) t.copyWith(totalBytes: totalBytes) else t,
     ];
+    _persist();
   }
 
   /// 标记完成/失败/取消。
@@ -126,11 +236,15 @@ class TransferController extends Notifier<List<TransferTask>> {
       for (final t in state)
         if (t.id == id) t.copyWith(status: status, error: error) else t,
     ];
+    // 任务结束后清理取消通道（不再需要）。
+    _cancelPorts.remove(id);
+    _persist();
   }
 
   /// 移除单个任务。
   void remove(String id) {
     state = state.where((t) => t.id != id).toList();
+    _persist();
   }
 
   /// 清空已完成/失败任务。
@@ -140,5 +254,6 @@ class TransferController extends Notifier<List<TransferTask>> {
             t.status == TransferStatus.pending ||
             t.status == TransferStatus.running)
         .toList();
+    _persist();
   }
 }

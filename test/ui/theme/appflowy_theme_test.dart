@@ -4,11 +4,11 @@ import 'package:toolbox/ui/theme/appflowy_colors.dart';
 import 'package:toolbox/ui/theme/appflowy_theme.dart';
 
 void main() {
-  test('浅色主题关键色值与 AppFlowy 色板一致', () {
+  test('浅色主题关键色值与糯米猫色板一致', () {
     final theme = AppflowyTheme.light();
     expect(theme.colorScheme.surface, AppflowyColors.light.surface);
-    expect(theme.colorScheme.primary, const Color(0xFF0092D6));
-    expect(theme.colorScheme.onSurface, const Color(0xFF21232A));
+    expect(theme.colorScheme.primary, AppflowyColors.light.primary);
+    expect(theme.colorScheme.onSurface, AppflowyColors.light.textPrimary);
   });
 
   test('深色主题存在且色板翻转', () {

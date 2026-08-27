@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toolbox/registry/tool.dart';
 import 'package:toolbox/registry/tool_category.dart';
 import 'package:toolbox/registry/toolbox_registry.dart';
-import 'package:toolbox/ui/theme/appflowy_colors.dart';
+import 'package:toolbox/ui/theme/app_icons.dart';
+import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
 import 'package:toolbox/ui/theme/theme_controller.dart';
 import 'navigation_controller.dart';
 
-/// 顶部导航栏（VSCode 菜单栏风格）：「首页」+ 每个有工具的分类一个菜单项。
-/// 点击菜单项展开下拉面板（自绘 Overlay：圆角/阴影/hover 高亮），
-/// 选择工具进入对应功能页面。
+/// 顶部导航栏（52px）：「品牌区」+「首页 / 分类菜单」+「已打开工具标签」+
+/// 主题按钮。点击分类菜单展开下拉面板，选择工具进入对应页面。
 class TopNavBar extends ConsumerStatefulWidget {
   const TopNavBar({super.key});
 
@@ -46,8 +46,7 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
     final anchor = _anchors[category]!;
     final box = anchor.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
     final registry = ref.read(toolboxRegistryProvider);
     final tools = registry
@@ -76,8 +75,7 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
     final nav = ref.watch(pageNavProvider);
     final registry = ref.watch(toolboxRegistryProvider);
     final tools = registry.availableTools();
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final p = MochiCatPalette.of(context);
 
     // 有工具的分类（保持枚举声明顺序）。
     final categories = [
@@ -85,26 +83,19 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
         if (tools.any((t) => t.category == c)) c,
     ];
 
-    // 当前激活页对应的工具名。
-    Tool? activeTool;
-    if (nav.activeId != null) {
-      for (final tool in tools) {
-        if (tool.id == nav.activeId) {
-          activeTool = tool;
-          break;
-        }
-      }
-    }
-
     return Container(
-      height: 48,
-      color: scheme.surface,
+      height: MochiCatSize.topBarHeight,
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(bottom: BorderSide(color: p.border)),
+      ),
       child: Row(
         children: [
-          const SizedBox(width: AppflowySpacing.m),
+          const SizedBox(width: MochiCatSpacing.lg),
           // 首页菜单项
-          _MenuBarItem(
+          _NavItem(
             label: '首页',
+            icon: AppIcons.home,
             active: nav.isHome,
             onTap: () {
               _closeMenu();
@@ -113,27 +104,164 @@ class _TopNavBarState extends ConsumerState<TopNavBar> {
           ),
           // 每个分类一个菜单项（无工具的分类不显示）
           for (final category in categories)
-            _MenuBarItem(
+            _NavItem(
               key: _anchors[category],
               label: category.displayName,
+              icon: _categoryIcon(category),
+              showChevron: true,
               active: _openCategory == category,
               onTap: () => _toggleMenu(category),
             ),
-          const Spacer(),
-          // 当前页面名（仅选中工具时显示）
-          if (activeTool != null)
-            Padding(
-              padding: const EdgeInsets.only(right: AppflowySpacing.xl),
-              child: Text(
-                activeTool.name,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+          if (nav.openIds.isNotEmpty) ...[
+            const SizedBox(width: MochiCatSpacing.sm),
+            Expanded(
+              child: _OpenToolTabs(
+                openIds: nav.openIds,
+                activeId: nav.activeId,
+                onActivate: (id) =>
+                    ref.read(pageNavProvider.notifier).activate(id),
+                onClose: (id) => ref.read(pageNavProvider.notifier).close(id),
               ),
             ),
+          ] else
+            const Spacer(),
           // 主题循环切换按钮（跟随系统 → 浅色 → 深色）
           const _ThemeToggleButton(),
+          const SizedBox(width: MochiCatSpacing.sm),
         ],
+      ),
+    );
+  }
+}
+
+/// 内嵌在顶部导航栏的页面标签，避免额外占用一行高度。
+class _OpenToolTabs extends ConsumerWidget {
+  const _OpenToolTabs({
+    required this.openIds,
+    required this.activeId,
+    required this.onActivate,
+    required this.onClose,
+  });
+
+  final List<String> openIds;
+  final String? activeId;
+  final ValueChanged<String> onActivate;
+  final ValueChanged<String> onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final registry = ref.watch(toolboxRegistryProvider);
+    final tools = registry.availableTools();
+    String nameOf(String id) {
+      for (final tool in tools) {
+        if (tool.id == id) return tool.name;
+      }
+      return id;
+    }
+
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: MochiCatSpacing.sm),
+      itemCount: openIds.length,
+      separatorBuilder: (_, _) => const SizedBox(width: MochiCatSpacing.xs),
+      itemBuilder: (_, index) {
+        final id = openIds[index];
+        return _InlineToolTab(
+          label: nameOf(id),
+          active: activeId == id,
+          onTap: () => onActivate(id),
+          onClose: () => onClose(id),
+        );
+      },
+    );
+  }
+}
+
+IconData _categoryIcon(ToolCategory category) => switch (category) {
+      ToolCategory.work => AppIcons.work,
+      ToolCategory.data => AppIcons.data,
+      ToolCategory.database => AppIcons.database,
+      ToolCategory.text => AppIcons.text,
+      ToolCategory.encode => AppIcons.encode,
+      ToolCategory.system => AppIcons.system,
+      ToolCategory.other => AppIcons.other,
+    };
+
+class _InlineToolTab extends StatefulWidget {
+  const _InlineToolTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    required this.onClose,
+  });
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+  @override
+  State<_InlineToolTab> createState() => _InlineToolTabState();
+}
+
+class _InlineToolTabState extends State<_InlineToolTab> {
+  bool _hovered = false;
+  @override
+  Widget build(BuildContext context) {
+    final p = MochiCatPalette.of(context);
+    final background =
+        widget.active
+            ? p.primarySoft
+            : (_hovered ? p.background : Colors.transparent);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(MochiCatRadius.sm),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(MochiCatRadius.sm),
+          child: Container(
+            height: 30,
+            padding: const EdgeInsets.only(left: MochiCatSpacing.md),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(
+                Icons.circle,
+                size: 6,
+                color: widget.active
+                    ? p.primary
+                    : p.textSecondary.withValues(alpha: .6),
+              ),
+              const SizedBox(width: MochiCatSpacing.sm),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: Text(
+                  widget.label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: widget.active
+                        ? p.primary
+                        : p.textSecondary,
+                    fontWeight:
+                        widget.active ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: widget.onClose,
+                borderRadius: BorderRadius.circular(MochiCatRadius.xs),
+                child: Padding(
+                  padding: const EdgeInsets.all(MochiCatSpacing.xs + 2),
+                  child: Icon(
+                    AppIcons.close,
+                    size: 13,
+                    color: p.textSecondary.withValues(alpha: .75),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }
@@ -147,17 +275,22 @@ class _ThemeToggleButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider);
     final (icon, tooltip) = switch (themeMode) {
-      ThemeMode.system => (Icons.brightness_auto, '主题：跟随系统'),
-      ThemeMode.light => (Icons.light_mode, '主题：浅色'),
-      ThemeMode.dark => (Icons.dark_mode, '主题：深色'),
+      ThemeMode.system => (AppIcons.themeIcon(ThemeMode.system), '主题：跟随系统'),
+      ThemeMode.light => (AppIcons.themeIcon(ThemeMode.light), '主题：浅色'),
+      ThemeMode.dark => (AppIcons.themeIcon(ThemeMode.dark), '主题：深色'),
     };
-    final scheme = Theme.of(context).colorScheme;
+    final p = MochiCatPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(right: AppflowySpacing.s),
+      padding: const EdgeInsets.only(left: MochiCatSpacing.xs),
       child: IconButton(
-        icon: Icon(icon),
+        constraints: const BoxConstraints.tightFor(
+          width: MochiCatSize.iconButton,
+          height: MochiCatSize.iconButton,
+        ),
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, size: 18),
         tooltip: tooltip,
-        color: scheme.onSurfaceVariant,
+        color: p.textSecondary,
         onPressed: () => ref.read(themeControllerProvider.notifier).cycle(),
       ),
     );
@@ -189,11 +322,9 @@ class _HoverInkWellState extends State<_HoverInkWell> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = Theme.of(context).brightness == Brightness.dark
-        ? AppflowyColors.dark
-        : AppflowyColors.light;
+    final p = MochiCatPalette.of(context);
     final bg = (widget.highlighted || _hovered)
-        ? palette.layer01
+        ? p.primarySoft
         : Colors.transparent;
 
     return MouseRegion(
@@ -212,41 +343,63 @@ class _HoverInkWellState extends State<_HoverInkWell> {
   }
 }
 
-/// 顶部菜单栏项（VSCode 风格）：文字，hover 提亮，active 时主色。
-class _MenuBarItem extends StatelessWidget {
-  const _MenuBarItem({
+/// 顶部菜单栏项：图标+文字，hover 淡紫背景，active 时主色。
+class _NavItem extends StatelessWidget {
+  const _NavItem({
     super.key,
     required this.label,
+    required this.icon,
     required this.active,
     required this.onTap,
+    this.showChevron = false,
   });
 
   final String label;
+  final IconData icon;
   final bool active;
   final VoidCallback onTap;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
+    final p = MochiCatPalette.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: _HoverInkWell(
-        borderRadius: AppflowyRadius.m,
+        borderRadius: MochiCatRadius.sm,
         highlighted: active,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppflowySpacing.m,
-            vertical: AppflowySpacing.s,
+            horizontal: MochiCatSpacing.md,
+            vertical: MochiCatSpacing.sm,
           ),
-          child: Text(
-            label,
-            style: textTheme.bodyMedium?.copyWith(
-              color: active ? scheme.primary : scheme.onSurface,
-              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: active ? p.primary : p.textSecondary,
+              ),
+              const SizedBox(width: MochiCatSpacing.sm),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: active ? p.primary : p.textPrimary,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+              if (showChevron) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  AppIcons.chevronDown,
+                  size: 15,
+                  color: p.textSecondary,
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -254,8 +407,7 @@ class _MenuBarItem extends StatelessWidget {
   }
 }
 
-/// 分类下拉面板（Overlay）：VSCode 菜单风格 —— 圆角面板 + 阴影 + 边框，
-/// 菜单项 hover 高亮。单个下拉只列出所属分类的工具。
+/// 分类下拉面板（Overlay）：圆角面板 + 阴影 + 边框，菜单项 hover 高亮。
 class _CategoryMenu extends StatelessWidget {
   const _CategoryMenu({
     required this.anchorOffset,
@@ -273,7 +425,7 @@ class _CategoryMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final p = MochiCatPalette.of(context);
 
     return Stack(
       children: [
@@ -284,34 +436,45 @@ class _CategoryMenu extends StatelessWidget {
             onTap: onDismiss,
           ),
         ),
-        // 下拉面板（定宽：Positioned 仅 left/top 会给子组件无限宽约束）
+        // 下拉面板
         Positioned(
           left: anchorOffset.dx,
           top: anchorOffset.dy + anchorSize.height + 4,
-          width: 200,
+          width: 210,
           child: Material(
-            color: scheme.surface,
+            color: p.surface,
             elevation: 8,
             shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(AppflowyRadius.m),
+            borderRadius: BorderRadius.circular(MochiCatRadius.md),
             child: Container(
-              constraints: const BoxConstraints(minWidth: 180),
-              padding: const EdgeInsets.symmetric(
-                vertical: AppflowySpacing.s,
-              ),
+              padding: const EdgeInsets.symmetric(vertical: MochiCatSpacing.sm),
               decoration: BoxDecoration(
-                border: Border.all(color: scheme.outlineVariant),
-                borderRadius: BorderRadius.circular(AppflowyRadius.m),
+                border: Border.all(color: p.border),
+                borderRadius: BorderRadius.circular(MochiCatRadius.md),
+                boxShadow: const [MochiCatShadow.hover],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final tool in tools)
-                    _MenuItem(
-                      label: tool.name,
-                      onTap: () => onSelect(tool),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      MochiCatSpacing.lg,
+                      MochiCatSpacing.sm,
+                      MochiCatSpacing.lg,
+                      MochiCatSpacing.xs,
                     ),
+                    child: Text(
+                      '${toolsTitle(tools)}工具',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: p.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  for (final tool in tools)
+                    _MenuItem(tool: tool, onTap: () => onSelect(tool)),
                 ],
               ),
             ),
@@ -322,33 +485,49 @@ class _CategoryMenu extends StatelessWidget {
   }
 }
 
-/// 菜单项：文字，hover 高亮。
-class _MenuItem extends StatelessWidget {
-  const _MenuItem({
-    required this.label,
-    required this.onTap,
-  });
+String toolsTitle(List<Tool> tools) =>
+    tools.isEmpty ? '' : tools.first.category.displayName;
 
-  final String label;
+/// 菜单项：图标 + 文字，hover 高亮。
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({required this.tool, required this.onTap});
+
+  final Tool tool;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
+    final p = MochiCatPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppflowySpacing.s),
+      padding: const EdgeInsets.symmetric(horizontal: MochiCatSpacing.sm),
       child: _HoverInkWell(
-        borderRadius: AppflowyRadius.s,
+        borderRadius: MochiCatRadius.sm,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppflowySpacing.m,
-            vertical: AppflowySpacing.s,
+            horizontal: MochiCatSpacing.lg,
+            vertical: MochiCatSpacing.sm + 2,
           ),
-          child: Text(label, style: textTheme.bodyMedium),
+          child: Row(
+            children: [
+              Icon(_toolIcon(tool.id), size: 17, color: p.primary),
+              const SizedBox(width: MochiCatSpacing.md),
+              Expanded(
+                child: Text(
+                  tool.name,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+IconData _toolIcon(String id) => switch (id) {
+      'repository' => AppIcons.repository,
+      'remote' => AppIcons.remote,
+      _ => AppIcons.fallback,
+    };

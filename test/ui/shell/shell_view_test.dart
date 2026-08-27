@@ -12,8 +12,8 @@ import 'package:toolbox/registry/tool_category.dart';
 import 'package:toolbox/registry/tool_registry.dart';
 import 'package:toolbox/registry/toolbox_registry.dart';
 import 'package:toolbox/ui/shell/shell_view.dart';
-import 'package:toolbox/ui/theme/appflowy_theme.dart';
 import 'package:toolbox/ui/theme/forui_theme.dart';
+import 'package:toolbox/ui/theme/mochi_cat_theme.dart';
 import 'package:toolbox/ui/theme/theme_controller.dart';
 
 class _TestTool extends Tool {
@@ -110,7 +110,7 @@ void main() {
               .overrideWithValue(SettingsStore(dir: tempDir.path)),
         ],
         child: MaterialApp(
-          theme: AppflowyTheme.light(),
+          theme: MochiCatTheme.light(),
           // FTheme 需要提供样式（与 main.dart 的生产包裹一致）。
           home: FTheme(
             data: buildForuiTheme(Brightness.light),
@@ -119,7 +119,7 @@ void main() {
         ),
       );
 
-  testWidgets('顶部导航显示首页与分类菜单，默认渲染首页占位', (tester) async {
+  testWidgets('顶部导航显示首页与分类菜单，默认渲染首页', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
     // 顶部「首页」常驻，每个有工具的分类一个菜单项
@@ -127,9 +127,12 @@ void main() {
     expect(find.text('工作'), findsOneWidget);
     expect(find.text('数据库管理'), findsOneWidget);
     expect(find.text('其他工具'), findsOneWidget);
-    // 默认显示首页占位，未打开任何页面（无标签条）
-    expect(find.text('内容待定').hitTestable(), findsOneWidget);
-    expect(find.byIcon(Icons.close), findsNothing);
+    // 默认显示首页：欢迎语 + 工具快捷入口（品牌区已移除）
+    expect(find.text('ToolBox'), findsNothing);
+    expect(find.text('喵，今天想先做点什么？'), findsOneWidget);
+    expect(find.text('工具一'), findsOneWidget);
+    // 未打开任何页面（无标签条关闭按钮）
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -138,7 +141,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
-          theme: AppflowyTheme.light(),
+          theme: MochiCatTheme.light(),
           home: FTheme(
             data: buildForuiTheme(Brightness.light),
             child: const ShellView(),
@@ -154,21 +157,23 @@ void main() {
   testWidgets('打开工具出现标签条，回首页后页面保活可切回', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
-    // 打开「数据库管理」→「工具一」
+    // 打开「数据库管理」→「工具一」（菜单项在 Overlay 中，位于树末尾）
     await tester.tap(find.text('数据库管理'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('工具一'));
+    await tester.tap(find.text('工具一').last);
     await tester.pumpAndSettle();
-    // 内容区显示工具一，标签条出现（工具一 + 关闭按钮）
+    // 内容区显示工具一，标签条出现（关闭按钮）
     expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
-    expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     // 点「首页」：首页可见，但页面保活（标签条仍在，可切回）
     await tester.tap(find.text('首页'));
     await tester.pumpAndSettle();
-    expect(find.text('内容待定').hitTestable(), findsOneWidget);
-    expect(find.byIcon(Icons.close), findsOneWidget);
-    // 点标签切回工具一
-    await tester.tap(find.text('工具一'));
+    expect(find.text('喵，今天想先做点什么？'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    // 点标签切回工具一（标签条文本 13px；首页卡片 15px）
+    await tester.tap(
+      find.text('工具一').hitTestable().first,
+    );
     await tester.pumpAndSettle();
     expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
@@ -180,7 +185,7 @@ void main() {
     // 打开「工作」→「计数器」，点两次「加一」
     await tester.tap(find.text('工作'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('计数器'));
+    await tester.tap(find.text('计数器').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('加一'));
     await tester.pumpAndSettle();
@@ -190,10 +195,10 @@ void main() {
     // 打开「工具一」：当前页切走
     await tester.tap(find.text('数据库管理'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('工具一'));
+    await tester.tap(find.text('工具一').last);
     await tester.pumpAndSettle();
     // 切回「计数器」标签：State 保活，计数仍为 2
-    await tester.tap(find.text('计数器'));
+    await tester.tap(find.text('计数器').hitTestable());
     await tester.pumpAndSettle();
     expect(find.text('计数:2'), findsOneWidget);
     expect(find.text('计数:0'), findsNothing);
@@ -206,23 +211,30 @@ void main() {
     // 打开两个页面：工具一、工具二（当前为工具二）
     await tester.tap(find.text('数据库管理'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('工具一'));
+    await tester.tap(find.text('工具一').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('其他工具'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('工具二'));
+    await tester.tap(find.text('工具二').last);
     await tester.pumpAndSettle();
     // 关闭当前页「工具二」（最后一个标签的 ×）：回退到「工具一」
-    await tester.tap(find.byIcon(Icons.close).last);
+    // 标签条空间有限，先滚动确保可见再点击。
+    final closeSecond = find.byIcon(Icons.close_rounded).last;
+    await tester.ensureVisible(closeSecond);
     await tester.pumpAndSettle();
-    expect(find.text('内容区:工具二'), findsNothing);
+    await tester.tap(closeSecond);
+    await tester.pumpAndSettle();
+    expect(find.text('内容区:工具二').hitTestable(), findsNothing);
     expect(find.text('内容区:工具一').hitTestable(), findsOneWidget);
     // 关闭最后一页「工具一」：回首页，无标签条
-    await tester.tap(find.byIcon(Icons.close).first);
+    final closeFirst = find.byIcon(Icons.close_rounded).first;
+    await tester.ensureVisible(closeFirst);
     await tester.pumpAndSettle();
-    expect(find.text('内容区:工具一'), findsNothing);
-    expect(find.byIcon(Icons.close), findsNothing);
-    expect(find.text('内容待定').hitTestable(), findsOneWidget);
+    await tester.tap(closeFirst);
+    await tester.pumpAndSettle();
+    expect(find.text('内容区:工具一').hitTestable(), findsNothing);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+    expect(find.text('喵，今天想先做点什么？'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -230,19 +242,19 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.pumpWidget(buildApp());
     // 初始为跟随系统
-    expect(find.byIcon(Icons.brightness_auto), findsOneWidget);
+    expect(find.byIcon(Icons.brightness_auto_rounded), findsOneWidget);
     // 系统 → 浅色
-    await tester.tap(find.byIcon(Icons.brightness_auto));
+    await tester.tap(find.byIcon(Icons.brightness_auto_rounded));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.light_mode), findsOneWidget);
+    expect(find.byIcon(Icons.light_mode_rounded), findsOneWidget);
     // 浅色 → 深色
-    await tester.tap(find.byIcon(Icons.light_mode));
+    await tester.tap(find.byIcon(Icons.light_mode_rounded));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.dark_mode), findsOneWidget);
+    expect(find.byIcon(Icons.dark_mode_rounded), findsOneWidget);
     // 深色 → 系统
-    await tester.tap(find.byIcon(Icons.dark_mode));
+    await tester.tap(find.byIcon(Icons.dark_mode_rounded));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.brightness_auto), findsOneWidget);
+    expect(find.byIcon(Icons.brightness_auto_rounded), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 }

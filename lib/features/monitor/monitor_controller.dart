@@ -112,6 +112,17 @@ class MonitorController extends ChangeNotifier {
     _update(MonitorState.empty);
   }
 
+  /// 静默停止：清理定时器与采集器，**不触发通知**。
+  ///
+  /// 供监听者自身 dispose 期间调用（此时 notifyListeners 会对正在销毁的
+  /// 元素触发 "widget tree was locked" 断言）。
+  void stopSilently() {
+    _timer?.cancel();
+    _timer = null;
+    _collector = null;
+    _state = MonitorState.empty;
+  }
+
   Future<void> _collect() async {
     if (_collecting || _collector == null) return;
     _collecting = true;

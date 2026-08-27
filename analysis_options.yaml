@@ -9,6 +9,11 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# vendor 的 dartssh2 是第三方上游代码，不适用本项目 lint 规则。
+analyzer:
+  exclude:
+    - lib/third_party/dartssh2/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
