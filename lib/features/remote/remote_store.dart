@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:toolbox/common/app_data.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
 
-/// SSH 连接信息持久化：JSON 文件，存放于安装目录 `data/` 下。
+/// SSH 连接信息持久化：JSON 文件，存放于 exe 同级 `user/` 下。
 class RemoteStore {
   RemoteStore({String? dir}) : _dir = dir ?? AppDataDir.path;
 

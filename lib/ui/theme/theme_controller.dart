@@ -7,7 +7,7 @@ final settingsStoreProvider = Provider<SettingsStore>((ref) => SettingsStore());
 final themeControllerProvider =
     NotifierProvider<ThemeController, ThemeMode>(ThemeController.new);
 
-/// 主题模式控制器：启动读取持久化配置，变更立即保存到 `data/settings.json`。
+/// 主题模式控制器：启动读取持久化配置，变更立即保存到 `user/settings.json`。
 class ThemeController extends Notifier<ThemeMode> {
   static const _themeModeKey = 'themeMode';
 

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:toolbox/common/app_data.dart';
 
-/// 应用设置持久化：JSON 文件（`settings.json`），存放于安装目录 `data/` 下。
+/// 应用设置持久化：JSON 文件（`settings.json`），存放于 exe 同级 `user/` 下。
 class SettingsStore {
   SettingsStore({String? dir}) : _dir = dir ?? AppDataDir.path;
 
