@@ -71,10 +71,8 @@ void main() {
     await tester.pumpWidget(buildApp({'c1': makeHandle('c1', '测试服务器')}));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // 终端/文件面板标题、监控标题齐全
     expect(find.text('终端'), findsOneWidget);
     expect(find.text('文件'), findsOneWidget);
-    // 终端/文件各自有隐藏按钮（tooltip）
     expect(find.byTooltip('隐藏终端'), findsOneWidget);
     expect(find.byTooltip('隐藏文件'), findsOneWidget);
 
@@ -82,7 +80,7 @@ void main() {
         reason: errors.map((e) => e.exception.toString()).join('\n'));
   });
 
-  testWidgets('隐藏终端后出现恢复条，可恢复', (tester) async {
+  testWidgets('隐藏终端后彻底消失，监控栏出现恢复按钮', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -93,17 +91,19 @@ void main() {
     // 隐藏终端
     await tester.tap(find.byTooltip('隐藏终端'));
     await tester.pump(const Duration(milliseconds: 150));
-    // 终端隐藏后无"隐藏终端"，出现"显示终端"恢复条
+    // 终端彻底隐藏：无残留条、无"显示终端"独立竖条，文件面板仍在
     expect(find.byTooltip('隐藏终端'), findsNothing);
-    expect(find.text('显示终端'), findsOneWidget);
+    expect(find.text('显示终端'), findsOneWidget); // 监控标题栏的恢复按钮
+    expect(find.byTooltip('隐藏文件'), findsOneWidget);
 
-    // 恢复终端
+    // 点击监控栏"显示终端"恢复
     await tester.tap(find.text('显示终端'));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byTooltip('隐藏终端'), findsOneWidget);
+    expect(find.text('显示终端'), findsNothing);
   });
 
-  testWidgets('隐藏文件后出现恢复条，可恢复', (tester) async {
+  testWidgets('隐藏文件后彻底消失，监控栏出现恢复按钮', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -114,10 +114,12 @@ void main() {
     await tester.tap(find.byTooltip('隐藏文件'));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byTooltip('隐藏文件'), findsNothing);
-    expect(find.text('显示文件'), findsOneWidget);
+    expect(find.text('显示文件'), findsOneWidget); // 监控栏恢复按钮
+    expect(find.byTooltip('隐藏终端'), findsOneWidget);
 
     await tester.tap(find.text('显示文件'));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byTooltip('隐藏文件'), findsOneWidget);
+    expect(find.text('显示文件'), findsNothing);
   });
 }

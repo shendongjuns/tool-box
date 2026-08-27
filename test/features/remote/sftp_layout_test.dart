@@ -48,4 +48,51 @@ void main() {
     expect(errors, isEmpty,
         reason: errors.map((e) => e.exception.toString()).join('\n'));
   });
+
+  testWidgets('默认文件面板宽度(440px)下工具栏按钮可见', (tester) async {
+    final conn = SshConnection(
+      id: 'c1',
+      name: 't',
+      host: 'h',
+      port: 22,
+      username: 'u',
+      password: '',
+    );
+    final handle = SshSessionHandle(connection: conn, terminal: Terminal());
+
+    final errors = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = (d) {
+      errors.add(d);
+      old?.call(d);
+    };
+    addTearDown(() => FlutterError.onError = old);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: MochiCatTheme.light(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 440,
+                height: 300,
+                child: SftpView(handle: handle),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 排序(显示默认选中"名称")/新建目录/上传/传输记录按钮都应在工具栏中
+    expect(find.text('名称'), findsOneWidget);
+    expect(find.text('新建目录'), findsOneWidget);
+    expect(find.text('上传'), findsOneWidget);
+    expect(find.byTooltip('传输记录'), findsOneWidget);
+
+    expect(errors, isEmpty,
+        reason: errors.map((e) => e.exception.toString()).join('\n'));
+  });
 }

@@ -30,6 +30,7 @@ class _SftpViewState extends ConsumerState<SftpView> {
   String _path = '/';
   late final TextEditingController _pathController;
   final FocusNode _pathFocus = FocusNode();
+  final ScrollController _toolbarScroll = ScrollController();
   List<SftpName>? _entries;
   List<_PathSuggestion> _suggestions = const [];
   Timer? _suggestDebounce;
@@ -57,6 +58,7 @@ class _SftpViewState extends ConsumerState<SftpView> {
     _suggestDebounce?.cancel();
     _pathController.dispose();
     _pathFocus.dispose();
+    _toolbarScroll.dispose();
     super.dispose();
   }
 
@@ -698,96 +700,109 @@ class _SftpViewState extends ConsumerState<SftpView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 路径栏（可编辑直达）+ 操作按钮。
-        // 文件面板只有约一半窗口宽度，控件较多时容易溢出；
-        // 整个工具栏横向可滚动，窄宽度下不溢出（hover 命中安全）。
+        // 文件面板只有约一半窗口宽度；工具栏横向可滚动并带滚动条，
+        // 窄宽度下不溢出，用户也能看到可滚动。
         Padding(
           padding: const EdgeInsets.all(MochiCatSpacing.md),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(AppIcons.goUp, size: 18),
-                  tooltip: '上一级',
-                  onPressed: _isRoot ? null : _goUp,
-                ),
-                SizedBox(
-                  width: 260,
-                  child: TextField(
-                    controller: _pathController,
-                    focusNode: _pathFocus,
-                    style: textTheme.bodySmall,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: '远程路径，如 /home/user，回车前往',
-                      border: OutlineInputBorder(),
+          child: Scrollbar(
+            controller: _toolbarScroll,
+            thumbVisibility: true,
+            scrollbarOrientation: ScrollbarOrientation.bottom,
+            child: SingleChildScrollView(
+              controller: _toolbarScroll,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ToolIcon(
+                    icon: AppIcons.goUp,
+                    tooltip: '上一级',
+                    onPressed: _isRoot ? null : _goUp,
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      controller: _pathController,
+                      focusNode: _pathFocus,
+                      style: textTheme.bodySmall,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: '远程路径，回车前往',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: _onPathChanged,
+                      onSubmitted: (_) {
+                        setState(() => _suggestions = const []);
+                        _goTo(_pathController.text);
+                      },
                     ),
-                    onChanged: _onPathChanged,
-                    onSubmitted: (_) {
+                  ),
+                  _ToolIcon(
+                    icon: AppIcons.goForward,
+                    tooltip: '前往',
+                    onPressed: () {
                       setState(() => _suggestions = const []);
                       _goTo(_pathController.text);
                     },
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(AppIcons.goForward, size: 18),
-                  tooltip: '前往',
-                  onPressed: () {
-                    setState(() => _suggestions = const []);
-                    _goTo(_pathController.text);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(AppIcons.refresh, size: 18),
-                  tooltip: '刷新',
-                  onPressed: _refresh,
-                ),
-                // 排序：字段下拉 + 升降序切换。
-                SizedBox(
-                  width: 88,
-                  child: MochiSelectField<String>(
-                    value: _sortField,
-                    items: const [
-                      ('name', '名称'),
-                      ('date', '日期'),
-                      ('size', '大小'),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) {
-                        setState(() => _sortField = v);
-                        _refresh();
-                      }
+                  _ToolIcon(
+                    icon: AppIcons.refresh,
+                    tooltip: '刷新',
+                    onPressed: _refresh,
+                  ),
+                  // 排序：字段下拉 + 升降序切换。
+                  SizedBox(
+                    width: 80,
+                    child: MochiSelectField<String>(
+                      value: _sortField,
+                      items: const [
+                        ('name', '名称'),
+                        ('date', '日期'),
+                        ('size', '大小'),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _sortField = v);
+                          _refresh();
+                        }
+                      },
+                    ),
+                  ),
+                  _ToolIcon(
+                    icon: _sortAsc ? AppIcons.goUp : AppIcons.sortDesc,
+                    tooltip: _sortAsc ? '升序' : '降序',
+                    onPressed: () {
+                      setState(() => _sortAsc = !_sortAsc);
+                      _refresh();
                     },
                   ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    _sortAsc ? AppIcons.goUp : AppIcons.sortDesc,
-                    size: 18,
+                  TextButton.icon(
+                    icon: const Icon(AppIcons.newFolder, size: 16),
+                    label: const Text('新建目录'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    onPressed: _mkdir,
                   ),
-                  tooltip: _sortAsc ? '升序' : '降序',
-                  onPressed: () {
-                    setState(() => _sortAsc = !_sortAsc);
-                    _refresh();
-                  },
-                ),
-                TextButton.icon(
-                  icon: const Icon(AppIcons.newFolder, size: 16),
-                  label: const Text('新建目录'),
-                  onPressed: _mkdir,
-                ),
-                TextButton.icon(
-                  icon: const Icon(AppIcons.sftpUpload, size: 16),
-                  label: const Text('上传'),
-                  onPressed: _upload,
-                ),
-                // 传输记录按钮：查看当前/历史上传下载进度。
-                IconButton(
-                  icon: const Icon(AppIcons.transferHistory, size: 18),
-                  tooltip: '传输记录',
-                  onPressed: _showTransferHistory,
-                ),
-              ],
+                  TextButton.icon(
+                    icon: const Icon(AppIcons.sftpUpload, size: 16),
+                    label: const Text('上传'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    onPressed: _upload,
+                  ),
+                  // 传输记录按钮：查看当前/历史上传下载进度。
+                  _ToolIcon(
+                    icon: AppIcons.transferHistory,
+                    tooltip: '传输记录',
+                    onPressed: _showTransferHistory,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -965,44 +980,69 @@ class _FileMetaRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+    final labelStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
           color: scheme.onSurfaceVariant,
-          fontFeatures: const [FontFeature.tabularFigures()],
         );
-    // 三列固定宽度：大小（右对齐）、权限（等宽）、日期。
-    // 固定列宽保证字体变化时各列仍对齐；日期列占剩余空间，窄面板下截断保底。
-    return Row(
+    final valueStyle = labelStyle?.copyWith(
+      color: scheme.onSurface,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    // 带标签三列：大小：xxx  权限：xxx  日期：xxx
+    // 用 Wrap 保证窄面板下自动换行不截断，各列始终对齐。
+    return Wrap(
+      spacing: 12,
+      runSpacing: 2,
       children: [
-        SizedBox(
-          width: 56,
-          child: Text(
-            isDir ? '—' : _fmtSize(size),
-            style: textStyle,
-            textAlign: TextAlign.right,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: '大小：', style: labelStyle),
+            TextSpan(
+              text: isDir ? '—' : _fmtSize(size),
+              style: valueStyle,
+            ),
+          ]),
         ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 92,
-          child: Text(
-            _modeStr(mode),
-            style: textStyle?.copyWith(fontFamily: 'monospace'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: '权限：', style: labelStyle),
+            TextSpan(
+              text: _modeStr(mode),
+              style: valueStyle?.copyWith(fontFamily: 'monospace'),
+            ),
+          ]),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            _fmtTime(time),
-            style: textStyle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: '日期：', style: labelStyle),
+            TextSpan(text: _fmtTime(time), style: valueStyle),
+          ]),
         ),
       ],
+    );
+  }
+}
+
+/// 工具栏紧凑图标按钮：32px 内边距，节省横向空间。
+class _ToolIcon extends StatelessWidget {
+  const _ToolIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 18),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: BoxConstraints.tight(const Size(32, 32)),
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
     );
   }
 }

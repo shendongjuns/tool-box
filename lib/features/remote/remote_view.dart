@@ -945,7 +945,7 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 上半区：终端与文件并排（中间拖拽条可左右调宽，各自可隐藏）。
+            // 上半区：终端与文件并排（中间拖拽条可左右调宽，各自可彻底隐藏）。
             Expanded(
               child: Row(
                 children: [
@@ -960,9 +960,8 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
                         controller: _controller,
                         onCopy: _copySelection,
                         onPaste: _paste,
-                        visible: _terminalVisible,
                         onToggle: () => setState(() {
-                          _terminalVisible = !_terminalVisible;
+                          _terminalVisible = false;
                         }),
                       ),
                     ),
@@ -978,13 +977,7 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
                         }),
                       ),
                     ],
-                  ] else
-                    _RestoreStrip(
-                      label: '显示终端',
-                      icon: AppIcons.terminal,
-                      onTap: () =>
-                          setState(() => _terminalVisible = true),
-                    ),
+                  ],
                   if (_filesVisible)
                     Expanded(
                       flex: _terminalVisible
@@ -992,17 +985,10 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
                           : 10000,
                       child: _FilePane(
                         handle: handle,
-                        visible: _filesVisible,
                         onToggle: () => setState(() {
-                          _filesVisible = !_filesVisible;
+                          _filesVisible = false;
                         }),
                       ),
-                    )
-                  else
-                    _RestoreStrip(
-                      label: '显示文件',
-                      icon: AppIcons.folder,
-                      onTap: () => setState(() => _filesVisible = true),
                     ),
                 ],
               ),
@@ -1021,6 +1007,11 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
                   handle: handle,
                   visible: true,
                   onToggle: _toggleMonitor,
+                  showTerminal: !_terminalVisible,
+                  showFiles: !_filesVisible,
+                  onShowTerminal: () =>
+                      setState(() => _terminalVisible = true),
+                  onShowFiles: () => setState(() => _filesVisible = true),
                 ),
               ),
             ] else
@@ -1029,6 +1020,11 @@ class _SessionContentState extends ConsumerState<_SessionContent> {
                 handle: handle,
                 visible: false,
                 onToggle: _toggleMonitor,
+                showTerminal: !_terminalVisible,
+                showFiles: !_filesVisible,
+                onShowTerminal: () =>
+                    setState(() => _terminalVisible = true),
+                onShowFiles: () => setState(() => _filesVisible = true),
               ),
           ],
         );
@@ -1045,7 +1041,6 @@ class _TerminalPane extends StatelessWidget {
     required this.controller,
     required this.onCopy,
     required this.onPaste,
-    required this.visible,
     required this.onToggle,
   });
 
@@ -1054,7 +1049,6 @@ class _TerminalPane extends StatelessWidget {
   final TerminalController controller;
   final VoidCallback onCopy;
   final VoidCallback onPaste;
-  final bool visible;
   final VoidCallback onToggle;
 
   @override
@@ -1104,12 +1098,10 @@ class _TerminalPane extends StatelessWidget {
 class _FilePane extends StatelessWidget {
   const _FilePane({
     required this.handle,
-    required this.visible,
     required this.onToggle,
   });
 
   final SshSessionHandle handle;
-  final bool visible;
   final VoidCallback onToggle;
 
   @override
@@ -1263,49 +1255,6 @@ class _ResizeHandleState extends State<_ResizeHandle> {
   }
 }
 
-/// 隐藏面板后的恢复条：点击恢复显示对应面板。
-class _RestoreStrip extends StatelessWidget {
-  const _RestoreStrip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Container(
-      width: 44,
-      margin: const EdgeInsets.symmetric(horizontal: MochiCatSpacing.xs),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(MochiCatRadius.lg),
-        border: Border.all(color: p.border),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(MochiCatRadius.lg),
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: p.primary),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 10),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 监控面板：标题栏（指示灯 + 服务器信息 + 隐藏/显示）+ 可折叠内容。
 class _MonitorPanel extends StatelessWidget {
   const _MonitorPanel({
@@ -1313,12 +1262,22 @@ class _MonitorPanel extends StatelessWidget {
     required this.handle,
     required this.visible,
     required this.onToggle,
+    required this.showTerminal,
+    required this.showFiles,
+    required this.onShowTerminal,
+    required this.onShowFiles,
   });
 
   final MonitorController controller;
   final SshSessionHandle handle;
   final bool visible;
   final VoidCallback onToggle;
+
+  /// 终端/文件面板当前是否处于隐藏状态（隐藏时标题栏显示恢复按钮）。
+  final bool showTerminal;
+  final bool showFiles;
+  final VoidCallback onShowTerminal;
+  final VoidCallback onShowFiles;
 
   @override
   Widget build(BuildContext context) {
@@ -1371,6 +1330,31 @@ class _MonitorPanel extends StatelessWidget {
                       ),
                       onPressed: () => _showServerInfo(context),
                     ),
+                    // 终端/文件被隐藏时的恢复按钮（彻底隐藏，无残留条）。
+                    if (showTerminal) ...[
+                      const SizedBox(width: MochiCatSpacing.sm),
+                      TextButton.icon(
+                        icon: const Icon(AppIcons.terminal, size: 15),
+                        label: const Text('显示终端'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: MochiCatSpacing.sm),
+                        ),
+                        onPressed: onShowTerminal,
+                      ),
+                    ],
+                    if (showFiles) ...[
+                      const SizedBox(width: MochiCatSpacing.sm),
+                      TextButton.icon(
+                        icon: const Icon(AppIcons.folder, size: 15),
+                        label: const Text('显示文件'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: MochiCatSpacing.sm),
+                        ),
+                        onPressed: onShowFiles,
+                      ),
+                    ],
                     const SizedBox(width: MochiCatSpacing.sm),
                     InkWell(
                       onTap: onToggle,
@@ -1536,6 +1520,11 @@ class _TerminalHost extends StatelessWidget {
           handle.terminal,
           focusNode: focusNode,
           autofocus: true,
+          // 走硬件键盘监听路径：CustomKeyboardListener 在 onKeyEvent
+          // 返回 ignored 且带字符时自动 textInput 送达终端。
+          // 普通字符/中文 IME 上屏都能输入；Windows 下 TextInput 通道
+          // attach 不稳定，故不用默认的 CustomTextEdit 通道。
+          hardwareKeyboardOnly: true,
           controller: controller,
           onKeyEvent: _handleKeyEvent,
       onSecondaryTapUp: (details, cell) async {

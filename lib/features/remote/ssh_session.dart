@@ -104,6 +104,11 @@ class SshSessionHandle {
   StreamSubscription<List<int>>? _stderrSub;
   bool _closed = false;
 
+  /// resize 防抖：窗口拖动时合并多次尺寸变化，只发一次 window-change。
+  Timer? _resizeDebounce;
+  int _pendingWidth = 0;
+  int _pendingHeight = 0;
+
   bool get isConnected => status.value == SshSessionStatus.connected;
 
   /// 已建立的 SSH 连接（未连接时返回 null）。
@@ -125,16 +130,14 @@ class SshSessionHandle {
 
     // 终端输入 → SSH
     terminal.onOutput = (data) => _shell?.write(utf8.encode(data));
-    // 终端尺寸变化 → SSH 窗口大小
-    terminal.onResize = (width, height, _, _) =>
-        _shell?.resizeTerminal(width, height);
+    // 终端尺寸变化 → SSH 窗口大小（防抖合并，避免窗口拖动时频繁重绘）。
+    terminal.onResize = _scheduleResize;
 
     final started = await client.shell();
     _shell = started;
 
     terminal.onOutput = (data) => started.write(utf8.encode(data));
-    terminal.onResize = (width, height, _, _) =>
-        started.resizeTerminal(width, height);
+    terminal.onResize = _scheduleResize;
 
     // SSH 输出 → 终端（UTF-8 容错解码，避免多字节被截断）
     _stdoutSub = started.stdout.listen((bytes) {
@@ -166,10 +169,25 @@ class SshSessionHandle {
     return _sftp!;
   }
 
+  /// 终端尺寸变化回调：记录待发尺寸并防抖合并（100ms），
+  /// 窗口拖动时只发一次 window-change，减少远端重绘次数。
+  void _scheduleResize(int width, int height, int pixelWidth, int pixelHeight) {
+    _pendingWidth = width;
+    _pendingHeight = height;
+    _resizeDebounce?.cancel();
+    _resizeDebounce = Timer(const Duration(milliseconds: 100), () {
+      final shell = _shell;
+      if (shell != null && !_closed) {
+        shell.resizeTerminal(_pendingWidth, _pendingHeight);
+      }
+    });
+  }
+
   /// 关闭会话：取消订阅、关闭连接与终端。
   Future<void> dispose() async {
     if (_closed) return;
     _closed = true;
+    _resizeDebounce?.cancel();
     await _stdoutSub?.cancel();
     await _stderrSub?.cancel();
     try {
@@ -200,7 +218,9 @@ class SshSessionsController extends Notifier<Map<String, SshSessionHandle>> {
     if (state.containsKey(connection.id)) return;
     final handle = SshSessionHandle(
       connection: connection,
-      terminal: Terminal(maxLines: 5000),
+      // reflowEnabled: false —— 窗口宽度变化时不重排折行，
+      // 避免 resize 时补空行导致"多出一行"。
+      terminal: Terminal(maxLines: 5000, reflowEnabled: false),
     );
     state = {...state, connection.id: handle};
     try {
