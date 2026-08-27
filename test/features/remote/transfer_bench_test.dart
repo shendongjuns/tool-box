@@ -16,7 +16,7 @@ void main() {
   final keyPath = '${Platform.environment['USERPROFILE']}\\.ssh\\id_rsa';
 
   test(
-    'dartssh2 SFTP vs 系统 scp 上传速度对比',
+    'dartssh2 SFTP 两种上传写法速度对比',
     () async {
     final tempDir = Directory.systemTemp.createTempSync('bench');
     addTearDown(() => tempDir.deleteSync(recursive: true));
@@ -53,8 +53,8 @@ void main() {
       }
     });
 
-    // 方案 B：系统 scp 命令。
-    final speedB = await measure('系统 scp', () async {
+    // 方案 B：直连 dartssh2 上传（与方案 A 对比两种写法的速度差异）。
+    final speedB = await measure('直连 dartssh2', () async {
       final req = TransferRequest(
         host: host,
         port: 22,
@@ -80,12 +80,11 @@ void main() {
         }
       });
       final err = await completer.future.timeout(const Duration(seconds: 60));
-      if (err != null) throw StateError('scp 失败: $err');
+      if (err != null) throw StateError('上传失败: $err');
     });
 
-    debugPrint('速度对比：dartssh2=${speedA.toStringAsFixed(2)} MB/s, scp=${speedB.toStringAsFixed(2)} MB/s');
-    // scp 应显著快于 dartssh2。
-    expect(speedB, greaterThan(speedA));
+    debugPrint('速度对比：方案A=${speedA.toStringAsFixed(2)} MB/s, 方案B=${speedB.toStringAsFixed(2)} MB/s');
+    // 两种 dartssh2 写法速度应接近（不做绝对断言，仅输出对比）。
     },
     // 基准测试较慢（dartssh2 慢速对比），默认跳过，可用 --run-skipped 显式运行。
     skip: '性能基准，需本机 SSH；用 --run-skipped 显式运行',

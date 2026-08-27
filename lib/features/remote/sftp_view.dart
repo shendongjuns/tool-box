@@ -321,7 +321,7 @@ class _SftpViewState extends ConsumerState<SftpView> {
           File('$dirPath${Platform.pathSeparator}${name.filename}');
       // 先查远端文件大小（进度总量）。
       final total = await _remoteSize(name.filename);
-      // 后台 isolate 用 FTP 库传输（原生速度 + 百分比，不卡 UI）。
+      // 后台 isolate 用 dartssh2 SFTP 传输（不卡 UI）。
       final conn = widget.handle.connection;
       final transfer = ref.read(transferTasksProvider.notifier);
       final taskId = transfer.add(
@@ -347,8 +347,6 @@ class _SftpViewState extends ConsumerState<SftpView> {
         final type = list[0] as String;
         if (type == 'cancelPort') {
           transfer.setCancelPort(taskId, list[1] as SendPort);
-        } else if (type == 'debug') {
-          debugPrint('传输诊断: ${list[1]}');
         } else if (type == 'start') {
           transfer.start(taskId);
         } else if (type == 'total') {

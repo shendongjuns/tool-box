@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:toolbox/ui/theme/app_icons.dart';
 import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
@@ -15,81 +13,6 @@ Future<void> disposeAfterDialog(List<TextEditingController> controllers) async {
   await Future<void>.delayed(const Duration(milliseconds: 400));
   for (final controller in controllers) {
     controller.dispose();
-  }
-}
-
-/// 品牌猫标：紫色圆角方块 + 两只猫耳 + 猫脸，用于顶栏品牌区与页面标题。
-class CatMark extends StatelessWidget {
-  const CatMark({super.key, this.size = 29, this.radius});
-
-  final double size;
-  final double? radius;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = MochiCatPalette.of(context).primary;
-    final corner = radius ?? size * 0.34;
-    final ear = size * 0.28;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // 左猫耳
-          Positioned(
-            left: size * 0.13,
-            top: -ear * 0.32,
-            child: Transform.rotate(
-              angle: math.pi / 4,
-              child: Container(
-                width: ear,
-                height: ear,
-                decoration: BoxDecoration(
-                  color: primary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-          // 右猫耳
-          Positioned(
-            right: size * 0.13,
-            top: -ear * 0.32,
-            child: Transform.rotate(
-              angle: math.pi / 4,
-              child: Container(
-                width: ear,
-                height: ear,
-                decoration: BoxDecoration(
-                  color: primary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-          // 主体
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: primary,
-                borderRadius: BorderRadius.circular(corner),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                '•ᴗ•',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: size * 0.42,
-                  height: 1,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -331,49 +254,6 @@ class MochiSelectField<T> extends StatelessWidget {
         else
           field,
       ],
-    );
-  }
-}
-
-/// 常规面板容器：白底（或主题 surface）+ 描边 + 15px 圆角。
-class PanelCard extends StatelessWidget {
-  const PanelCard({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(MochiCatSpacing.lg),
-    this.radius = MochiCatRadius.xl,
-    this.color,
-    this.border,
-    this.onTap,
-  });
-
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-  final Color? color;
-  final Color? border;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    final content = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: color ?? p.surface,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: border ?? p.border),
-      ),
-      child: child,
-    );
-    if (onTap == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(radius),
-        child: content,
-      ),
     );
   }
 }

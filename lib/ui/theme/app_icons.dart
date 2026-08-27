@@ -28,9 +28,7 @@ abstract final class AppIcons {
   static const copy = Icons.copy_outlined;
   static const save = Icons.save_outlined;
   static const refresh = Icons.refresh_rounded;
-  static const more = Icons.more_horiz_rounded;
   static const chevronRight = Icons.chevron_right_rounded;
-  static const settings = Icons.settings_outlined;
 
   // —— 仓库 ——
   static const download = Icons.download_rounded;
@@ -40,7 +38,6 @@ abstract final class AppIcons {
   static const folder = Icons.folder_rounded;
   static const folderOpen = Icons.folder_open_rounded;
   static const computer = Icons.computer_rounded;
-  static const link = Icons.link_rounded;
   static const check = Icons.check_rounded;
   static const lock = Icons.lock_outline_rounded;
 
@@ -52,8 +49,6 @@ abstract final class AppIcons {
   static const transferHistory = Icons.history_rounded;
   static const goUp = Icons.arrow_upward_rounded;
   static const goForward = Icons.arrow_forward_rounded;
-  static const sort = Icons.sort_rounded;
-  static const sortAsc = Icons.arrow_upward_rounded;
   static const sortDesc = Icons.arrow_downward_rounded;
   static const openInNew = Icons.open_in_new_rounded;
   static const fileText = Icons.insert_drive_file_outlined;

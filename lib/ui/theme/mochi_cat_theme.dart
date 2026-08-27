@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'mochi_cat_tokens.dart';
 
-/// 糯米猫主题构建器：基于 `ui-design` 设计规范定制的 Material ThemeData。
+/// 糯米猫主题构建器：基于设计 Token 定制的 Material ThemeData。
 ///
 /// 浅色为已审核基准；深色按相同语义 Token 扩展。
 abstract final class MochiCatTheme {

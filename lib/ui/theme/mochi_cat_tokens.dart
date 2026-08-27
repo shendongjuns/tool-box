@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 
 /// 糯米猫（Mochi Cat）设计 Token。
 ///
-/// 数据来源：`ui-design/tokens/design-tokens.json` 与
-/// `ui-design/flutter/mochi_cat_tokens.dart`。浅色为已审核基准，
-/// 深色按相同语义 Token 扩展。
+/// 浅色为已审核基准，深色按相同语义 Token 扩展。
 abstract final class MochiCatColors {
   // —— 浅色 ——
   static const primary = Color(0xFF7857C8);
@@ -31,8 +29,6 @@ abstract final class MochiCatColors {
   static const memory = Color(0xFF2E7D32);
   static const download = Color(0xFF1E88E5);
   static const upload = Color(0xFFF05033);
-  static const gpu = Color(0xFF9C27B0);
-  static const acceleratorMemory = Color(0xFF00897B);
 
   // —— 深色扩展 ——
   static const darkPrimary = Color(0xFFA889EF);
@@ -62,7 +58,6 @@ abstract final class MochiCatSpacing {
   static const lg = 16.0;
   static const xl = 20.0;
   static const xxl = 28.0;
-  static const page = 22.0;
 }
 
 abstract final class MochiCatRadius {
@@ -86,16 +81,6 @@ abstract final class MochiCatSize {
 }
 
 abstract final class MochiCatShadow {
-  static const window = BoxShadow(
-    color: Color(0x217D4A70),
-    blurRadius: 42,
-    offset: Offset(0, 16),
-  );
-  static const dialog = BoxShadow(
-    color: Color(0x2943315B),
-    blurRadius: 50,
-    offset: Offset(0, 20),
-  );
   static const hover = BoxShadow(
     color: Color(0x386847B7),
     blurRadius: 12,

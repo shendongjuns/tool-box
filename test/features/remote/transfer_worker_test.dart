@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toolbox/features/remote/transfer_worker.dart';
 
-/// 系统 scp 传输集成测试（连本机 OpenSSH，需密钥认证已配置）。
+/// dartssh2 SFTP 传输集成测试（连本机 OpenSSH，需密钥认证已配置）。
 /// 默认跳过，用 --run-skipped 显式运行。
 void main() {
   const host = 'localhost';
@@ -50,7 +50,7 @@ void main() {
     return completer.future.timeout(const Duration(seconds: 60));
   }
 
-  test('scp 上传+下载往返，取消后清理残留', () async {
+  test('SFTP 上传+下载往返，取消后清理残留', () async {
     final tempDir = Directory.systemTemp.createTempSync('scp_test');
     addTearDown(() => tempDir.deleteSync(recursive: true));
     final up = File('${tempDir.path}${Platform.pathSeparator}up.bin');

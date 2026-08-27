@@ -14,7 +14,6 @@ import 'package:toolbox/features/repository/repo_detection.dart';
 import 'package:toolbox/features/repository/repo_models.dart';
 import 'package:toolbox/features/repository/svn_client.dart';
 import 'package:toolbox/ui/theme/app_icons.dart';
-import 'package:toolbox/ui/theme/appflowy_colors.dart';
 import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
 import 'package:toolbox/ui/widgets/mochi_widgets.dart';
 
@@ -56,14 +55,14 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 820;
-          final padding = compact ? AppflowySpacing.xl : 28.0;
+          final padding = compact ? MochiCatSpacing.lg : 28.0;
           return Padding(
             padding: EdgeInsets.fromLTRB(padding, 20, padding, padding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const _RepositoryHeader(),
-                const SizedBox(height: AppflowySpacing.xl),
+                const SizedBox(height: MochiCatSpacing.lg),
                 Expanded(
                   child: Flex(
                     direction: compact ? Axis.vertical : Axis.horizontal,
@@ -1448,15 +1447,15 @@ class _VersionBadge extends StatelessWidget {
 
     return InkWell(
       onTap: onEdit,
-      borderRadius: BorderRadius.circular(AppflowyRadius.s),
+      borderRadius: BorderRadius.circular(MochiCatRadius.xs),
       child: Container(
         padding: const EdgeInsets.symmetric(
-          horizontal: AppflowySpacing.m,
-          vertical: AppflowySpacing.xs,
+          horizontal: MochiCatSpacing.sm,
+          vertical: MochiCatSpacing.xs,
         ),
         decoration: BoxDecoration(
           color: scheme.primary.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(AppflowyRadius.s),
+          borderRadius: BorderRadius.circular(MochiCatRadius.xs),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1465,7 +1464,7 @@ class _VersionBadge extends StatelessWidget {
               version == null ? '未设置版本' : '版本 V$version',
               style: textTheme.bodySmall?.copyWith(color: scheme.primary),
             ),
-            const SizedBox(width: AppflowySpacing.xs),
+            const SizedBox(width: MochiCatSpacing.xs),
             Icon(AppIcons.edit, size: 14, color: scheme.primary),
           ],
         ),

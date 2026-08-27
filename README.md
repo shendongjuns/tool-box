@@ -1,8 +1,8 @@
 # ToolBox
 
-**现代桌面工具箱，AppFlowy 配色界面，基于 Flutter 构建。**
+**现代桌面工具箱，糯米猫（Mochi Cat）主题界面，基于 Flutter 构建。**
 
-ToolBox 是一款 Windows 桌面应用，采用 AppFlowy 配色与 VSCode 式顶部菜单导航。内置可插拔的工具框架，通过顶部「设置」菜单进入各功能页面，便于持续扩展。
+ToolBox 是一款 Windows 桌面应用，采用糯米猫设计主题与 VSCode 式顶部菜单导航。内置可插拔的工具框架，通过顶部「设置」菜单进入各功能页面，便于持续扩展。
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.44.8-02569B.svg)](https://github.com/shendongjuns/tool-box)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://github.com/shendongjuns/tool-box)
@@ -10,7 +10,7 @@ ToolBox 是一款 Windows 桌面应用，采用 AppFlowy 配色与 VSCode 式顶
 
 ## 特性
 
-- **AppFlowy 配色界面** —— 采用 AppFlowy 色板（primitive/semantic token）定制明暗主题，系统标题栏 + 纯色窗口，顶部 VSCode 式菜单导航（hover 提亮、下拉面板），基于 Material 定制主题、微软雅黑字体与 [Forui](https://pub.dev/packages/forui) 组件库构建。
+- **糯米猫主题界面** —— 自研设计 Token（primitive/semantic）定制明暗主题，系统标题栏 + 纯色窗口，顶部 VSCode 式菜单导航（hover 提亮、下拉面板），基于 Material 定制主题与微软雅黑字体构建。
 - **首页 + 分区菜单导航** —— 顶部「首页」常驻，每个有工具的分类一个菜单项，点分类名弹出下拉菜单进入各功能页面。
 - **多页面会话保活** —— 打开过的工具页面以标签形式保留在内容区顶部，切换工具不丢状态，点标签 × 关闭才真正释放页面。
 - **可扩展工具框架** —— 每个工具实现统一的 `Tool` 接口并在集中注册表中登记，新增工具只需几行代码即可接入，自动出现在对应分类下拉菜单中。
@@ -52,8 +52,7 @@ iscc /DAppVersion=1.2.0 .github/installer/toolbox.iss
 | 组件 | 选型 |
 | ---- | ---- |
 | UI 框架 | Flutter 3.44.8（Windows 桌面） |
-| UI 组件库 | [Forui](https://pub.dev/packages/forui) 0.25.0（shadcn 风格组件库） |
-| 主题 / 组件 | AppFlowy 配色（Material 定制主题 + 微软雅黑字体） |
+| 主题 | 糯米猫（Mochi Cat）自研设计 Token（Material 定制主题 + 微软雅黑字体） |
 | 窗口管理 | [window_manager](https://pub.dev/packages/window_manager) |
 | 状态管理 | [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) 3.4.2（Riverpod） |
 | 打包工具 | Inno Setup 6 + GitHub Actions |
@@ -73,7 +72,7 @@ lib/
 │   └── toolbox_registry.dart  # 集中注册表 —— 在此登记工具
 └── ui/                     # 框架壳
     ├── shell/              # 顶部菜单导航（首页/设置下拉）+ 内容区 + 主题切换
-    ├── theme/              # AppFlowy 配色明暗主题（色板 + Material + Forui）
+    ├── theme/              # 糯米猫设计 Token + Material 主题（mochi_cat）
     └── window/             # 窗口初始化（系统标题栏、纯色窗口）
 ```
 

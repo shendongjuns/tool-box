@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forui/forui.dart';
 import 'package:toolbox/common/settings_store.dart';
 import 'package:toolbox/registry/platform_type.dart';
 import 'package:toolbox/registry/tool.dart';
@@ -12,7 +11,6 @@ import 'package:toolbox/registry/tool_category.dart';
 import 'package:toolbox/registry/tool_registry.dart';
 import 'package:toolbox/registry/toolbox_registry.dart';
 import 'package:toolbox/ui/shell/shell_view.dart';
-import 'package:toolbox/ui/theme/forui_theme.dart';
 import 'package:toolbox/ui/theme/mochi_cat_theme.dart';
 import 'package:toolbox/ui/theme/theme_controller.dart';
 
@@ -111,11 +109,7 @@ void main() {
         ],
         child: MaterialApp(
           theme: MochiCatTheme.light(),
-          // FTheme 需要提供样式（与 main.dart 的生产包裹一致）。
-          home: FTheme(
-            data: buildForuiTheme(Brightness.light),
-            child: const ShellView(),
-          ),
+          home: const ShellView(),
         ),
       );
 
@@ -142,10 +136,7 @@ void main() {
       ProviderScope(
         child: MaterialApp(
           theme: MochiCatTheme.light(),
-          home: FTheme(
-            data: buildForuiTheme(Brightness.light),
-            child: const ShellView(),
-          ),
+          home: const ShellView(),
         ),
       ),
     );
