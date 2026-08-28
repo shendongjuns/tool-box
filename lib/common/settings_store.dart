@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:toolbox/common/app_data.dart';
+import 'package:toolbox/common/json_file_recovery.dart';
 
 /// 应用设置持久化：JSON 文件（`settings.json`），存放于 exe 同级 `user/` 下。
 class SettingsStore {
@@ -21,7 +22,9 @@ class SettingsStore {
       final decoded = jsonDecode(content);
       if (decoded is! Map<String, dynamic>) return {};
       return decoded;
-    } on Exception {
+    } catch (e) {
+      // 损坏文件（含解析类型错误）改名留底，回退空表。
+      backupCorruptJsonFile(_filePath, e);
       return {};
     }
   }

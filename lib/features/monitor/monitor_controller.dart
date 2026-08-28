@@ -60,7 +60,6 @@ class MonitorController extends ChangeNotifier {
 
   Timer? _timer;
   MonitorCollector? _collector;
-  SSHClient? _client;
   MonitorState _state = MonitorState.empty;
 
   /// 采集互斥锁：上次采集未完成时跳过本次，避免并发采集
@@ -77,7 +76,6 @@ class MonitorController extends ChangeNotifier {
   /// 用已建立的 SSH 客户端开始监控（复用会话连接，不重复建连）。
   void startWithClient(SSHClient client) {
     if (_state.running) return;
-    _client = client;
     _collector = MonitorCollector(client);
     _update(_state.copyWith(running: true, error: null));
     _collect();
@@ -97,18 +95,10 @@ class MonitorController extends ChangeNotifier {
   }
 
   /// 停止监控：只停止定时采集，**不断开会话连接**（连接由会话持有）。
-  ///
-  /// [disposeConnection] 为 true 时（页面销毁/会话关闭）才关闭连接。
-  void stop({bool disposeConnection = false}) {
+  void stop() {
     _timer?.cancel();
     _timer = null;
     _collector = null;
-    if (disposeConnection) {
-      try {
-        _client?.close();
-      } catch (_) {}
-      _client = null;
-    }
     _update(MonitorState.empty);
   }
 

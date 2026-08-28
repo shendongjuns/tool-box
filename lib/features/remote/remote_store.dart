@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:toolbox/common/app_data.dart';
+import 'package:toolbox/common/json_file_recovery.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
 
 /// SSH 连接信息持久化：JSON 文件，存放于 exe 同级 `user/` 下。
@@ -23,8 +24,10 @@ class RemoteStore {
       return decoded
           .map((e) => SshConnection.fromJson(e as Map<String, dynamic>))
           .toList();
-    } on Exception {
-      // 文件缺失/损坏时回退为空列表，避免阻断启动。
+    } catch (e) {
+      // 文件缺失/损坏时回退为空列表，避免阻断启动；损坏文件（含解析
+      // 类型错误，属 Error 不属 Exception）改名留底。
+      backupCorruptJsonFile(_filePath, e);
       return [];
     }
   }

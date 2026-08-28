@@ -106,28 +106,7 @@ Future<bool> isSvnWorkingCopy(SSHClient client, String dir) async {
   return result.output.trim() == 'yes';
 }
 
-/// 建立远程拉取的 SSH 连接。
-///
-/// 使用已保存连接；[onCredentialRequest] 在 SSH 认证失败时回调（返回临时
-/// 用户名/密码），用于重试。
-Future<SSHClient> connectForDeploy(
-  SshConnection connection, {
-  Future<(String, String)?> Function()? onCredentialRequest,
-}) async {
-  try {
-    return await defaultSshConnector(connection);
-  } on Exception {
-    // 认证失败且提供了回调时，弹框重新输入用户名/密码重试一次。
-    if (onCredentialRequest != null) {
-      final cred = await onCredentialRequest();
-      if (cred != null) {
-        final (username, password) = cred;
-        return defaultSshConnector(connection.copyWith(
-          username: username,
-          password: password,
-        ));
-      }
-    }
-    rethrow;
-  }
+/// 建立远程拉取的 SSH 连接（使用已保存连接）。
+Future<SSHClient> connectForDeploy(SshConnection connection) {
+  return defaultSshConnector(connection);
 }

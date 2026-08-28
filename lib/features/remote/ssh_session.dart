@@ -70,7 +70,15 @@ Future<SSHClient> _buildClient(
     disableHostkeyVerification: true,
     authTimeout: const Duration(seconds: 15),
   );
-  await client.authenticated;
+  try {
+    await client.authenticated;
+  } catch (_) {
+    // 认证失败/超时：关闭 client（连带底层 socket），避免连接泄漏。
+    try {
+      client.close();
+    } catch (_) {}
+    rethrow;
+  }
   return client;
 }
 
@@ -128,16 +136,16 @@ class SshSessionHandle {
     final client = await connector(connection);
     _client = client;
 
-    // 终端输入 → SSH
-    terminal.onOutput = (data) => _shell?.write(utf8.encode(data));
+    // 终端输入 → SSH（统一走 _shell，shell 建立前的输入自然丢弃）。
+    terminal.onOutput = (data) {
+      final shell = _shell;
+      if (shell != null) shell.write(utf8.encode(data));
+    };
     // 终端尺寸变化 → SSH 窗口大小（防抖合并，避免窗口拖动时频繁重绘）。
     terminal.onResize = _scheduleResize;
 
     final started = await client.shell();
     _shell = started;
-
-    terminal.onOutput = (data) => started.write(utf8.encode(data));
-    terminal.onResize = _scheduleResize;
 
     // SSH 输出 → 终端（UTF-8 容错解码，避免多字节被截断）
     _stdoutSub = started.stdout.listen((bytes) {
@@ -150,11 +158,12 @@ class SshSessionHandle {
     status.value = SshSessionStatus.connected;
     error.value = null;
 
-    // 远端关闭时更新状态
+    // 远端关闭时更新状态，并在终端里明确提示（否则只见标签变灰不知原因）。
     unawaited(client.done.whenComplete(() {
       if (_closed) return;
       _closed = true;
       status.value = SshSessionStatus.closed;
+      terminal.write('\r\n[连接已断开]\r\n');
     }));
   }
 
@@ -213,9 +222,19 @@ class SshSessionsController extends Notifier<Map<String, SshSessionHandle>> {
   @override
   Map<String, SshSessionHandle> build() => const {};
 
-  /// 打开一个会话（同一连接只开一个实例）。
+  /// 打开一个会话（同一连接只保留一个实例；已断开/出错的会话原地重建，
+  /// 作为重试入口——否则断线后只能关标签再重开）。
   Future<void> open(SshConnection connection) async {
-    if (state.containsKey(connection.id)) return;
+    final existing = state[connection.id];
+    if (existing != null) {
+      final status = existing.status.value;
+      if (status == SshSessionStatus.connecting ||
+          status == SshSessionStatus.connected) {
+        return;
+      }
+      await existing.dispose();
+      state = {...state}..remove(connection.id);
+    }
     final handle = SshSessionHandle(
       connection: connection,
       // reflowEnabled: false —— 窗口宽度变化时不重排折行，

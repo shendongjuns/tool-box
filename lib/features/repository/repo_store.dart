@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:toolbox/common/app_data.dart';
+import 'package:toolbox/common/json_file_recovery.dart';
 import 'package:toolbox/features/repository/repo_models.dart';
 
 /// 仓库数据持久化：JSON 文件，存放于安装目录。
@@ -23,8 +24,9 @@ class RepoStore {
       return decoded
           .map((e) => RepoGroup.fromJson(e as Map<String, dynamic>))
           .toList();
-    } on Exception {
-      // 文件缺失/损坏时回退为空列表，避免阻断启动。
+    } catch (e) {
+      // 文件缺失/损坏时回退为空列表，避免阻断启动；损坏文件改名留底。
+      backupCorruptJsonFile(_filePath, e);
       return [];
     }
   }

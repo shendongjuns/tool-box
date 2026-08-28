@@ -33,8 +33,9 @@ class MonitorCollector {
 
   /// 采集服务器基本信息；失败返回 null。
   Future<Map<String, String>?> fetchServerInfo() async {
+    SSHSession? session;
     try {
-      final session = await _client.execute(_infoCommand).timeout(
+      session = await _client.execute(_infoCommand).timeout(
             const Duration(seconds: 10),
           );
       final sb = StringBuffer();
@@ -50,6 +51,8 @@ class MonitorCollector {
       }
       return info;
     } catch (_) {
+      // 超时/失败时关闭 exec channel，避免每秒采集持续泄漏。
+      _closeQuietly(session);
       return null;
     }
   }
@@ -192,8 +195,9 @@ class MonitorCollector {
 
   /// 执行合并命令并读取 stdout（UTF-8 容错）；超时/失败返回 null。
   Future<String?> _readAll() async {
+    SSHSession? session;
     try {
-      final session = await _client.execute(_command).timeout(
+      session = await _client.execute(_command).timeout(
             const Duration(seconds: 15),
           );
       final sb = StringBuffer();
@@ -204,7 +208,16 @@ class MonitorCollector {
       return sb.toString();
     } catch (e) {
       lastError = '采集命令执行失败：$e';
+      // 超时/失败时关闭 exec channel：否则服务器假死时每秒新建一条
+      // 且永不关闭，最终被服务器拒绝会话。
+      _closeQuietly(session);
       return null;
     }
+  }
+
+  void _closeQuietly(SSHSession? session) {
+    try {
+      session?.close();
+    } catch (_) {}
   }
 }

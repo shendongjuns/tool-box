@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:toolbox/common/app_meta.dart';
 import 'package:toolbox/registry/tool.dart';
 import 'package:toolbox/registry/toolbox_registry.dart';
 import 'package:toolbox/ui/shell/navigation_controller.dart';
@@ -188,7 +189,7 @@ class HomePage extends ConsumerWidget {
                           ),
                         ),
                         Text(
-                          'ToolBox 1.4.0',
+                          '$appName $appVersion',
                           style: TextStyle(
                             fontSize: 11,
                             color: p.textSecondary,

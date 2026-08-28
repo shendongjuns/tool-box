@@ -170,7 +170,8 @@ void transferWorkerMain(List<Object?> args) async {
 /// 高并发流水线上传：本地文件分块，最多 [maxInFlight] 块同时在途。
 ///
 /// [writeChunk] 为写入回调（`SftpFile.writeBytes`）；本地 RandomAccessFile
-/// 串行读取，每读一块立即发起并发网络写。
+/// 串行读取，每读一块立即发起并发网络写。在途块满时等待"放行门"
+/// （任一块完成即放行），避免忙等轮询空转 CPU。
 Future<void> uploadWithPipeline(
   File file, {
   required int totalBytes,
@@ -184,6 +185,8 @@ Future<void> uploadWithPipeline(
     var inFlight = 0;
     Object? error;
     final done = Completer<void>();
+    // 在途块满时的放行门：任一在途块结束（成功或失败）即放行。
+    var gate = Completer<void>();
 
     void checkDone() {
       if (offset >= totalBytes && inFlight == 0 && !done.isCompleted) {
@@ -192,10 +195,11 @@ Future<void> uploadWithPipeline(
     }
 
     while (offset < totalBytes && error == null) {
-      while (inFlight >= _kMaxInFlight && error == null && !done.isCompleted) {
-        await Future<void>.delayed(const Duration(milliseconds: 2));
+      if (inFlight >= _kMaxInFlight) {
+        await gate.future;
+        gate = Completer<void>();
+        if (error != null) break;
       }
-      if (error != null) break;
 
       final length = (totalBytes - offset).clamp(0, _kUploadChunkSize);
       final data = Uint8List.fromList(await raf.read(length));
@@ -213,6 +217,7 @@ Future<void> uploadWithPipeline(
           error = e;
           if (!done.isCompleted) done.completeError(e);
         }
+        if (!gate.isCompleted) gate.complete();
         checkDone();
       }());
     }

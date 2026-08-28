@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toolbox/common/app_data.dart';
+import 'package:toolbox/common/json_file_recovery.dart';
 import 'package:toolbox/features/remote/transfer_controller.dart';
 
 final transferStoreProvider = Provider<TransferStore>((ref) => TransferStore());
@@ -28,7 +29,9 @@ class TransferStore {
       return decoded
           .map((e) => TransferTask.fromJson(e as Map<String, dynamic>))
           .toList();
-    } on Exception {
+    } catch (e) {
+      // 损坏文件（含解析类型错误）改名留底，回退空列表。
+      backupCorruptJsonFile(_filePath, e);
       return [];
     }
   }

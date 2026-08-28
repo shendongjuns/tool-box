@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
@@ -47,7 +50,7 @@ void main() {
     expect(container.read(sshSessionsProvider), isEmpty);
   });
 
-  test('同一连接重复打开不重复创建会话', () async {
+  test('出错会话再次 open 原地重试，不新增会话', () async {
     var connectCalls = 0;
     final container = ProviderContainer(
       overrides: [
@@ -63,7 +66,32 @@ void main() {
     await notifier.open(conn);
     await notifier.open(conn);
 
-    expect(connectCalls, 1);
+    // error 状态的会话允许原地重试（重连入口），但仍只有一个会话标签。
+    expect(connectCalls, 2);
+    expect(container.read(sshSessionsProvider).length, 1);
+  });
+
+  test('connecting 会话重复打开直接复用，不重复创建', () async {
+    var connectCalls = 0;
+    // 永不完成的连接器 → 会话停留在 connecting 状态。
+    final pending = Completer<SSHClient>();
+    final container = ProviderContainer(
+      overrides: [
+        sshConnectorProvider.overrideWithValue((connection) async {
+          connectCalls++;
+          return pending.future;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(sshSessionsProvider.notifier);
+    unawaited(notifier.open(conn));
+    // 等第一次 open 建立 handle（进入 connecting）。
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await notifier.open(conn);
+
+    expect(connectCalls, 1, reason: 'connecting 中重复打开应直接复用');
     expect(container.read(sshSessionsProvider).length, 1);
   });
 }

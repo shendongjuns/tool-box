@@ -90,15 +90,6 @@ class TransferController extends Notifier<List<TransferTask>> {
   /// 任务 id -> 取消通道（传输 worker 的 cancelPort）。
   final Map<String, SendPort> _cancelPorts = {};
 
-  /// 任务 id -> 启动函数（由 UI 注册，创建传输 worker）。
-  final Map<String, Future<void> Function()> _starters = {};
-
-  /// 是否有任务正在传输（队列调度用）。
-  bool _running = false;
-
-  /// 待启动队列（FIFO）。
-  final List<String> _queue = [];
-
   @override
   List<TransferTask> build() {
     final loaded = ref.watch(transferStoreProvider).load();
@@ -143,9 +134,6 @@ class TransferController extends Notifier<List<TransferTask>> {
     // 通知 worker 中断（若还在运行）。
     _cancelPorts[id]?.send(['cancel']);
     _cancelPorts.remove(id);
-    // 若还在排队（未启动），从队列移除并调度下一个。
-    _queue.remove(id);
-    _starters.remove(id);
     _persist();
   }
 
@@ -171,40 +159,6 @@ class TransferController extends Notifier<List<TransferTask>> {
     return id;
   }
 
-  /// 将任务加入传输队列并注册启动器。
-  ///
-  /// 可无限追加（不限制并发）：队列空闲时自动启动下一个，逐个排队传输。
-  void enqueue(String id, Future<void> Function() starter) {
-    _starters[id] = starter;
-    _queue.add(id);
-    _pumpQueue();
-  }
-
-  /// 队列调度：若无任务运行，启动队首任务。
-  void _pumpQueue() {
-    if (_running || _queue.isEmpty) return;
-    final id = _queue.removeAt(0);
-    final starter = _starters.remove(id);
-    if (starter == null) {
-      // 启动器缺失（异常），直接跳下一个。
-      _pumpQueue();
-      return;
-    }
-    _running = true;
-    start(id);
-    // 异步启动 starter；完成/失败后复位并调度下一个。
-    Future.microtask(() async {
-      try {
-        await starter();
-      } catch (_) {
-        // starter 内部已处理错误（finish）。
-      } finally {
-        _running = false;
-        _pumpQueue();
-      }
-    });
-  }
-
   /// 更新任务进度。
   void updateProgress(String id, int transferredBytes, {int? totalBytes}) {
     state = [
@@ -213,7 +167,11 @@ class TransferController extends Notifier<List<TransferTask>> {
           t.copyWith(
             transferredBytes: transferredBytes,
             totalBytes: totalBytes ?? t.totalBytes,
-            status: TransferStatus.running,
+            // 已结束（取消/失败）的任务不被迟到的进度消息复活为 running。
+            status: t.status == TransferStatus.pending ||
+                    t.status == TransferStatus.running
+                ? TransferStatus.running
+                : t.status,
           )
         else
           t,

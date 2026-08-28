@@ -6,7 +6,6 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:toolbox/features/remote/remote_models.dart';
 import 'package:toolbox/features/remote/ssh_session.dart';
 import 'package:toolbox/features/remote/transfer_controller.dart';
 import 'package:toolbox/features/remote/transfer_worker.dart';
@@ -60,12 +59,13 @@ class _SftpViewState extends ConsumerState<SftpView> {
     super.dispose();
   }
 
-  /// 连接完成后自动加载目录（视图常驻，可能在连接前就挂载）。
+  /// 会话状态变化时同步本地连接标志：断开后禁用操作按钮（此前只在
+  /// 连接成功时置 true，断线后按钮仍可点导致报错）。
   void _onStatusChanged() {
-    if (widget.handle.isConnected && !_connected) {
-      _connected = true;
-      _resolveHome();
-    }
+    final connected = widget.handle.isConnected;
+    if (connected == _connected) return;
+    setState(() => _connected = connected);
+    if (connected) _resolveHome();
   }
 
   /// 解析登录用户的 home 目录（sftp 初始当前目录）作为默认目录。
@@ -232,78 +232,113 @@ class _SftpViewState extends ConsumerState<SftpView> {
         totalBytes: total,
       );
       // 并发启动 worker（不等待、不排队）。
-      _runUploadWorker(
-        conn: conn,
+      _runTransferWorker(
+        request: TransferRequest(
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: conn.password,
+          useKeyAuth: conn.useKeyAuth,
+          privateKeyPath: conn.privateKeyPath,
+          keyPassphrase: conn.keyPassphrase,
+          direction: 'upload',
+          localPath: localPath,
+          remotePath: _join(file.name),
+          totalBytes: total,
+        ),
         taskId: taskId,
-        localPath: localPath,
-        remotePath: _join(file.name),
-        totalBytes: total,
       );
     }
-    // 无论成败都刷新（失败/取消时 worker 已清理远端残留文件）。
+    // 无论成败都刷新目录（失败时远端可能残留半截文件，worker 刻意
+    // 不删远端，防止误删用户原有同名文件）。
     _refresh();
   }
 
-  /// 启动单个上传 worker（并发，不等待完成）。
-  void _runUploadWorker({
-    required SshConnection conn,
+  /// 心跳超时：连续该时长未收到任何 worker 消息才判定传输挂起。
+  /// 传输中 worker 每 300ms 回报一次进度，正常大文件不会误判。
+  static const _transferHeartbeatTimeout = Duration(seconds: 60);
+
+  /// 启动传输 worker 并接管其消息（上传/下载共用）：进度上报 +
+  /// 心跳超时保护。
+  ///
+  /// 超时通过 cancelPort 通知 worker 中断并清理残留，而非只丢弃消息
+  /// （否则 worker 仍在后台继续传输，远端文件最终写入完整、UI 却显示
+  /// 失败）。[doneHint]/[cancelledHint]/[errorPrefix] 为完成/取消/失败
+  /// 时的界面提示（传 null 则不提示）；提示前检查 mounted，避免视图
+  /// 销毁后使用已失效的 context。
+  void _runTransferWorker({
+    required TransferRequest request,
     required String taskId,
-    required String localPath,
-    required String remotePath,
-    required int totalBytes,
+    String? doneHint,
+    String? cancelledHint,
+    String? errorPrefix,
   }) {
     final transfer = ref.read(transferTasksProvider.notifier);
-    final completer = Completer<void>();
-    // 超时后忽略后续 worker 消息（任务已结束）。
-    var timedOut = false;
-    final port = startTransferWorker(TransferRequest(
-      host: conn.host,
-      port: conn.port,
-      username: conn.username,
-      password: conn.password,
-      useKeyAuth: conn.useKeyAuth,
-      privateKeyPath: conn.privateKeyPath,
-      keyPassphrase: conn.keyPassphrase,
-      direction: 'upload',
-      localPath: localPath,
-      remotePath: remotePath,
-      totalBytes: totalBytes,
-    ));
+    final port = startTransferWorker(request);
+    SendPort? cancelPort;
+    Timer? heartbeat;
+
+    /// 已落定（完成/取消/失败/超时）：忽略 worker 迟到的消息。
+    var settled = false;
+
+    void resetHeartbeat() {
+      heartbeat?.cancel();
+      heartbeat = Timer(_transferHeartbeatTimeout, () {
+        if (settled) return;
+        settled = true;
+        try {
+          cancelPort?.send(['cancel']);
+        } catch (_) {}
+        transfer.finish(
+          taskId,
+          TransferStatus.failed,
+          error: '传输超时（长时间无响应）',
+        );
+        port.close();
+      });
+    }
+
+    resetHeartbeat();
     port.listen((msg) {
+      if (settled) return;
       final list = msg as List<Object?>;
       final type = list[0] as String;
-      // 超时后忽略 worker 消息（任务已结束）。
-      if (timedOut) return;
-      if (type == 'cancelPort') {
-        transfer.setCancelPort(taskId, list[1] as SendPort);
-      } else if (type == 'debug') {
-        debugPrint('传输诊断: ${list[1]}');
-      } else if (type == 'start') {
-        transfer.start(taskId);
-      } else if (type == 'progress') {
-        transfer.updateProgress(taskId, list[1] as int);
-      } else if (type == 'done') {
-        transfer.finish(taskId, TransferStatus.done);
-        if (!completer.isCompleted) completer.complete();
-        port.close();
-      } else if (type == 'cancelled') {
-        transfer.finish(taskId, TransferStatus.cancelled);
-        if (!completer.isCompleted) completer.complete();
-        port.close();
-      } else if (type == 'error') {
-        transfer.finish(taskId, TransferStatus.failed, error: '${list[1]}');
-        if (!completer.isCompleted) completer.complete();
-        port.close();
+      resetHeartbeat();
+      switch (type) {
+        case 'cancelPort':
+          cancelPort = list[1] as SendPort;
+          transfer.setCancelPort(taskId, cancelPort!);
+        case 'debug':
+          debugPrint('传输诊断: ${list[1]}');
+        case 'start':
+          transfer.start(taskId);
+        case 'total':
+          transfer.updateTotal(taskId, list[1] as int);
+        case 'progress':
+          // dartssh2 回报累计字节。
+          transfer.updateProgress(taskId, list[1] as int);
+        case 'done':
+          settled = true;
+          heartbeat?.cancel();
+          transfer.finish(taskId, TransferStatus.done);
+          port.close();
+          if (doneHint != null && mounted) _showMessage(doneHint);
+        case 'cancelled':
+          settled = true;
+          heartbeat?.cancel();
+          transfer.finish(taskId, TransferStatus.cancelled);
+          port.close();
+          if (cancelledHint != null && mounted) _showMessage(cancelledHint);
+        case 'error':
+          settled = true;
+          heartbeat?.cancel();
+          transfer.finish(taskId, TransferStatus.failed, error: '${list[1]}');
+          port.close();
+          if (errorPrefix != null && mounted) {
+            _showMessage('$errorPrefix${list[1]}');
+          }
       }
     });
-    // 超时保护：worker 长时间无响应（崩溃/挂起）时强制结束。
-    unawaited(completer.future.timeout(const Duration(minutes: 1)).catchError((_) {
-      timedOut = true;
-      transfer.finish(taskId, TransferStatus.failed, error: '传输超时');
-      try {
-        port.close();
-      } catch (_) {}
-    }));
   }
 
   Future<void> _download(SftpName name) async {
@@ -329,65 +364,41 @@ class _SftpViewState extends ConsumerState<SftpView> {
         TransferDirection.download,
         totalBytes: total,
       );
-      final port = startTransferWorker(TransferRequest(
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        password: conn.password,
-        useKeyAuth: conn.useKeyAuth,
-        privateKeyPath: conn.privateKeyPath,
-        keyPassphrase: conn.keyPassphrase,
-        direction: 'download',
-        localPath: localFile.path,
-        remotePath: _join(name.filename),
-        totalBytes: total,
-      ));
-      port.listen((msg) {
-        final list = msg as List<Object?>;
-        final type = list[0] as String;
-        if (type == 'cancelPort') {
-          transfer.setCancelPort(taskId, list[1] as SendPort);
-        } else if (type == 'start') {
-          transfer.start(taskId);
-        } else if (type == 'total') {
-          transfer.updateTotal(taskId, list[1] as int);
-        } else if (type == 'progress') {
-          // dartssh2 回报累计字节，任务 totalBytes 已由 total 消息设置。
-          transfer.updateProgress(taskId, list[1] as int);
-        } else if (type == 'done') {
-          transfer.finish(taskId, TransferStatus.done);
-          _showMessage('已下载 ${name.filename}');
-          port.close();
-        } else if (type == 'cancelled') {
-          transfer.finish(taskId, TransferStatus.cancelled);
-          _showMessage('已取消下载');
-          port.close();
-        } else if (type == 'error') {
-          transfer.finish(taskId, TransferStatus.failed, error: '${list[1]}');
-          _showMessage('下载失败：${list[1]}');
-          port.close();
-        }
-      });
+      _runTransferWorker(
+        request: TransferRequest(
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: conn.password,
+          useKeyAuth: conn.useKeyAuth,
+          privateKeyPath: conn.privateKeyPath,
+          keyPassphrase: conn.keyPassphrase,
+          direction: 'download',
+          localPath: localFile.path,
+          remotePath: _join(name.filename),
+          totalBytes: total,
+        ),
+        taskId: taskId,
+        doneHint: '已下载 ${name.filename}',
+        cancelledHint: '已取消下载',
+        errorPrefix: '下载失败：',
+      );
     } catch (e) {
       _showMessage('下载失败：$e');
     }
   }
 
-  /// 查询远端文件大小（用独立短连接）。
+  /// 查询远端文件大小（复用当前会话的 SFTP 客户端）。
   Future<int> _remoteSize(String filename) async {
     try {
-      final client = await defaultSshConnector(widget.handle.connection);
-      final sftp = await client.sftp();
-      final remote = await sftp.open(
-        _join(filename),
-        mode: SftpFileOpenMode.read,
-      );
+      final sftp = await widget.handle.sftp();
+      final remote =
+          await sftp.open(_join(filename), mode: SftpFileOpenMode.read);
       final size = (await remote.stat()).size ?? 0;
       await remote.close();
-      await client.close();
       return size;
     } catch (e) {
-      // 诊断：dartssh2 预查大小失败（可能是路径格式问题）。
+      // 诊断：预查大小失败（可能是路径格式问题）。
       debugPrint('_remoteSize 失败 ${_join(filename)}: $e');
       return 0;
     }
