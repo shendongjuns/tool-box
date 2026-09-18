@@ -1,18 +1,23 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
-
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
+import 'package:toolbox/common/app_log.dart';
+import 'package:toolbox/common/byte_format.dart';
 import 'package:toolbox/features/remote/ssh_session.dart';
 import 'package:toolbox/features/remote/transfer_controller.dart';
 import 'package:toolbox/features/remote/transfer_worker.dart';
-import 'package:toolbox/ui/theme/app_icons.dart';
-import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
-import 'package:toolbox/ui/widgets/mochi_widgets.dart';
+import 'package:toolbox/ui/theme/app_layout.dart';
+import 'package:toolbox/ui/widgets/app_dialog.dart';
+import 'package:toolbox/ui/widgets/app_form_row.dart';
+import 'package:toolbox/ui/widgets/app_toast.dart';
+import 'package:toolbox/ui/widgets/app_tooltip.dart';
 
+part 'sftp_file_list.dart';
 /// SFTP 文件浏览视图：路径可编辑直达，支持上传/下载/新建目录/删除/
 /// 权限详情与修改。目录状态保存在视图 State 中，配合外层 IndexedStack
 /// 保活，切换视图不丢失当前位置。
@@ -308,8 +313,6 @@ class _SftpViewState extends ConsumerState<SftpView> {
         case 'cancelPort':
           cancelPort = list[1] as SendPort;
           transfer.setCancelPort(taskId, cancelPort!);
-        case 'debug':
-          debugPrint('传输诊断: ${list[1]}');
         case 'start':
           transfer.start(taskId);
         case 'total':
@@ -334,6 +337,11 @@ class _SftpViewState extends ConsumerState<SftpView> {
           heartbeat?.cancel();
           transfer.finish(taskId, TransferStatus.failed, error: '${list[1]}');
           port.close();
+          AppLog.e(
+            'transfer',
+            '${request.direction} 失败：${request.localPath}',
+            list[1],
+          );
           if (errorPrefix != null && mounted) {
             _showMessage('$errorPrefix${list[1]}');
           }
@@ -398,8 +406,8 @@ class _SftpViewState extends ConsumerState<SftpView> {
       await remote.close();
       return size;
     } catch (e) {
-      // 诊断：预查大小失败（可能是路径格式问题）。
-      debugPrint('_remoteSize 失败 ${_join(filename)}: $e');
+      // 预查大小失败（可能是路径格式问题）：写进日志，否则「显示 0 字节」无从排查。
+      AppLog.w('sftp', '预查远端文件大小失败 ${_join(filename)}：$e');
       return 0;
     }
   }
@@ -450,27 +458,39 @@ class _SftpViewState extends ConsumerState<SftpView> {
       return;
     }
     final controller = TextEditingController();
-    final name = await showMochiDialog<String>(
+    final name = await showAppDialog<String>(
       context: context,
       title: '新建目录',
-      emoji: '📁',
-      width: 400,
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: '目录名'),
+      width: dialogWidthSmall,
+      content: AppFormRow(
+        label: '目录名',
+        description: '在当前目录下创建的子目录名称',
+        child: FTextField(
+          control: FTextFieldControl.managed(
+            controller: controller,
+          ),
+          autofocus: true,
+        ),
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '创建',
-          icon: AppIcons.newFolder,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, controller.text.trim()),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context, controller.text.trim()),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.folderPlus, size: 16),
+              SizedBox(width: 6),
+              Text('创建'),
+            ],
+          ),
         ),
       ],
     );
@@ -533,16 +553,17 @@ class _SftpViewState extends ConsumerState<SftpView> {
     final modeVal = attr.mode?.value ?? 0;
     final permText = _modeString(modeVal);
 
-    await showMochiDialog<void>(
+    await showAppDialog<void>(
       context: context,
       title: name.filename,
-      emoji: isDir ? '📁' : '📄',
-      width: 400,
+      // 5 个操作按钮（关闭/打开/下载/修改权限/删除）需要更宽的弹窗才能排成一行，
+      // 否则会被 Wrap 折到第二行。
+      width: dialogWidthLarge,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _detailRow('类型', isDir ? '目录' : '文件'),
-          if (attr.size != null) _detailRow('大小', _formatSize(attr.size)),
+          if (attr.size != null) _detailRow('大小', formatBytes(attr.size!)),
           _detailRow(
             '权限',
             modeVal < 0 ? '-' : '$permText (${(modeVal & 0x1FF).toRadixString(8)})',
@@ -554,45 +575,77 @@ class _SftpViewState extends ConsumerState<SftpView> {
         ],
       ),
       actions: [
-        MochiButton(
-          label: '关闭',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context),
+          child: const Text('关闭'),
         ),
         if (!isDir)
-          MochiButton(
-            label: '打开',
-            icon: AppIcons.openInNew,
-            onPressed: () {
+          FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.outline,
+            onPress: () {
               Navigator.pop(context);
               _open(name);
             },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FLucideIcons.externalLink, size: 16),
+                SizedBox(width: 6),
+                Text('打开'),
+              ],
+            ),
           ),
         if (!isDir)
-          MochiButton(
-            label: '下载',
-            icon: AppIcons.sftpDownload,
-            onPressed: () {
+          FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.outline,
+            onPress: () {
               Navigator.pop(context);
               _download(name);
             },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FLucideIcons.download, size: 16),
+                SizedBox(width: 6),
+                Text('下载'),
+              ],
+            ),
           ),
-        MochiButton(
-          label: '修改权限',
-          icon: AppIcons.lock,
-          onPressed: () {
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.outline,
+          onPress: () {
             Navigator.pop(context);
             _changeMode(name);
           },
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.lock, size: 16),
+              SizedBox(width: 6),
+              Text('修改权限'),
+            ],
+          ),
         ),
-        MochiButton(
-          label: '删除',
-          icon: AppIcons.delete,
-          type: MochiButtonType.danger,
-          onPressed: () {
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.destructive,
+          onPress: () {
             Navigator.pop(context);
             _delete(name);
           },
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.trash2, size: 16),
+              SizedBox(width: 6),
+              Text('删除'),
+            ],
+          ),
         ),
       ],
     );
@@ -603,27 +656,39 @@ class _SftpViewState extends ConsumerState<SftpView> {
     final defaultMode =
         current >= 0 ? (current & 0x1FF).toRadixString(8) : '755';
     final controller = TextEditingController(text: defaultMode);
-    final input = await showMochiDialog<String>(
+    final input = await showAppDialog<String>(
       context: context,
       title: '修改权限',
-      emoji: '🔐',
-      width: 400,
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: '八进制权限，如 755'),
+      width: dialogWidthSmall,
+      content: AppFormRow(
+        label: '权限',
+        description: '八进制权限，例如 755 表示 rwxr-xr-x',
+        child: FTextField(
+          control: FTextFieldControl.managed(
+            controller: controller,
+          ),
+          autofocus: true,
+        ),
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '保存',
-          icon: AppIcons.save,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, controller.text.trim()),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context, controller.text.trim()),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.save, size: 16),
+              SizedBox(width: 6),
+              Text('保存'),
+            ],
+          ),
         ),
       ],
     );
@@ -648,23 +713,23 @@ class _SftpViewState extends ConsumerState<SftpView> {
   }
 
   Widget _detailRow(String label, String value) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final scheme = context.theme.colors;
+    final textTheme = context.theme.typography.body;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: MochiCatSpacing.xs),
+      padding: const EdgeInsets.symmetric(vertical: AppLayout.gapXs),
       child: Row(
         children: [
           SizedBox(
             width: 72,
             child: Text(
               label,
-              style: textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
+              style: textTheme.md.copyWith(
+                color: scheme.mutedForeground,
               ),
             ),
           ),
           Expanded(
-            child: Text(value, style: textTheme.bodyMedium),
+            child: Text(value, style: textTheme.md),
           ),
         ],
       ),
@@ -672,141 +737,135 @@ class _SftpViewState extends ConsumerState<SftpView> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    showAppToast(context, message);
   }
 
   /// 弹出传输记录窗口（当前/历史上传下载任务与进度）。
   void _showTransferHistory() {
-    showMochiDialog<void>(
-      context: context,
-      title: '传输记录',
-      emoji: '📦',
-      width: 460,
-      content: const SizedBox(
-        height: 320,
-        child: _TransferPanel(),
+    // 弹窗结果无需处理，显式标记为「有意丢弃的 Future」。
+    unawaited(
+      showAppDialog<void>(
+        context: context,
+        title: '传输记录',
+        width: dialogWidthMedium,
+        content: const SizedBox(height: 320, child: _TransferPanel()),
+        actions: [
+          FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.ghost,
+            onPress: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
-      actions: [
-        MochiButton(
-          label: '关闭',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
-        ),
-      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 路径栏（可编辑直达）+ 操作按钮。
-        // 文件面板只有约一半窗口宽度；工具栏横向可滚动（无滚动条），
-        // 窄宽度下不溢出。
+        // 固定单行布局：文件面板只有约一半窗口宽度，装不下时**横向滚动**，
+        // 而不是折行——折行会把列表的可用高度吃掉一大截。
+        // ⚠️ Row 里的 FButton 一定要 `mainAxisSize: MainAxisSize.min`，
+        // 否则 ForUI 默认的 max 会让按钮撑满可用宽度。
         Padding(
-          padding: const EdgeInsets.all(MochiCatSpacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            AppLayout.gapMd,
+            AppLayout.gapXs,
+            AppLayout.gapMd,
+            0,
+          ),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _ToolIcon(
-                  icon: AppIcons.goUp,
+                  icon: FLucideIcons.arrowUp,
                   tooltip: '上一级',
                   onPressed: _isRoot ? null : _goUp,
                 ),
-                  SizedBox(
-                    width: 180,
-                    child: TextField(
+                SizedBox(
+                  width: 200,
+                  child: FTextField(
+                    control: FTextFieldControl.managed(
                       controller: _pathController,
-                      focusNode: _pathFocus,
-                      style: textTheme.bodySmall,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: '远程路径，回车前往',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: _onPathChanged,
-                      onSubmitted: (_) {
-                        setState(() => _suggestions = const []);
-                        _goTo(_pathController.text);
-                      },
+                      onChange: (v) => _onPathChanged(v.text),
                     ),
-                  ),
-                  _ToolIcon(
-                    icon: AppIcons.goForward,
-                    tooltip: '前往',
-                    onPressed: () {
+                    hint: '远程路径，回车前往',
+                    onSubmit: (_) {
                       setState(() => _suggestions = const []);
                       _goTo(_pathController.text);
                     },
                   ),
-                  _ToolIcon(
-                    icon: AppIcons.refresh,
-                    tooltip: '刷新',
-                    onPressed: _refresh,
+                ),
+                _ToolIcon(
+                  icon: FLucideIcons.arrowRight,
+                  tooltip: '前往',
+                  onPressed: () {
+                    setState(() => _suggestions = const []);
+                    _goTo(_pathController.text);
+                  },
+                ),
+                _ToolIcon(
+                  icon: FLucideIcons.refreshCw,
+                  tooltip: '刷新',
+                  onPressed: _refresh,
+                ),
+                // 排序：字段下拉 + 升降序切换。
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppLayout.gapXs,
                   ),
-                  // 排序：字段下拉 + 升降序切换。
-                  SizedBox(
-                    width: 80,
-                    child: MochiSelectField<String>(
-                      value: _sortField,
-                      items: const [
-                        ('name', '名称'),
-                        ('date', '日期'),
-                        ('size', '大小'),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setState(() => _sortField = v);
-                          _refresh();
-                        }
-                      },
+                  child: SizedBox(
+                    width: 104,
+                    child: FSelect<String>(
+                      control: FSelectControl<String>.lifted(
+                        value: _sortField,
+                        onChange: (v) {
+                          if (v != null) {
+                            setState(() => _sortField = v);
+                            unawaited(_refresh());
+                          }
+                        },
+                      ),
+                      items: const {'名称': 'name', '日期': 'date', '大小': 'size'},
                     ),
                   ),
-                  _ToolIcon(
-                    icon: _sortAsc ? AppIcons.goUp : AppIcons.sortDesc,
-                    tooltip: _sortAsc ? '升序' : '降序',
-                    onPressed: () {
-                      setState(() => _sortAsc = !_sortAsc);
-                      _refresh();
-                    },
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(AppIcons.newFolder, size: 16),
-                    label: const Text('新建目录'),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      minimumSize: const Size(0, 32),
-                    ),
-                    onPressed: _mkdir,
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(AppIcons.sftpUpload, size: 16),
-                    label: const Text('上传'),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      minimumSize: const Size(0, 32),
-                    ),
-                    onPressed: _upload,
-                  ),
-                  // 传输记录按钮：查看当前/历史上传下载进度。
-                  _ToolIcon(
-                    icon: AppIcons.transferHistory,
-                    tooltip: '传输记录',
-                    onPressed: _showTransferHistory,
-                  ),
-                ],
-              ),
+                ),
+                _ToolIcon(
+                  icon: _sortAsc
+                      ? FLucideIcons.arrowUp
+                      : FLucideIcons.arrowDown,
+                  tooltip: _sortAsc ? '升序' : '降序',
+                  onPressed: () {
+                    setState(() => _sortAsc = !_sortAsc);
+                    unawaited(_refresh());
+                  },
+                ),
+                _LabeledTool(
+                  icon: FLucideIcons.folderPlus,
+                  label: '新建目录',
+                  onPressed: _mkdir,
+                ),
+                _LabeledTool(
+                  icon: FLucideIcons.upload,
+                  label: '上传',
+                  onPressed: _upload,
+                ),
+                // 传输记录按钮：查看当前/历史上传下载进度。
+                _ToolIcon(
+                  icon: FLucideIcons.history,
+                  tooltip: '传输记录',
+                  onPressed: _showTransferHistory,
+                ),
+              ],
             ),
           ),
+        ),
         // 路径自动补全建议列表：仅在输入框聚焦且有建议时显示，
         // 失焦或路径跳转后自动隐藏，不占用多余空间。
         if (_pathFocus.hasFocus && _suggestions.isNotEmpty)
@@ -814,93 +873,53 @@ class _SftpViewState extends ConsumerState<SftpView> {
             suggestions: _suggestions,
             onSelect: _applySuggestion,
           ),
-        const Divider(height: 1),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: FCircularProgress())
               : _entries == null
-                  ? Center(child: Text(_connected ? '加载中…' : '等待连接…'))
-                  : _entries!.isEmpty
-                      ? const Center(child: Text('目录为空'))
-                      : Material(
-                          // 文件列表的墨水涟漪需要不透明表面（与背景同色）。
-                          color: scheme.surface,
-                          child: ListView.separated(
+              ? Center(child: Text(_connected ? '加载中…' : '等待连接…'))
+              : _entries!.isEmpty
+              ? const Center(child: Text('目录为空'))
+              // 列按可用宽度自适应：面板被拖窄时逐级隐藏元信息列，
+              // 保证「名称」与行内操作按钮始终在可视区内（全屏下四列齐全）。
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = _FileColumns.of(constraints.maxWidth);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _FileListHeader(columns: columns),
+                        const FDivider(),
+                        Expanded(
+                          child: ListView.builder(
                             itemCount: _entries!.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1),
                             itemBuilder: (_, i) {
                               final entry = _entries![i];
                               final isDir = _isDir(entry);
-                              final modeVal = entry.attr.mode?.value ?? 0;
-                              return ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  isDir
-                                      ? AppIcons.folder
-                                      : AppIcons.fileText,
-                                  color: isDir
-                                      ? scheme.primary
-                                      : scheme.onSurfaceVariant,
-                                ),
-                                title: Text(
-                                  entry.filename,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: _FileMetaRow(
-                                  isDir: isDir,
-                                  size: entry.attr.size,
-                                  mode: modeVal,
-                                  time: entry.attr.modifyTime,
-                                ),
-                                onTap: isDir
-                                    ? () => _enterDir(entry)
-                                    : () => _showDetails(entry),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (!isDir)
-                                      IconButton(
-                                        icon: const Icon(AppIcons.sftpDownload,
-                                            size: 18),
-                                        tooltip: '下载',
-                                        onPressed: () => _download(entry),
-                                      ),
-                                    IconButton(
-                                      icon: const Icon(AppIcons.info,
-                                          size: 18),
-                                      tooltip: '详情',
-                                      onPressed: () => _showDetails(entry),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(AppIcons.delete,
-                                          size: 18),
-                                      tooltip: '删除',
-                                      onPressed: () => _delete(entry),
-                                    ),
-                                  ],
-                                ),
+                              return _FileRow(
+                                entry: entry,
+                                isDir: isDir,
+                                columns: columns,
+                                onOpen: () => isDir
+                                    ? _enterDir(entry)
+                                    : _showDetails(entry),
+                                onDetails: () => _showDetails(entry),
+                                onDownload: () => _download(entry),
+                                onDelete: () => _delete(entry),
                               );
                             },
                           ),
                         ),
+                      ],
+                    );
+                  },
+                ),
         ),
       ],
     );
   }
 
   void _goUp() => _goTo(_parentPath());
-
-  String _formatSize(int? size) {
-    if (size == null) return '';
-    if (size < 1024) return '$size B';
-    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
-    if (size < 1024 * 1024 * 1024) {
-      return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
 
   String _formatTime(int? unixSeconds) {
     if (unixSeconds == null) return '';
@@ -926,352 +945,5 @@ class _SftpViewState extends ConsumerState<SftpView> {
       sb.write((bits & exec) != 0 ? 'x' : '-');
     }
     return sb.toString();
-  }
-}
-
-/// 文件元信息行：大小 / 权限 / 日期 三列固定宽度对齐，
-/// 避免字体变化导致每行位置漂移。
-class _FileMetaRow extends StatelessWidget {
-  const _FileMetaRow({
-    required this.isDir,
-    required this.size,
-    required this.mode,
-    required this.time,
-  });
-
-  final bool isDir;
-  final int? size;
-  final int mode;
-  final int? time;
-
-  static String _fmtSize(int? size) {
-    if (size == null) return '';
-    if (size < 1024) return '$size B';
-    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
-    if (size < 1024 * 1024 * 1024) {
-      return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  static String _fmtTime(int? unixSeconds) {
-    if (unixSeconds == null) return '';
-    final dt =
-        DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000).toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    // 精简格式：MM-dd HH:mm，窄面板下列宽可控、不易截断。
-    return '${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
-  }
-
-  static String _modeStr(int mode) {
-    if (mode < 0) return '----------';
-    const read = 0x4;
-    const write = 0x2;
-    const exec = 0x1;
-    final sb = StringBuffer((mode & 0x4000) != 0 ? 'd' : '-');
-    for (final shift in const [6, 3, 0]) {
-      final bits = mode >> shift;
-      sb.write((bits & read) != 0 ? 'r' : '-');
-      sb.write((bits & write) != 0 ? 'w' : '-');
-      sb.write((bits & exec) != 0 ? 'x' : '-');
-    }
-    return sb.toString();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final labelStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: scheme.onSurfaceVariant,
-        );
-    final valueStyle = labelStyle?.copyWith(
-      color: scheme.onSurface,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-    // 带标签三列：大小：xxx  权限：xxx  日期：xxx
-    // 用 Wrap 保证窄面板下自动换行不截断，各列始终对齐。
-    return Wrap(
-      spacing: 12,
-      runSpacing: 2,
-      children: [
-        Text.rich(
-          TextSpan(children: [
-            TextSpan(text: '大小：', style: labelStyle),
-            TextSpan(
-              text: isDir ? '—' : _fmtSize(size),
-              style: valueStyle,
-            ),
-          ]),
-        ),
-        Text.rich(
-          TextSpan(children: [
-            TextSpan(text: '权限：', style: labelStyle),
-            TextSpan(
-              text: _modeStr(mode),
-              style: valueStyle?.copyWith(fontFamily: 'monospace'),
-            ),
-          ]),
-        ),
-        Text.rich(
-          TextSpan(children: [
-            TextSpan(text: '日期：', style: labelStyle),
-            TextSpan(text: _fmtTime(time), style: valueStyle),
-          ]),
-        ),
-      ],
-    );
-  }
-}
-
-/// 工具栏紧凑图标按钮：32px 内边距，节省横向空间。
-class _ToolIcon extends StatelessWidget {
-  const _ToolIcon({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(icon, size: 18),
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      constraints: BoxConstraints.tight(const Size(32, 32)),
-      padding: EdgeInsets.zero,
-      onPressed: onPressed,
-    );
-  }
-}
-
-/// 路径补全建议项。
-class _PathSuggestion {
-  const _PathSuggestion({
-    required this.fullPath,
-    required this.label,
-    required this.isDir,
-  });
-
-  final String fullPath;
-  final String label;
-  final bool isDir;
-}
-
-/// 路径补全建议列表。
-class _SuggestionList extends StatelessWidget {
-  const _SuggestionList({
-    required this.suggestions,
-    required this.onSelect,
-  });
-
-  final List<_PathSuggestion> suggestions;
-  final ValueChanged<_PathSuggestion> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    // 用 Material 承载背景色（而非外层带色 Container），保证 ListTile
-    // 的墨水涟漪有可见的不透明表面，避免 Flutter 的
-    // "background color or ink splashes may be invisible" 断言。
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        MochiCatSpacing.md,
-        0,
-        MochiCatSpacing.md,
-        MochiCatSpacing.xs,
-      ),
-      child: Material(
-        color: scheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(MochiCatRadius.md),
-          side: BorderSide(color: scheme.outlineVariant),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 160),
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: suggestions.length,
-            itemBuilder: (_, i) {
-              final s = suggestions[i];
-              return ListTile(
-                dense: true,
-                leading: Icon(
-                  s.isDir
-                      ? AppIcons.folder
-                      : AppIcons.fileText,
-                  size: 18,
-                  color: s.isDir ? scheme.primary : scheme.onSurfaceVariant,
-                ),
-                title: Text(s.label),
-                onTap: () => onSelect(s),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 传输任务面板：显示上传/下载任务列表与进度条。
-class _TransferPanel extends ConsumerWidget {
-  const _TransferPanel();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    // 内部监听任务列表，仅本面板 rebuild，不影响整个文件视图。
-    final tasks = ref.watch(transferTasksProvider);
-    if (tasks.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        MochiCatSpacing.md,
-        0,
-        MochiCatSpacing.md,
-        MochiCatSpacing.sm,
-      ),
-      padding: const EdgeInsets.all(MochiCatSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(MochiCatRadius.md),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text('传输任务', style: textTheme.labelMedium),
-              const Spacer(),
-              TextButton.icon(
-                icon: const Icon(AppIcons.delete, size: 14),
-                label: const Text('清空已完成'),
-                onPressed: () =>
-                    ref.read(transferTasksProvider.notifier).clearFinished(),
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.xs),
-          // 任务列表可滚动，避免任务多时溢出。
-          Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.zero,
-              itemCount: tasks.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(height: MochiCatSpacing.xs),
-              itemBuilder: (_, i) {
-                final task = tasks[i];
-                return Row(
-                  children: [
-                    Icon(
-                      task.direction == TransferDirection.upload
-                          ? AppIcons.sftpUpload
-                          : AppIcons.sftpDownload,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: MochiCatSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 失败/取消时悬停显示具体原因。
-                          Tooltip(
-                            message: task.error ?? task.fileName,
-                            child: Text(
-                              task.fileName,
-                              style: textTheme.bodySmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(MochiCatRadius.xs),
-                            // 完成/取消/失败显示最终进度（done 满条），
-                            // 传输中显示实时百分比。
-                            child: LinearProgressIndicator(
-                              value: task.status == TransferStatus.done
-                                  ? 1
-                                  : task.progress,
-                              minHeight: 6,
-                              color: task.status == TransferStatus.cancelled ||
-                                      task.status == TransferStatus.failed
-                                  ? scheme.onSurfaceVariant.withValues(alpha: .5)
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: MochiCatSpacing.sm),
-                    SizedBox(
-                      width: 70,
-                      child: Text(
-                        _taskStatusText(task),
-                        style: textTheme.bodySmall?.copyWith(
-                          color: _taskStatusColor(task, scheme),
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                    // 终止按钮（传输中显示）。
-                    if (task.status == TransferStatus.running ||
-                        task.status == TransferStatus.pending)
-                      IconButton(
-                        icon: const Icon(AppIcons.close, size: 16),
-                        tooltip: '终止',
-                        onPressed: () => ref
-                            .read(transferTasksProvider.notifier)
-                            .cancel(task.id),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _taskStatusText(TransferTask task) {
-    switch (task.status) {
-      case TransferStatus.done:
-        return '完成';
-      case TransferStatus.failed:
-        // 权限不足时明确显示"无权限"，其他错误显示"失败"。
-        return (task.error ?? '').contains('无权限') ? '无权限' : '失败';
-      case TransferStatus.cancelled:
-        return '取消';
-      case TransferStatus.pending:
-        return '等待';
-      case TransferStatus.running:
-        // 传输中：有进度显示百分比，初始显示"传输中"。
-        return task.progress > 0
-            ? '${(task.progress * 100).toStringAsFixed(0)}%'
-            : '传输中';
-    }
-  }
-
-  Color _taskStatusColor(TransferTask task, ColorScheme scheme) {
-    switch (task.status) {
-      case TransferStatus.done:
-        return const Color(0xFF2E7D32);
-      case TransferStatus.failed:
-      case TransferStatus.cancelled:
-        return const Color(0xFFC62828);
-      case TransferStatus.pending:
-      case TransferStatus.running:
-        return scheme.onSurfaceVariant;
-    }
   }
 }

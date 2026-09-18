@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:toolbox/common/app_log.dart';
 import 'package:xterm/xterm.dart';
 
 import 'remote_models.dart';
@@ -248,6 +249,7 @@ class SshSessionsController extends Notifier<Map<String, SshSessionHandle>> {
       handle.status.value = SshSessionStatus.error;
       handle.error.value = '连接失败：$e';
       handle.terminal.write('连接失败：$e\r\n');
+      AppLog.e('ssh', '连接失败 ${connection.username}@${connection.hostLabel}', e);
     }
   }
 
@@ -255,7 +257,8 @@ class SshSessionsController extends Notifier<Map<String, SshSessionHandle>> {
   void close(String connectionId) {
     final handle = state[connectionId];
     if (handle == null) return;
-    handle.dispose();
+    // 释放涉及取消订阅等异步收尾，这里不阻塞调用方（由 handle 内部兜底）。
+    unawaited(handle.dispose());
     final next = {...state}..remove(connectionId);
     state = next;
   }

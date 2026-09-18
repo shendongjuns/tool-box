@@ -1,39 +1,301 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
 import 'package:toolbox/common/app_meta.dart';
-import 'package:toolbox/registry/tool.dart';
+import 'package:toolbox/common/single_instance.dart';
+import 'package:toolbox/registry/tool_category.dart';
 import 'package:toolbox/registry/toolbox_registry.dart';
 import 'package:toolbox/ui/shell/navigation_controller.dart';
-import 'package:toolbox/ui/theme/app_icons.dart';
-import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
-import 'package:toolbox/ui/widgets/mochi_widgets.dart';
-import 'top_nav_bar.dart';
+import 'package:toolbox/ui/shell/settings_dialog.dart';
+import 'package:toolbox/ui/theme/app_layout.dart';
+import 'package:toolbox/ui/theme/theme_controller.dart';
+import 'package:toolbox/ui/widgets/app_dialog.dart';
+import 'package:toolbox/ui/widgets/app_resize_handle.dart';
 
-/// 壳层布局：顶部导航栏 + 内容区。
-class ShellView extends ConsumerWidget {
+/// 壳层：左侧导航 + 内容区。
+///
+/// 无顶栏、无页签栏 —— 导航完全由 [FSidebar] 承担，页面切换靠
+/// [ToolPagesHost] 的 IndexedStack 保活（切走的页面 State 不销毁）。
+///
+/// 首帧后会把启动期收集到的问题（数据目录回退、多实例）弹一次告知用户
+/// —— 这类问题如果不提示，用户只会看到「保存了却不见」。
+class ShellView extends ConsumerStatefulWidget {
   const ShellView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
-      type: MaterialType.transparency,
-      child: Column(
+  ConsumerState<ShellView> createState() => _ShellViewState();
+}
+
+class _ShellViewState extends ConsumerState<ShellView> {
+  @override
+  void initState() {
+    super.initState();
+    if (StartupNotice.hasAny) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNotices());
+    }
+  }
+
+  Future<void> _showNotices() async {
+    if (!mounted) return;
+    final messages = StartupNotice.messages;
+    StartupNotice.clear();
+    await showAppDialog<void>(
+      context: context,
+      title: '启动提示',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TopNavBar(),
-          Expanded(
-            child: Container(
-              color: MochiCatPalette.of(context).background,
-              child: const ToolPagesHost(),
+          for (final message in messages) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(FLucideIcons.info, size: 16),
+                const SizedBox(width: AppLayout.gapSm),
+                Expanded(child: Text(message)),
+              ],
+            ),
+            if (message != messages.last) const SizedBox(height: AppLayout.gapMd),
+          ],
+        ],
+      ),
+      actions: [
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context),
+          child: const Text('知道了'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const FScaffold(sidebar: ToolSidebar(), childPad: false, child: ToolPagesHost());
+}
+
+/// 左侧导航：首页 + 有工具的分类（展开后是具体工具）。
+///
+/// 支持收缩：收缩后只保留图标（分类摊平成工具图标列表）；
+/// 顶部是展开/收起按钮，底部是「设置 / 主题切换」+ 右侧应用版本号。
+class ToolSidebar extends ConsumerStatefulWidget {
+  const ToolSidebar({super.key});
+
+  @override
+  ConsumerState<ToolSidebar> createState() => _ToolSidebarState();
+}
+
+class _ToolSidebarState extends ConsumerState<ToolSidebar> {
+  /// 展开态宽度在 `settings.json` 里的键。
+  static const String _widthKey = 'ui.sidebarWidth';
+
+  /// 收缩态固定宽度。
+  static const double collapsedWidth = 64;
+
+  /// 展开态可拖拽区间。
+  static const double minWidth = 180;
+  static const double maxWidth = 420;
+
+  /// ForUI 侧栏默认宽度，作为首次启动值。
+  static const double defaultWidth = 256;
+
+  double _width = defaultWidth;
+  bool _collapsed = false;
+  Timer? _saveDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _width = _clampWidth(
+      (ref.read(settingsStoreProvider).read()[_widthKey] as num?)?.toDouble() ??
+          defaultWidth,
+    );
+  }
+
+  @override
+  void dispose() {
+    _saveDebounce?.cancel();
+    super.dispose();
+  }
+
+  static double _clampWidth(double value) =>
+      value.clamp(minWidth, maxWidth).toDouble();
+
+  /// 拖拽结束后防抖写盘（拖拽过程每帧都会触发，不能每帧写盘）。
+  void _persist() {
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 400), () {
+      final store = ref.read(settingsStoreProvider);
+      store.write({...store.read(), _widthKey: _width});
+    });
+  }
+
+  void _onDrag(double dx) {
+    setState(() => _width = _clampWidth(_width + dx));
+    _persist();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nav = ref.watch(pageNavProvider);
+    final notifier = ref.read(pageNavProvider.notifier);
+    final tools = ref.watch(toolboxRegistryProvider).availableTools();
+
+    void toggle() => setState(() => _collapsed = !_collapsed);
+
+    if (_collapsed) {
+      return FSidebar(
+        style: FSidebarStyleDelta.delta(
+          constraints: const BoxConstraints.tightFor(width: collapsedWidth),
+        ),
+        footer: _SidebarFooter(collapsed: true, onToggleCollapsed: toggle),
+        children: [
+          for (final tool in tools)
+            FSidebarItem(
+              // 收缩态没有 label：FSidebarItem 内部会把 icon 放进一个
+              // `Expanded(child: Row(mainAxisAlignment: start))`，图标因此贴左，
+              // 与底部按钮（设置/主题/收起）不在同一列。
+              // 这里再包一层 Expanded + Center，让图标落在侧栏中轴线上。
+              icon: Expanded(child: Center(child: Icon(toolIcon(tool.id)))),
+              selected: nav.activeId == tool.id,
+              onPress: () => notifier.open(tool.id),
+            ),
+        ],
+      );
+    }
+
+    final categories = [
+      for (final c in ToolCategory.values)
+        if (tools.any((t) => t.category == c)) c,
+    ];
+
+    // 展开态：右侧挂一条 6px 拖拽条改宽度，宽度持久化到 settings.json。
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FSidebar(
+          style: FSidebarStyleDelta.delta(
+            constraints: BoxConstraints.tightFor(width: _width),
+          ),
+          footer: _SidebarFooter(collapsed: false, onToggleCollapsed: toggle),
+          children: [
+            for (final category in categories)
+              FSidebarItem(
+                icon: Icon(categoryIcon(category)),
+                label: Text(category.displayName),
+                initiallyExpanded: true,
+                children: [
+                  for (final tool in tools.where((t) => t.category == category))
+                    FSidebarItem(
+                      icon: Icon(toolIcon(tool.id)),
+                      label: Text(tool.name),
+                      selected: nav.activeId == tool.id,
+                      onPress: () => notifier.open(tool.id),
+                    ),
+                ],
+              ),
+          ],
+        ),
+        AppResizeHandle(onDrag: _onDrag, onDragEnd: _persist),
+      ],
+    );
+  }
+}
+
+/// 侧栏底部：设置 / 主题切换 / 收起按钮与版本号。
+class _SidebarFooter extends ConsumerWidget {
+  const _SidebarFooter({
+    required this.collapsed,
+    required this.onToggleCollapsed,
+  });
+
+  final bool collapsed;
+
+  /// 收起 / 展开左侧导航。
+  final VoidCallback onToggleCollapsed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeControllerProvider);
+    final (icon, label) = switch (mode) {
+      ThemeMode.system => (FLucideIcons.sunMoon, '主题：跟随系统'),
+      ThemeMode.light => (FLucideIcons.sun, '主题：浅色'),
+      ThemeMode.dark => (FLucideIcons.moon, '主题：深色'),
+    };
+
+    final settings = FButton(
+      mainAxisSize: MainAxisSize.min,
+      variant: FButtonVariant.ghost,
+      size: FButtonSizeVariant.sm,
+      semanticsTooltip: '设置',
+      onPress: () => showSettingsDialog(context),
+      child: const Icon(FLucideIcons.settings),
+    );
+    final themeToggle = FButton(
+      mainAxisSize: MainAxisSize.min,
+      variant: FButtonVariant.ghost,
+      size: FButtonSizeVariant.sm,
+      semanticsTooltip: label,
+      onPress: () => ref.read(themeControllerProvider.notifier).cycle(),
+      child: Icon(icon),
+    );
+    final collapseToggle = FButton(
+      mainAxisSize: MainAxisSize.min,
+      variant: FButtonVariant.ghost,
+      size: FButtonSizeVariant.sm,
+      semanticsTooltip: collapsed ? '展开导航' : '收起导航',
+      onPress: onToggleCollapsed,
+      child: Icon(
+        collapsed ? FLucideIcons.panelLeftOpen : FLucideIcons.panelLeftClose,
+      ),
+    );
+
+    // 收缩态：竖排（64px 不够横排），此时不显示版本号。
+    if (collapsed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppLayout.gapSm),
+        child: Column(
+          children: [
+            settings,
+            const SizedBox(height: AppLayout.gapXs),
+            themeToggle,
+            const SizedBox(height: AppLayout.gapXs),
+            collapseToggle,
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(AppLayout.gapSm),
+      child: Row(
+        children: [
+          settings,
+          const SizedBox(width: AppLayout.gapXs),
+          themeToggle,
+          const Spacer(),
+          Text(
+            'v$appVersion',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
             ),
           ),
+          const SizedBox(width: AppLayout.gapSm),
+          collapseToggle,
         ],
       ),
     );
   }
 }
 
-/// 页面会话宿主：缓存已打开的工具页面（State 保活），
-/// 用 IndexedStack 承载「首页 + 已打开页面」，切换只改显隐。
+/// 页面会话宿主：用 IndexedStack 承载已打开的页面。
+///
+/// 切换只改显隐、不换页面，因此各页面 State 全部保活
+/// （终端、表单、滚动位置都不会因为切走再切回而丢失）。
 class ToolPagesHost extends ConsumerStatefulWidget {
   const ToolPagesHost({super.key});
 
@@ -42,359 +304,65 @@ class ToolPagesHost extends ConsumerStatefulWidget {
 }
 
 class _ToolPagesHostState extends ConsumerState<ToolPagesHost> {
-  /// 已打开页面的 widget 缓存：id -> 页面（首次打开生成，关闭时移除）。
+  /// 已打开页面的 widget 缓存：id -> 页面（首次打开时生成）。
   final Map<String, Widget> _pages = {};
-
-  Tool? _toolById(String id) {
-    final registry = ref.read(toolboxRegistryProvider);
-    for (final tool in registry.availableTools()) {
-      if (tool.id == id) return tool;
-    }
-    return null;
-  }
 
   @override
   Widget build(BuildContext context) {
     final nav = ref.watch(pageNavProvider);
-
-    // 为新增页面生成缓存；已关闭的页面从缓存移除。
     final openIds = nav.openIds;
-    _pages.removeWhere((id, _) => !openIds.contains(id));
+
+    // 为新增页面生成缓存。
     for (final id in openIds) {
-      if (!_pages.containsKey(id)) {
-        final tool = _toolById(id);
-        if (tool != null) _pages[id] = tool.buildContent(context);
+      if (_pages.containsKey(id)) continue;
+      for (final tool in ref.read(toolboxRegistryProvider).availableTools()) {
+        if (tool.id == id) {
+          _pages[id] = tool.buildContent(context);
+          break;
+        }
       }
     }
 
     final children = <Widget>[
-      const HomePage(),
       for (final id in openIds)
         if (_pages.containsKey(id)) _pages[id]!,
     ];
-    final activeIndex = nav.isHome ? 0 : openIds.indexOf(nav.activeId!) + 1;
 
-    return IndexedStack(
-      index: activeIndex,
-      children: children,
-    );
-  }
-}
-
-/// 首页：糯米猫主题欢迎页，展示当前可用工具的快捷入口。
-class HomePage extends ConsumerWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tools = ref.watch(toolboxRegistryProvider).availableTools();
-    final p = MochiCatPalette.of(context);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 640;
-        final contentWidth = constraints.maxWidth > 980
-            ? 980.0
-            : constraints.maxWidth;
-        final cardWidth = compact
-            ? contentWidth - MochiCatSpacing.xl * 2
-            : (contentWidth - MochiCatSpacing.xl * 3) / 2;
-        return SingleChildScrollView(
-          padding: EdgeInsets.all(compact ? MochiCatSpacing.xl : 32),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 980),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _HomeHero(
-                    compact: compact,
-                    onStart: tools.isEmpty
-                        ? null
-                        : () => ref
-                            .read(pageNavProvider.notifier)
-                            .open(tools.first.id),
-                  ),
-                  const SizedBox(height: MochiCatSpacing.xxl),
-                  Row(
-                    children: [
-                      const Text(
-                        '常用工具',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: MochiCatSpacing.sm),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: MochiCatSpacing.sm,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: p.primarySoft,
-                          borderRadius: BorderRadius.circular(MochiCatRadius.sm),
-                        ),
-                        child: Text(
-                          '${tools.length} 个工具',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: p.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MochiCatSpacing.lg),
-                  Wrap(
-                    spacing: MochiCatSpacing.xl,
-                    runSpacing: MochiCatSpacing.xl,
-                    children: [
-                      for (final tool in tools)
-                        SizedBox(
-                          width: cardWidth,
-                          child: _ToolShortcut(
-                            tool: tool,
-                            onTap: () =>
-                                ref.read(pageNavProvider.notifier).open(tool.id),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: MochiCatSpacing.xxl),
-                  // 页脚便签
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: MochiCatSpacing.lg,
-                      vertical: MochiCatSpacing.md,
-                    ),
-                    decoration: BoxDecoration(
-                      color: p.surface,
-                      borderRadius: BorderRadius.circular(MochiCatRadius.md),
-                      border: Border.all(color: p.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(AppIcons.pets, color: p.primary, size: 17),
-                        const SizedBox(width: MochiCatSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            '愿你的每次操作都顺顺利利',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: p.textSecondary,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '$appName $appVersion',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: p.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// 顶部欢迎 Hero：淡紫到奶杏渐变 + 右侧猫咪吉祥物 + 主动作按钮。
-class _HomeHero extends StatelessWidget {
-  const _HomeHero({required this.compact, required this.onStart});
-
-  final bool compact;
-  final VoidCallback? onStart;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 174),
-      padding: EdgeInsets.all(compact ? MochiCatSpacing.xl : 28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: dark
-              ? [const Color(0xFF3A3350), const Color(0xFF44333C)]
-              : [const Color(0xFFEEE7FF), const Color(0xFFFFF0E9)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(MochiCatRadius.hero),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: compact ? -6 : 38,
-            top: compact ? 4 : -4,
-            child: Opacity(
-              opacity: compact ? 0.3 : 1,
-              child: const _CatMascot(),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.only(right: compact ? 0 : 190),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '喵，今天想先做点什么？',
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: MochiCatSpacing.sm),
-                Text(
-                  '常用开发工具整齐收好，专注完成每一次工作。',
-                  style: TextStyle(fontSize: 13, color: p.textSecondary),
-                ),
-                const SizedBox(height: MochiCatSpacing.lg),
-                MochiButton(
-                  label: '开始工作',
-                  icon: AppIcons.sparkles,
-                  type: MochiButtonType.primary,
-                  onPressed: onStart,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 猫咪吉祥物：白色圆形 + 猫脸，用于 Hero 右侧。
-class _CatMascot extends StatelessWidget {
-  const _CatMascot();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Container(
-      width: 132,
-      height: 132,
-      decoration: BoxDecoration(
-        color: p.surface,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: p.primary.withValues(alpha: .14),
-            blurRadius: 30,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Text('🐱', style: TextStyle(fontSize: 70)),
-      ),
-    );
-  }
-}
-
-class _ToolShortcut extends StatefulWidget {
-  const _ToolShortcut({required this.tool, required this.onTap});
-  final Tool tool;
-  final VoidCallback onTap;
-  @override
-  State<_ToolShortcut> createState() => _ToolShortcutState();
-}
-
-class _ToolShortcutState extends State<_ToolShortcut> {
-  bool _hovered = false;
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    final icon = switch (widget.tool.id) {
-      'repository' => AppIcons.repository,
-      'remote' => AppIcons.remote,
-      _ => AppIcons.fallback,
-    };
-    final iconBackground =
-        widget.tool.id == 'remote' ? p.mintSoft : p.primarySoft;
-    final iconColor = widget.tool.id == 'remote' ? p.mint : p.primary;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(MochiCatRadius.xl),
-          border: Border.all(
-            color: _hovered
-                ? p.primary.withValues(alpha: .45)
-                : p.border,
-          ),
-          boxShadow: _hovered ? const [MochiCatShadow.hover] : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(MochiCatRadius.xl),
-            child: Padding(
-              padding: const EdgeInsets.all(MochiCatSpacing.lg + 4),
-              child: Row(children: [
-                Container(
-                  width: 43,
-                  height: 43,
-                  decoration: BoxDecoration(
-                    color: iconBackground,
-                    borderRadius: BorderRadius.circular(MochiCatRadius.lg),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 21),
-                ),
-                const SizedBox(width: MochiCatSpacing.lg),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.tool.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        widget.tool.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: p.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  AppIcons.chevronRight,
-                  color: p.textSecondary,
-                  size: 20,
-                ),
-              ]),
-            ),
+    // 已无首页系统：没有任何已打开页面时给一个极轻的空状态提示，
+    // 避免「程序像没加载出来」。不是首页，只是一行灰字。
+    if (children.isEmpty) {
+      return Center(
+        child: Text(
+          '从左侧选择工具开始',
+          style: context.theme.typography.body.sm.copyWith(
+            color: context.theme.colors.mutedForeground.withValues(alpha: .8),
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    final index = openIds
+        .indexOf(nav.activeId ?? '')
+        .clamp(0, children.length - 1);
+
+    return IndexedStack(index: index, children: children);
   }
 }
+
+/// 分类图标。
+IconData categoryIcon(ToolCategory category) => switch (category) {
+  ToolCategory.work => FLucideIcons.briefcase,
+  ToolCategory.data => FLucideIcons.braces,
+  ToolCategory.database => FLucideIcons.database,
+  ToolCategory.text => FLucideIcons.type,
+  ToolCategory.encode => FLucideIcons.code,
+  ToolCategory.system => FLucideIcons.slidersHorizontal,
+  ToolCategory.other => FLucideIcons.shapes,
+};
+
+/// 工具图标。
+IconData toolIcon(String id) => switch (id) {
+  'repository' => FLucideIcons.network,
+  'remote' => FLucideIcons.server,
+  _ => FLucideIcons.puzzle,
+};

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.djshen.toolbox" "\0"
-            VALUE "FileDescription", "toolbox" "\0"
+            VALUE "CompanyName", "shendongjuns" "\0"
+            VALUE "FileDescription", "ToolBox" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "toolbox" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.djshen.toolbox. All rights reserved." "\0"
-            VALUE "OriginalFilename", "toolbox.exe" "\0"
-            VALUE "ProductName", "toolbox" "\0"
+            VALUE "InternalName", "ToolBox" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 shendongjuns. All rights reserved." "\0"
+            VALUE "OriginalFilename", "ToolBox.exe" "\0"
+            VALUE "ProductName", "ToolBox" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

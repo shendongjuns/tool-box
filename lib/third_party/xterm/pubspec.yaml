@@ -4,8 +4,10 @@ version: 4.0.0
 homepage: https://github.com/TerminalStudio/xterm.dart
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
-  flutter: ">=3.19.0"
+  # 必须与主包（toolbox）的 SDK 约束一致：本包物理位于主包 lib/ 内，
+  # 语言版本不一致会触发编译错误。
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
 
 dependencies:
   convert: ^3.0.0

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dartssh2/dartssh2.dart';
+import 'package:toolbox/common/app_log.dart';
 import 'package:toolbox/features/monitor/monitor_models.dart';
 
 /// 通过 SSH 采集远程系统指标。
@@ -208,6 +209,7 @@ class MonitorCollector {
       return sb.toString();
     } catch (e) {
       lastError = '采集命令执行失败：$e';
+      AppLog.w('monitor', '采集失败：$e');
       // 超时/失败时关闭 exec channel：否则服务器假死时每秒新建一条
       // 且永不关闭，最终被服务器拒绝会话。
       _closeQuietly(session);

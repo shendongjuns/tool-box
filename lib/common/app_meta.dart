@@ -8,4 +8,4 @@ library;
 const String appName = 'ToolBox';
 
 /// 应用版本号。
-const String appVersion = '1.4.0';
+const String appVersion = '1.5.0';

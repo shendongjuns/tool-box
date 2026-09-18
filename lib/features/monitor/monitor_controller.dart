@@ -62,6 +62,9 @@ class MonitorController extends ChangeNotifier {
   MonitorCollector? _collector;
   MonitorState _state = MonitorState.empty;
 
+  /// 是否因会话切到后台而被暂停（暂停期间忽略自动启动，恢复后继续）。
+  bool _paused = false;
+
   /// 采集互斥锁：上次采集未完成时跳过本次，避免并发采集
   /// 在同一 SSH 连接上叠出大量 channel 导致服务器拒绝/超时。
   bool _collecting = false;
@@ -75,8 +78,27 @@ class MonitorController extends ChangeNotifier {
 
   /// 用已建立的 SSH 客户端开始监控（复用会话连接，不重复建连）。
   void startWithClient(SSHClient client) {
-    if (_state.running) return;
+    if (_state.running || _paused) return;
     _collector = MonitorCollector(client);
+    _update(_state.copyWith(running: true, error: null));
+    _collect();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _collect());
+  }
+
+  /// 暂停采集（会话切到后台）：停掉定时器、保留历史与采集器，
+  /// 避免后台会话每秒经 SSH 采集并打断前台会话。
+  void pause() {
+    _paused = true;
+    _timer?.cancel();
+    _timer = null;
+    if (_state.running) _update(_state.copyWith(running: false));
+  }
+
+  /// 恢复采集（会话回到前台）：保留的历史继续追加，图表无缝接续。
+  void resumeWithClient(SSHClient client) {
+    if (!_paused) return;
+    _paused = false;
+    _collector ??= MonitorCollector(client);
     _update(_state.copyWith(running: true, error: null));
     _collect();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _collect());
@@ -96,6 +118,7 @@ class MonitorController extends ChangeNotifier {
 
   /// 停止监控：只停止定时采集，**不断开会话连接**（连接由会话持有）。
   void stop() {
+    _paused = false;
     _timer?.cancel();
     _timer = null;
     _collector = null;
@@ -107,6 +130,7 @@ class MonitorController extends ChangeNotifier {
   /// 供监听者自身 dispose 期间调用（此时 notifyListeners 会对正在销毁的
   /// 元素触发 "widget tree was locked" 断言）。
   void stopSilently() {
+    _paused = false;
     _timer?.cancel();
     _timer = null;
     _collector = null;

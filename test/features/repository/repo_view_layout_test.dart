@@ -3,11 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:toolbox/features/repository/repo_controller.dart';
 import 'package:toolbox/features/repository/repo_models.dart';
 import 'package:toolbox/features/repository/repo_store.dart';
 import 'package:toolbox/features/repository/repo_view.dart';
-import 'package:toolbox/ui/theme/mochi_cat_theme.dart';
+import 'package:toolbox/ui/theme/forui_theme.dart';
 
 class _FakeRepoController extends RepoController {
   _FakeRepoController(this._groups);
@@ -57,9 +58,11 @@ void main() {
           repoStoreProvider.overrideWithValue(RepoStore(dir: tempDir.path)),
           repoGroupsProvider.overrideWith(() => _FakeRepoController([makeGroup()])),
         ],
-        child: MaterialApp(
-          theme: MochiCatTheme.light(),
+        child: FTheme(
+          data: AppTheme.light,
+          child: MaterialApp(
           home: const Scaffold(body: RepositoryView()),
+        ),
         ),
       ),
     );

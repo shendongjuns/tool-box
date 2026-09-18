@@ -3,13 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:toolbox/features/remote/remote_controller.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
 import 'package:toolbox/features/remote/remote_store.dart';
 import 'package:toolbox/features/remote/remote_view.dart';
 import 'package:toolbox/features/remote/ssh_session.dart';
-import 'package:toolbox/ui/theme/mochi_cat_theme.dart';
+import 'package:toolbox/ui/theme/forui_theme.dart';
 import 'package:xterm/xterm.dart';
+
+import '../../support/app_finders.dart';
 
 /// 预置假会话（未连接，仅用于渲染布局）。
 class _FakeSessionsController extends SshSessionsController {
@@ -36,9 +39,11 @@ void main() {
         remoteStoreProvider.overrideWithValue(RemoteStore(dir: tempDir.path)),
         sshSessionsProvider.overrideWith(() => _FakeSessionsController(sessions)),
       ],
-      child: MaterialApp(
-        theme: MochiCatTheme.light(),
+      child: FTheme(
+        data: AppTheme.light,
+        child: MaterialApp(
         home: const Scaffold(body: RemoteView()),
+      ),
       ),
     );
   }
@@ -73,8 +78,8 @@ void main() {
 
     expect(find.text('终端'), findsOneWidget);
     expect(find.text('文件'), findsOneWidget);
-    expect(find.byTooltip('隐藏终端'), findsOneWidget);
-    expect(find.byTooltip('隐藏文件'), findsOneWidget);
+    expect(byTip('隐藏终端'), findsOneWidget);
+    expect(byTip('隐藏文件'), findsOneWidget);
 
     expect(errors, isEmpty,
         reason: errors.map((e) => e.exception.toString()).join('\n'));
@@ -88,18 +93,19 @@ void main() {
     await tester.pumpWidget(buildApp({'c1': makeHandle('c1', '测试服务器')}));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // 隐藏终端
-    await tester.tap(find.byTooltip('隐藏终端'));
+    // 隐藏终端（提示统一由 ForUI 提供，byTip 同时覆盖 AppTooltip 与
+    // FButton.semanticsTooltip 两种落地形态，详见 test/support/app_finders.dart）
+    await tester.tap(byTip('隐藏终端'));
     await tester.pump(const Duration(milliseconds: 150));
     // 终端彻底隐藏：无残留条、无"显示终端"独立竖条，文件面板仍在
-    expect(find.byTooltip('隐藏终端'), findsNothing);
+    expect(byTip('隐藏终端'), findsNothing);
     expect(find.text('显示终端'), findsOneWidget); // 监控标题栏的恢复按钮
-    expect(find.byTooltip('隐藏文件'), findsOneWidget);
+    expect(byTip('隐藏文件'), findsOneWidget);
 
     // 点击监控栏"显示终端"恢复
     await tester.tap(find.text('显示终端'));
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.byTooltip('隐藏终端'), findsOneWidget);
+    expect(byTip('隐藏终端'), findsOneWidget);
     expect(find.text('显示终端'), findsNothing);
   });
 
@@ -111,15 +117,15 @@ void main() {
     await tester.pumpWidget(buildApp({'c1': makeHandle('c1', '测试服务器')}));
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.byTooltip('隐藏文件'));
+    await tester.tap(byTip('隐藏文件'));
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.byTooltip('隐藏文件'), findsNothing);
+    expect(byTip('隐藏文件'), findsNothing);
     expect(find.text('显示文件'), findsOneWidget); // 监控栏恢复按钮
-    expect(find.byTooltip('隐藏终端'), findsOneWidget);
+    expect(byTip('隐藏终端'), findsOneWidget);
 
     await tester.tap(find.text('显示文件'));
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.byTooltip('隐藏文件'), findsOneWidget);
+    expect(byTip('隐藏文件'), findsOneWidget);
     expect(find.text('显示文件'), findsNothing);
   });
 }

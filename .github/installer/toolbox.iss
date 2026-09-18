@@ -11,14 +11,19 @@
   #define MyAppSourceDir "..\..\build\windows\x64\runner\Release"
 #endif
 #define MyAppPublisher "shendongjuns"
-#define MyAppExeName "toolbox.exe"
+#define MyAppExeName "ToolBox.exe"
 
 [Setup]
 AppId={{8F2B1C44-7A3E-4D9E-9B4A-5C1D0E2F3A4B}
 AppName={#MyAppName}
 AppVersion={#AppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\{#MyAppName}
+; 安装到「当前用户目录」而不是 Program Files：
+; 应用把数据写在 exe 同级的 user/ 下，而 Program Files 对普通用户不可写
+; （本应用是 x64 进程，不享受 UAC 虚拟化重定向），会导致保存静默失败。
+; 装到用户目录后免管理员、数据可写，也保持「数据在程序旁边」的设计。
+DefaultDirName={localappdata}\Programs\{#MyAppName}
+PrivilegesRequired=lowest
 DefaultGroupName={#MyAppName}
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}

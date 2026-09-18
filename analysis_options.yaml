@@ -14,6 +14,8 @@ analyzer:
   exclude:
     - lib/third_party/dartssh2/**
     - lib/third_party/xterm/**
+    - build/**
+    - windows/**
 
 linter:
   # The lint rules applied to this project can be customized in the

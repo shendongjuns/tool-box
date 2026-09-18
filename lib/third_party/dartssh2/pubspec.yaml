@@ -12,7 +12,10 @@ topics:
   - security
 
 environment:
-  sdk: ^3.12.2
+  # 必须与主包（toolbox）的 SDK 约束一致：本包物理位于主包 lib/ 内，
+  # 语言版本不一致会触发 "The language version override has to be the same in
+  # the library and its part(s)" 编译错误。
+  sdk: ^3.13.0
 
 dependencies:
   asn1lib: ^1.5.8

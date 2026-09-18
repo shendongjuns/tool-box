@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:io';
-
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
 import 'package:toolbox/features/remote/remote_controller.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
 import 'package:toolbox/features/repository/pull_controller.dart';
@@ -13,10 +14,16 @@ import 'package:toolbox/features/repository/repo_deploy.dart';
 import 'package:toolbox/features/repository/repo_detection.dart';
 import 'package:toolbox/features/repository/repo_models.dart';
 import 'package:toolbox/features/repository/svn_client.dart';
-import 'package:toolbox/ui/theme/app_icons.dart';
-import 'package:toolbox/ui/theme/mochi_cat_tokens.dart';
-import 'package:toolbox/ui/widgets/mochi_widgets.dart';
+import 'package:toolbox/ui/theme/app_layout.dart';
+import 'package:toolbox/ui/widgets/app_dialog.dart';
+import 'package:toolbox/ui/widgets/app_empty_hint.dart';
+import 'package:toolbox/ui/widgets/app_form_row.dart';
+import 'package:toolbox/ui/widgets/app_resize_handle.dart';
+import 'package:toolbox/ui/widgets/app_toast.dart';
+import 'package:toolbox/ui/widgets/app_tooltip.dart';
+import 'package:toolbox/ui/widgets/tile_icon_button.dart';
 
+part 'repo_panels.dart';
 /// 代码仓库管理页：左侧分组列表，右侧仓库列表。
 class RepositoryView extends ConsumerStatefulWidget {
   const RepositoryView({super.key});
@@ -55,69 +62,59 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 820;
-          final padding = compact ? MochiCatSpacing.lg : 28.0;
+          final padding = compact ? AppLayout.gapLg : 28.0;
           return Padding(
             padding: EdgeInsets.fromLTRB(padding, 20, padding, padding),
-            child: Column(
+            child: Flex(
+              direction: compact ? Axis.vertical : Axis.horizontal,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _RepositoryHeader(),
-                const SizedBox(height: MochiCatSpacing.lg),
-                Expanded(
-                  child: Flex(
-                    direction: compact ? Axis.vertical : Axis.horizontal,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _GroupPanel(
-                        width: compact ? double.infinity : _groupPanelWidth,
-                        groups: groups,
-                        selectedId: selected?.id,
-                        compact: compact,
-                        onSelect: (id) => setState(() => _selectedGroupId = id),
-                        onAdd: _showGroupDialog,
-                        onEdit: (group) => _showGroupDialog(group: group),
-                        onDelete: _deleteGroup,
-                      ),
-                      if (!compact) ...[
-                        _ResizeHandle(
-                          onDrag: (dx) => setState(
-                            () => _groupPanelWidth =
-                                (_groupPanelWidth + dx).clamp(190.0, 420.0),
-                          ),
-                        ),
-                        const SizedBox(width: MochiCatSpacing.sm),
-                      ],
-                      Expanded(
-                        child: selected == null
-                            ? const _EmptyHint(
-                                icon: AppIcons.folderOpen,
-                                text: '还没有仓库分组',
-                                detail: '创建一个分组，把相关项目集中管理',
-                              )
-                            : _RepoPanel(
-                                group: selected,
-                                pullStatuses: pullStatuses,
-                                remotePulling: _remotePulling,
-                                onAdd: () => _showRepoDialog(selected),
-                                onEdit: (repo) =>
-                                    _showRepoDialog(selected, repo: repo),
-                                onDelete: (repo) => _deleteRepo(selected, repo),
-                                onImport: () => _showImportDialog(selected),
-                                onEditVersion: () =>
-                                    _showVersionDialog(selected),
-                                onPickPath: () => _pickLocalPath(selected),
-                                onPull: () => _pullGroup(selected),
-                                onSetupRemote: () => _setupRemote(selected),
-                                onDeploy: () => _deployGroup(selected),
-                                onLocalPullRepo: (repo) =>
-                                    _pullOneLocal(selected, repo),
-                                onRemotePullRepo: (repo) =>
-                                    _pullOneRemote(selected, repo),
-                                onCopy: _copyRepo,
-                              ),
-                      ),
-                    ],
+                _GroupPanel(
+                  width: compact ? double.infinity : _groupPanelWidth,
+                  groups: groups,
+                  selectedId: selected?.id,
+                  compact: compact,
+                  onSelect: (id) => setState(() => _selectedGroupId = id),
+                  onAdd: _showGroupDialog,
+                  onEdit: (group) => _showGroupDialog(group: group),
+                  onDelete: _deleteGroup,
+                ),
+                if (!compact) ...[
+                  AppResizeHandle(
+                    onDrag: (dx) => setState(
+                      () => _groupPanelWidth =
+                          (_groupPanelWidth + dx).clamp(190.0, 420.0),
+                    ),
                   ),
+                  const SizedBox(width: AppLayout.gapSm),
+                ],
+                Expanded(
+                  child: selected == null
+                      ? const AppEmptyHint(
+                          icon: FLucideIcons.folderOpen,
+                          text: '还没有仓库分组',
+                          detail: '创建一个分组，把相关项目集中管理',
+                        )
+                      : _RepoPanel(
+                          group: selected,
+                          pullStatuses: pullStatuses,
+                          remotePulling: _remotePulling,
+                          onAdd: () => _showRepoDialog(selected),
+                          onEdit: (repo) =>
+                              _showRepoDialog(selected, repo: repo),
+                          onDelete: (repo) => _deleteRepo(selected, repo),
+                          onImport: () => _showImportDialog(selected),
+                          onEditVersion: () => _showVersionDialog(selected),
+                          onPickPath: () => _pickLocalPath(selected),
+                          onPull: () => _pullGroup(selected),
+                          onSetupRemote: () => _setupRemote(selected),
+                          onDeploy: () => _deployGroup(selected),
+                          onLocalPullRepo: (repo) =>
+                              _pullOneLocal(selected, repo),
+                          onRemotePullRepo: (repo) =>
+                              _pullOneRemote(selected, repo),
+                          onCopy: _copyRepo,
+                        ),
                 ),
               ],
             ),
@@ -130,12 +127,7 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
   Future<void> _copyRepo(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已复制：$text'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    showAppToast(context, '已复制：$text');
   }
 
   Future<void> _pickLocalPath(RepoGroup group) async {
@@ -221,7 +213,7 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
         : (group.remotes.isNotEmpty ? group.remotes.keys.first : null);
     final binding = connId == null ? null : group.remotes[connId];
     if (connId == null || binding == null) {
-      _setupRemote(group);
+      unawaited(_setupRemote(group));
       return;
     }
     if (repo.type != RepoType.svn) {
@@ -317,71 +309,94 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
       text: initBinding?.svnPassword ?? '',
     );
 
-    final saved = await showMochiDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       title: '远程拉取设置：${connName()}',
       subtitle: '选择 SSH 连接并填写远程目录与 SVN 账号。',
-      emoji: '🛰️',
-      width: 460,
+      width: dialogWidthMedium,
       content: StatefulBuilder(
         builder: (context, setDialogState) => Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            MochiSelectField<String>(
-              value: connectionId,
-              items: [
-                for (final c in connections) (c.id, '${c.name} (${c.hostLabel})'),
-              ],
+            AppFormRow(
               label: 'SSH 连接',
-              onChanged: (v) {
-                if (v == null) return;
-                // 切换连接时加载该连接已保存的绑定。
-                final b = group.remotes[v];
-                setDialogState(() {
-                  connectionId = v;
-                  pathController.text = b?.remotePath ?? '';
-                  svnUserController.text = b?.svnUsername ?? '';
-                  svnPassController.text = b?.svnPassword ?? '';
-                });
-              },
-            ),
-            const SizedBox(height: MochiCatSpacing.md),
-            TextField(
-              controller: pathController,
-              decoration: const InputDecoration(
-                labelText: '远程目录（如 /home/user/code）',
+              description: '远程拉取时使用哪台服务器执行 svn 命令',
+              child: FSelect<String>(
+                control: FSelectControl<String>.lifted(
+                  value: connectionId,
+                  onChange: (v) {
+                    if (v == null) return;
+                    // 切换连接时加载该连接已保存的绑定。
+                    final b = group.remotes[v];
+                    setDialogState(() {
+                      connectionId = v;
+                      pathController.text = b?.remotePath ?? '';
+                      svnUserController.text = b?.svnUsername ?? '';
+                      svnPassController.text = b?.svnPassword ?? '';
+                    });
+                  },
+                ),
+                items: {
+                  for (final c in connections) '${c.name} (${c.hostLabel})': c.id,
+                },
               ),
             ),
-            const SizedBox(height: MochiCatSpacing.md),
-            const Divider(height: 1),
-            const SizedBox(height: MochiCatSpacing.md),
-            TextField(
-              controller: svnUserController,
-              decoration: const InputDecoration(
-                labelText: 'SVN 账号（可选，远程拉取共用）',
+            const SizedBox(height: AppLayout.gapMd),
+            AppFormRow(
+              label: '远程目录',
+              description: '服务器上存放代码的目录，例如 /home/user/code',
+              child: FTextField(
+                control: FTextFieldControl.managed(
+                  controller: pathController,
+                ),
               ),
             ),
-            const SizedBox(height: MochiCatSpacing.md),
-            TextField(
-              controller: svnPassController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'SVN 密码（可选）'),
+            const SizedBox(height: AppLayout.gapMd),
+            const FDivider(),
+            const SizedBox(height: AppLayout.gapMd),
+            AppFormRow(
+              label: 'SVN 账号',
+              description: '可选。SVN 检出/更新的账号，本地与远程拉取共用',
+              child: FTextField(
+                control: FTextFieldControl.managed(
+                  controller: svnUserController,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppLayout.gapMd),
+            AppFormRow(
+              label: 'SVN 密码',
+              description: '可选。SVN 账号对应的密码，仅保存在本机',
+              child: FTextField(
+                control: FTextFieldControl.managed(
+                  controller: svnPassController,
+                ),
+                obscureText: true,
+              ),
             ),
           ],
         ),
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '保存',
-          icon: AppIcons.save,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context, true),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.save, size: 16),
+              SizedBox(width: 6),
+              Text('保存'),
+            ],
+          ),
         ),
       ],
     );
@@ -439,7 +454,7 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
         : (group.remotes.isNotEmpty ? group.remotes.keys.first : null);
     final binding = connId == null ? null : group.remotes[connId];
     if (connId == null || binding == null) {
-      _setupRemote(group);
+      unawaited(_setupRemote(group));
       return;
     }
     if (group.repos.isEmpty) {
@@ -553,38 +568,55 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
   Future<(String, String)?> _promptSvnCredentials() async {
     final userController = TextEditingController();
     final passController = TextEditingController();
-    final saved = await showMochiDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       title: 'SVN 仓库需要认证',
-      emoji: '🔐',
-      width: 400,
+      width: dialogWidthSmall,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: userController,
-            decoration: const InputDecoration(labelText: '用户名'),
+          AppFormRow(
+            label: '用户名',
+            description: 'SVN 认证用户名',
+            child: FTextField(
+              control: FTextFieldControl.managed(
+                controller: userController,
+              ),
+            ),
           ),
-          const SizedBox(height: MochiCatSpacing.md),
-          TextField(
-            controller: passController,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: '密码'),
+          const SizedBox(height: AppLayout.gapMd),
+          AppFormRow(
+            label: '密码',
+            description: 'SVN 认证密码，仅保存在本机',
+            child: FTextField(
+              control: FTextFieldControl.managed(
+                controller: passController,
+              ),
+              obscureText: true,
+            ),
           ),
         ],
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '确认',
-          icon: AppIcons.check,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context, true),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.check, size: 16),
+              SizedBox(width: 6),
+              Text('确认'),
+            ],
+          ),
         ),
       ],
     );
@@ -598,40 +630,69 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
   Future<void> _showGroupDialog({RepoGroup? group}) async {
     final nameController = TextEditingController(text: group?.name ?? '');
     final versionController = TextEditingController(text: group?.version ?? '');
-    final saved = await showMochiDialog<bool>(
+    // 校验前移：分组名必填，不合法时「保存」置灰。
+    final form = DialogFormState();
+    void revalidate() => form.check(
+      () => nameController.text.trim().isEmpty ? '请填写分组名' : null,
+    );
+
+    final saved = await showAppDialog<bool>(
       context: context,
       title: group == null ? '新建分组' : '编辑分组',
-      emoji: '📁',
-      width: 420,
+      width: dialogWidthSmall,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: nameController,
-            autofocus: group == null,
-            decoration: const InputDecoration(labelText: '分组名'),
-          ),
-          const SizedBox(height: MochiCatSpacing.md),
-          TextField(
-            controller: versionController,
-            decoration: const InputDecoration(
-              labelText: '版本号（可选，如 2.8）',
+          AppFormRow(
+            label: '分组名',
+            description: '用于归集相关仓库，例如按项目或版本命名',
+            child: FTextField(
+              control: FTextFieldControl.managed(
+                controller: nameController,
+                onChange: (_) => revalidate(),
+              ),
+              autofocus: group == null,
             ),
           ),
+          const SizedBox(height: AppLayout.gapMd),
+          AppFormRow(
+            label: '版本号',
+            description: '可选。用于替换仓库地址里的 {version} 占位符，如 2.8',
+            child: FTextField(
+              control: FTextFieldControl.managed(
+                controller: versionController,
+              ),
+            ),
+          ),
+          DialogFormHint(state: form),
         ],
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '保存',
-          icon: AppIcons.save,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        ListenableBuilder(
+          listenable: form,
+          builder: (context, _) => FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.primary,
+            // 校验未通过时置灰：不再「保存后弹窗关闭、刚填的内容全丢」。
+            onPress: form.canSubmit
+                ? () => Navigator.pop(context, true)
+                : null,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FLucideIcons.save, size: 16),
+                SizedBox(width: 6),
+                Text('保存'),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -656,27 +717,39 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
 
   Future<void> _showVersionDialog(RepoGroup group) async {
     final controller = TextEditingController(text: group.version ?? '');
-    final saved = await showMochiDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       title: '设置版本号',
-      emoji: '🏷️',
-      width: 400,
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: '版本号（如 2.8）'),
+      width: dialogWidthSmall,
+      content: AppFormRow(
+        label: '版本号',
+        description: '用于替换仓库地址里的 {version} 占位符，如 2.8',
+        child: FTextField(
+          control: FTextFieldControl.managed(
+            controller: controller,
+          ),
+          autofocus: true,
+        ),
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '保存',
-          icon: AppIcons.save,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.primary,
+          onPress: () => Navigator.pop(context, true),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(FLucideIcons.save, size: 16),
+              SizedBox(width: 6),
+              Text('保存'),
+            ],
+          ),
         ),
       ],
     );
@@ -693,11 +766,16 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
     final urlController = TextEditingController(text: repo?.url ?? '');
     var type = repo?.type ?? RepoType.svn;
 
-    final saved = await showMochiDialog<bool>(
+    // 校验前移：仓库地址必填。
+    final form = DialogFormState();
+    void revalidate() => form.check(
+      () => urlController.text.trim().isEmpty ? '请填写仓库地址' : null,
+    );
+
+    final saved = await showAppDialog<bool>(
       context: context,
       title: repo == null ? '新增仓库' : '编辑仓库',
-      emoji: '🗂️',
-      width: 480,
+      width: dialogWidthMedium,
       content: StatefulBuilder(
         builder: (context, setDialogState) {
           final resolved = resolveUrl(urlController.text.trim(), group.version);
@@ -705,50 +783,79 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: '仓库名'),
-              ),
-              const SizedBox(height: MochiCatSpacing.md),
-              SegmentedButton<RepoType>(
-                segments: [
-                  for (final t in RepoType.values)
-                    ButtonSegment(value: t, label: Text(t.label)),
-                ],
-                selected: {type},
-                onSelectionChanged: (s) => setDialogState(() => type = s.first),
-              ),
-              const SizedBox(height: MochiCatSpacing.md),
-              TextField(
-                controller: urlController,
-                decoration: const InputDecoration(
-                  labelText: '地址（SVN 可用 {version} 占位版本）',
+              AppFormRow(
+                label: '仓库名',
+                description: '列表中显示的仓库名称，留空时自动从地址推导',
+                child: FTextField(
+                  control: FTextFieldControl.managed(
+                    controller: nameController,
+                  ),
                 ),
-                onChanged: (_) => setDialogState(() {}),
               ),
-              const SizedBox(height: MochiCatSpacing.md),
+              const SizedBox(height: AppLayout.gapMd),
+              AppFormRow(
+                label: '仓库类型',
+                description: 'Git / SVN 仓库',
+                child: FSelect<RepoType>(
+                  control: FSelectControl<RepoType>.lifted(
+                    value: type,
+                    onChange: (v) =>
+                        setDialogState(() => type = v ?? RepoType.git),
+                  ),
+                  items: {for (final t in RepoType.values) t.label: t},
+                ),
+              ),
+              const SizedBox(height: AppLayout.gapMd),
+              AppFormRow(
+                label: '仓库地址',
+                description: 'Git/SVN 仓库地址；可用 {version} 占位分组版本号',
+                child: FTextField(
+                  control: FTextFieldControl.managed(
+                    controller: urlController,
+                    onChange: (_) {
+                      setDialogState(() {});
+                      revalidate();
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppLayout.gapMd),
               Text(
                 '预览：$resolved',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: MochiCatPalette.of(context).textSecondary,
+                style: context.theme.typography.body.sm.copyWith(
+                  color: context.theme.colors.mutedForeground,
                 ),
               ),
+              DialogFormHint(state: form),
             ],
           );
         },
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '保存',
-          icon: AppIcons.save,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        ListenableBuilder(
+          listenable: form,
+          builder: (context, _) => FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.primary,
+            // 校验未通过时置灰：不再「保存后弹窗关闭、刚填的内容全丢」。
+            onPress: form.canSubmit
+                ? () => Navigator.pop(context, true)
+                : null,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FLucideIcons.save, size: 16),
+                SizedBox(width: 6),
+                Text('保存'),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -782,15 +889,25 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
     final textController = TextEditingController();
     final versionController = TextEditingController();
     var versionTouched = false;
-    final groups = ref.read(repoGroupsProvider);
-    var targetGroupId = group.id;
+    // 校验前移：至少粘一个能被识别出来的地址，否则「导入」置灰。
+    final form = DialogFormState();
+    void revalidate() => form.check(
+      () => parseBatch(
+        textController.text,
+        version: versionController.text.trim().isEmpty
+            ? null
+            : versionController.text.trim(),
+      ).isEmpty
+          ? '请粘贴至少一个仓库地址'
+          : null,
+    );
 
-    final saved = await showMochiDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       title: '批量导入仓库',
-      subtitle: '粘贴地址，小猫帮你识别并排重。',
-      emoji: '📥',
-      width: 540,
+      // 入口就在某个分组里，因此不再让用户选分组（导入目标即当前分组）。
+      subtitle: '粘贴地址，自动识别并排重后导入「${group.name}」。',
+      width: dialogWidthLarge,
       content: StatefulBuilder(
         builder: (context, setDialogState) {
           final version = versionController.text.trim();
@@ -802,51 +919,45 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              MochiSelectField<String>(
-                value: targetGroupId,
-                items: [
-                  for (final g in groups) (g.id, g.name),
-                ],
-                label: '导入到分组',
-                onChanged: (v) =>
-                    setDialogState(() => targetGroupId = v ?? group.id),
-              ),
-              const SizedBox(height: MochiCatSpacing.md),
-              TextField(
-                controller: textController,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  labelText: '粘贴地址（每行一个）',
-                  alignLabelWithHint: true,
+              AppFormRow(
+                label: '粘贴地址',
+                description: '每行一个仓库地址，会自动识别 Git/SVN 并去重',
+                child: FTextField(
+                  control: FTextFieldControl.managed(
+                    controller: textController,
+                    onChange: (_) {
+                      revalidate();
+                      setDialogState(() {
+                        if (!versionTouched) {
+                          final detected = detectVersion(
+                            _nonEmptyLines(textController.text),
+                          );
+                          versionController.text = detected ?? '';
+                        }
+                      });
+                    },
+                  ),
+                  maxLines: 6,
                 ),
-                onChanged: (_) => setDialogState(() {
-                  if (!versionTouched) {
-                    final detected = detectVersion(
-                      _nonEmptyLines(textController.text),
-                    );
-                    versionController.text = detected ?? '';
-                  }
-                }),
               ),
-              const SizedBox(height: MochiCatSpacing.md),
-              TextField(
-                controller: versionController,
-                decoration: const InputDecoration(
-                  labelText: '版本号（自动识别，可修改）',
+              const SizedBox(height: AppLayout.gapMd),
+              AppFormRow(
+                label: '版本号',
+                description: '从粘贴的地址中自动识别，可手动修改',
+                child: FTextField(
+                  control: FTextFieldControl.managed(
+                    controller: versionController,
+                    onChange: (_) => setDialogState(() => versionTouched = true),
+                  ),
                 ),
-                onChanged: (_) =>
-                    setDialogState(() => versionTouched = true),
               ),
-              const SizedBox(height: MochiCatSpacing.md),
+              const SizedBox(height: AppLayout.gapMd),
               if (preview.isNotEmpty) ...[
                 Text(
                   '识别到 ${preview.length} 个仓库：',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: MochiCatPalette.of(context).textSecondary,
-                  ),
+                  style: context.theme.typography.body.xs.copyWith(color: context.theme.colors.mutedForeground),
                 ),
-                const SizedBox(height: MochiCatSpacing.sm),
+                const SizedBox(height: AppLayout.gapSm),
                 SizedBox(
                   height: 130,
                   child: ListView.builder(
@@ -855,27 +966,42 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Text(
                         '${preview[i].type.label}  ${preview[i].name}',
-                        style: const TextStyle(fontSize: 13),
+                        style: context.theme.typography.body.sm,
                       ),
                     ),
                   ),
                 ),
+                DialogFormHint(state: form),
               ],
             ],
           );
         },
       ),
       actions: [
-        MochiButton(
-          label: '取消',
-          type: MochiButtonType.ghost,
-          onPressed: () => Navigator.pop(context, false),
+        FButton(
+          mainAxisSize: MainAxisSize.min,
+          variant: FButtonVariant.ghost,
+          onPress: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        MochiButton(
-          label: '导入',
-          icon: AppIcons.importExport,
-          type: MochiButtonType.primary,
-          onPressed: () => Navigator.pop(context, true),
+        ListenableBuilder(
+          listenable: form,
+          builder: (context, _) => FButton(
+            mainAxisSize: MainAxisSize.min,
+            variant: FButtonVariant.primary,
+            // 校验未通过时置灰：不再「保存后弹窗关闭、刚填的内容全丢」。
+            onPress: form.canSubmit
+                ? () => Navigator.pop(context, true)
+                : null,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FLucideIcons.arrowUpDown, size: 16),
+                SizedBox(width: 6),
+                Text('导入'),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -887,7 +1013,7 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
       if (repos.isNotEmpty) {
         final added = ref
             .read(repoGroupsProvider.notifier)
-            .importRepos(targetGroupId, repos, version: v);
+            .importRepos(group.id, repos, version: v);
         final skipped = repos.length - added;
         _showMessage(
           skipped > 0 ? '已导入 $added 个仓库，跳过 $skipped 个重复' : '已导入 $added 个仓库',
@@ -920,9 +1046,7 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showAppToast(context, message);
   }
 
   List<String> _nonEmptyLines(String text) => text
@@ -930,908 +1054,4 @@ class _RepositoryViewState extends ConsumerState<RepositoryView> {
       .map((e) => e.trim())
       .where((e) => e.isNotEmpty)
       .toList();
-}
-
-/// 面板右侧拖拽分隔条：拖动调整左侧分组栏宽度。
-class _ResizeHandle extends StatelessWidget {
-  const _ResizeHandle({required this.onDrag});
-
-  final ValueChanged<double> onDrag;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
-        child: const SizedBox(width: 6),
-      ),
-    );
-  }
-}
-
-class _RepositoryHeader extends StatelessWidget {
-  const _RepositoryHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Row(
-      children: [
-        // 猫咪徽标（页面标题图形）
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: p.creamSoft,
-            borderRadius: BorderRadius.circular(MochiCatRadius.lg),
-          ),
-          alignment: Alignment.center,
-          child: const Text('😺', style: TextStyle(fontSize: 23)),
-        ),
-        const SizedBox(width: MochiCatSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '代码仓库管理',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '把项目收进小抽屉，清清爽爽地管理每一次拉取。',
-                style: TextStyle(fontSize: 12, color: p.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GroupPanel extends StatelessWidget {
-  const _GroupPanel({
-    required this.width,
-    required this.groups,
-    required this.selectedId,
-    required this.compact,
-    required this.onSelect,
-    required this.onAdd,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  /// 面板宽度（紧凑模式传 double.infinity）。
-  final double width;
-  final List<RepoGroup> groups;
-  final String? selectedId;
-  final bool compact;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onAdd;
-  final ValueChanged<RepoGroup> onEdit;
-  final ValueChanged<RepoGroup> onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Container(
-      width: width,
-      height: compact ? 200 : null,
-      padding: const EdgeInsets.all(MochiCatSpacing.lg),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(MochiCatRadius.xl),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Text(
-                '我的分组',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: '新增分组',
-                icon: const Icon(AppIcons.add, size: 18),
-                onPressed: onAdd,
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.sm),
-          Expanded(
-            child: groups.isEmpty
-                ? _EmptyHint(
-                    icon: AppIcons.folderOpen,
-                    text: '暂无分组',
-                    detail: '点击右上角新增',
-                    compact: true,
-                    onAction: onAdd,
-                    actionLabel: '新建分组',
-                  )
-                : ListView.separated(
-                    scrollDirection: compact ? Axis.horizontal : Axis.vertical,
-                    itemCount: groups.length,
-                    separatorBuilder: (_, _) => SizedBox(
-                      width: compact ? MochiCatSpacing.sm : 0,
-                      height: compact ? 0 : MochiCatSpacing.sm,
-                    ),
-                    itemBuilder: (_, i) {
-                      final group = groups[i];
-                      return _GroupTile(
-                        group: group,
-                        selected: group.id == selectedId,
-                        compact: compact,
-                        onTap: () => onSelect(group.id),
-                        onEdit: () => onEdit(group),
-                        onDelete: () => onDelete(group),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GroupTile extends StatelessWidget {
-  const _GroupTile({
-    required this.group,
-    required this.selected,
-    required this.compact,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final RepoGroup group;
-  final bool selected;
-  final bool compact;
-  final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return SizedBox(
-      width: compact ? 190 : null,
-      child: Material(
-        color: selected ? p.primarySoft : p.surfaceMuted,
-        borderRadius: BorderRadius.circular(MochiCatRadius.md),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(MochiCatRadius.md),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: MochiCatSpacing.md,
-              vertical: MochiCatSpacing.sm + 2,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  margin: const EdgeInsets.only(top: 4),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? p.primary
-                        : p.textSecondary.withValues(alpha: .3),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: MochiCatSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        group.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                          color: selected ? p.primary : p.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${group.version == null ? '未设置版本' : 'V${group.version}'}  ·  ${group.repos.length} 个仓库',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: p.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  tooltip: '分组操作',
-                  padding: EdgeInsets.zero,
-                  iconSize: 17,
-                  onSelected: (value) {
-                    if (value == 'edit') onEdit();
-                    if (value == 'delete') onDelete();
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('编辑分组')),
-                    PopupMenuItem(value: 'delete', child: Text('删除分组')),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RepoPanel extends StatefulWidget {
-  const _RepoPanel({
-    required this.group,
-    required this.pullStatuses,
-    required this.remotePulling,
-    required this.onAdd,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onImport,
-    required this.onEditVersion,
-    required this.onPickPath,
-    required this.onPull,
-    required this.onCopy,
-    required this.onSetupRemote,
-    required this.onDeploy,
-    required this.onLocalPullRepo,
-    required this.onRemotePullRepo,
-  });
-
-  final RepoGroup group;
-  final Map<String, PullStatus> pullStatuses;
-  final bool remotePulling;
-  final VoidCallback onAdd;
-  final ValueChanged<Repo> onEdit;
-  final ValueChanged<Repo> onDelete;
-  final VoidCallback onImport;
-  final VoidCallback onEditVersion;
-  final VoidCallback onPickPath;
-  final VoidCallback onPull;
-  final ValueChanged<String> onCopy;
-  final VoidCallback onSetupRemote;
-  final VoidCallback onDeploy;
-  final ValueChanged<Repo> onLocalPullRepo;
-  final ValueChanged<Repo> onRemotePullRepo;
-
-  @override
-  State<_RepoPanel> createState() => _RepoPanelState();
-}
-
-class _RepoPanelState extends State<_RepoPanel> {
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void didUpdateWidget(covariant _RepoPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.group.id != widget.group.id) {
-      _searchController.clear();
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    final keyword = _searchController.text.trim().toLowerCase();
-    final filtered = widget.group.repos.where((repo) {
-      final resolved = resolveUrl(repo.url, widget.group.version);
-      final matchesKeyword =
-          keyword.isEmpty ||
-          repo.name.toLowerCase().contains(keyword) ||
-          repo.url.toLowerCase().contains(keyword) ||
-          resolved.toLowerCase().contains(keyword);
-      return matchesKeyword;
-    }).toList();
-    final pulling = widget.pullStatuses.values.contains(PullStatus.pulling);
-
-    return Container(
-      padding: const EdgeInsets.all(MochiCatSpacing.xl),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(MochiCatRadius.xl),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 分组信息：名称 + 版本标签
-          Row(
-            children: [
-              Flexible(
-                child: Text(
-                  widget.group.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: MochiCatSpacing.sm),
-              _VersionBadge(
-                version: widget.group.version,
-                onEdit: widget.onEditVersion,
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.lg),
-          // 路径绑定
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _LocalPathCard(
-                  localPath: widget.group.localPath,
-                  onPick: widget.onPickPath,
-                ),
-              ),
-              const SizedBox(width: MochiCatSpacing.md),
-              Expanded(
-                child: _RemoteCard(group: widget.group, onEdit: widget.onSetupRemote),
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.lg),
-          // 操作按钮：本地拉取 / 远程拉取 / 新增仓库 / 批量导入
-          // 强制同一行（Row + 等宽均分），颜色统一协调。
-          Row(
-            children: [
-              Expanded(
-                child: MochiButton(
-                  label: '本地拉取',
-                  icon: AppIcons.download,
-                  expanded: true,
-                  loading: pulling,
-                  onPressed: pulling ? null : widget.onPull,
-                ),
-              ),
-              const SizedBox(width: MochiCatSpacing.sm),
-              Expanded(
-                child: MochiButton(
-                  label: widget.remotePulling ? '远程拉取中…' : '远程拉取',
-                  icon: AppIcons.cloudDownload,
-                  expanded: true,
-                  loading: widget.remotePulling,
-                  onPressed: widget.remotePulling
-                      ? null
-                      : widget.group.remotes.isEmpty
-                      ? widget.onSetupRemote
-                      : widget.onDeploy,
-                ),
-              ),
-              const SizedBox(width: MochiCatSpacing.sm),
-              Expanded(
-                child: MochiButton(
-                  label: '新增仓库',
-                  icon: AppIcons.add,
-                  expanded: true,
-                  onPressed: widget.onAdd,
-                ),
-              ),
-              const SizedBox(width: MochiCatSpacing.sm),
-              Expanded(
-                child: MochiButton(
-                  label: '批量导入',
-                  icon: AppIcons.playlistAdd,
-                  expanded: true,
-                  onPressed: widget.onImport,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.xl),
-          // 仓库清单标题 + 搜索
-          Row(
-            children: [
-              const Text(
-                '仓库清单',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: MochiCatSpacing.sm),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: MochiCatSpacing.sm,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: p.primarySoft,
-                  borderRadius: BorderRadius.circular(MochiCatRadius.sm),
-                ),
-                child: Text(
-                  '${filtered.length}/${widget.group.repos.length}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: p.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: 220,
-                child: TextField(
-                  controller: _searchController,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: '搜索仓库名称或地址',
-                    prefixIcon: const Icon(AppIcons.search, size: 17),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: MochiCatSpacing.md,
-                      vertical: 8,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(MochiCatRadius.sm),
-                    ),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MochiCatSpacing.md),
-          Expanded(
-            child: filtered.isEmpty
-                ? _EmptyHint(
-                    icon: widget.group.repos.isEmpty
-                        ? AppIcons.transferBox
-                        : AppIcons.noSearchResult,
-                    text: widget.group.repos.isEmpty ? '这个分组还没有仓库' : '没有找到匹配仓库',
-                    detail: widget.group.repos.isEmpty
-                        ? '可以手动新增，或批量导入地址'
-                        : '试试其他关键词或筛选条件',
-                    onAction: widget.group.repos.isEmpty ? widget.onAdd : null,
-                    actionLabel: widget.group.repos.isEmpty ? '新增仓库' : null,
-                  )
-                : ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: MochiCatSpacing.sm),
-                    itemBuilder: (_, index) {
-                      final repo = filtered[index];
-                      return _RepoTile(
-                        repo: repo,
-                        resolvedUrl: resolveUrl(repo.url, widget.group.version),
-                        status: widget.pullStatuses[repo.id],
-                        onCopy: widget.onCopy,
-                        onEdit: () => widget.onEdit(repo),
-                        onDelete: () => widget.onDelete(repo),
-                        onLocalPull: () => widget.onLocalPullRepo(repo),
-                        onRemotePull: () => widget.onRemotePullRepo(repo),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VersionBadge extends StatelessWidget {
-  const _VersionBadge({required this.version, required this.onEdit});
-
-  final String? version;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return InkWell(
-      onTap: onEdit,
-      borderRadius: BorderRadius.circular(MochiCatRadius.xs),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: MochiCatSpacing.sm,
-          vertical: MochiCatSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: scheme.primary.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(MochiCatRadius.xs),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              version == null ? '未设置版本' : '版本 V$version',
-              style: textTheme.bodySmall?.copyWith(color: scheme.primary),
-            ),
-            const SizedBox(width: MochiCatSpacing.xs),
-            Icon(AppIcons.edit, size: 14, color: scheme.primary),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LocalPathCard extends StatelessWidget {
-  const _LocalPathCard({required this.localPath, required this.onPick});
-
-  final String? localPath;
-  final VoidCallback onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final configured = localPath != null && localPath!.isNotEmpty;
-    return _BindingCard(
-      icon: AppIcons.folderOpen,
-      title: '本地目录',
-      value: configured ? localPath! : '尚未绑定本地目录',
-      color: scheme.primary,
-      onTap: onPick,
-    );
-  }
-}
-
-class _RemoteCard extends ConsumerWidget {
-  const _RemoteCard({required this.group, required this.onEdit});
-
-  final RepoGroup group;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final connections = ref.watch(sshConnectionsProvider);
-    final activeId =
-        group.activeRemoteConnId != null &&
-            group.remotes.containsKey(group.activeRemoteConnId)
-        ? group.activeRemoteConnId
-        : (group.remotes.isNotEmpty ? group.remotes.keys.first : null);
-    String value = '点击设置远程拉取目标';
-    if (activeId != null) {
-      var connectionName = activeId;
-      for (final connection in connections) {
-        if (connection.id == activeId) {
-          connectionName = connection.name;
-          break;
-        }
-      }
-      value = '$connectionName  ·  ${group.remotes[activeId]!.remotePath}';
-    }
-    return _BindingCard(
-      icon: AppIcons.cloudDownload,
-      title: '远程目标',
-      value: value,
-      color: const Color(0xFF2D9B7D),
-      onTap: onEdit,
-    );
-  }
-}
-
-class _BindingCard extends StatelessWidget {
-  const _BindingCard({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Material(
-      color: p.surfaceMuted,
-      borderRadius: BorderRadius.circular(MochiCatRadius.md),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(MochiCatRadius.md),
-        child: Container(
-          height: 68,
-          padding: const EdgeInsets.symmetric(
-            horizontal: MochiCatSpacing.md,
-            vertical: MochiCatSpacing.sm,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(MochiCatRadius.md),
-            border: Border.all(color: p.border),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 19),
-              const SizedBox(width: MochiCatSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(fontSize: 11, color: p.textSecondary),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(AppIcons.chevronRight, size: 17, color: p.textSecondary),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RepoTile extends StatelessWidget {
-  const _RepoTile({
-    required this.repo,
-    required this.resolvedUrl,
-    required this.onCopy,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onLocalPull,
-    required this.onRemotePull,
-    this.status,
-  });
-
-  final Repo repo;
-  final String resolvedUrl;
-  final ValueChanged<String> onCopy;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onLocalPull;
-  final VoidCallback onRemotePull;
-  final PullStatus? status;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: MochiCatSpacing.md),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: p.border.withValues(alpha: .8)),
-        ),
-      ),
-      child: Row(
-        children: [
-          _TypeBadge(type: repo.type),
-          const SizedBox(width: MochiCatSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  repo.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Tooltip(
-                  message: resolvedUrl,
-                  child: Text(
-                    resolvedUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: p.textSecondary),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (status != null) ...[
-            const SizedBox(width: MochiCatSpacing.md),
-            _PullStatusLabel(status: status!),
-          ],
-          const SizedBox(width: MochiCatSpacing.sm),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '本地拉取 / 更新',
-            icon: const Icon(AppIcons.computer, size: 17),
-            onPressed: onLocalPull,
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '远程拉取 / 更新',
-            icon: const Icon(AppIcons.cloudDownload, size: 17),
-            onPressed: onRemotePull,
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '复制地址',
-            icon: const Icon(AppIcons.copy, size: 17),
-            onPressed: () => onCopy(resolvedUrl),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '编辑仓库',
-            icon: const Icon(AppIcons.edit, size: 17),
-            onPressed: onEdit,
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '删除仓库',
-            icon: const Icon(AppIcons.delete, size: 17),
-            onPressed: onDelete,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PullStatusLabel extends StatelessWidget {
-  const _PullStatusLabel({required this.status});
-
-  final PullStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (color, text) = switch (status) {
-      PullStatus.pending => (MochiCatColors.textSecondary, '待处理'),
-      PullStatus.success => (MochiCatColors.mint, '已完成'),
-      PullStatus.skipped => (MochiCatColors.textSecondary, '已跳过'),
-      PullStatus.failed => (MochiCatColors.danger, '失败'),
-      PullStatus.pulling => (MochiCatColors.orange, '拉取中…'),
-    };
-    if (status == PullStatus.pulling) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 13,
-            height: 13,
-            child: CircularProgressIndicator(strokeWidth: 2, color: color),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
-          ),
-        ],
-      );
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
-        ),
-      ],
-    );
-  }
-}
-
-class _TypeBadge extends StatelessWidget {
-  const _TypeBadge({required this.type});
-
-  final RepoType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final (bg, fg) = type == RepoType.git
-        ? (const Color(0xFFFFF0EA), const Color(0xFFE1774D))
-        : (const Color(0xFFEDF4FF), const Color(0xFF5282D8));
-    return Container(
-      width: 46,
-      padding: const EdgeInsets.symmetric(
-        horizontal: MochiCatSpacing.sm,
-        vertical: MochiCatSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(MochiCatRadius.xs),
-      ),
-      child: Text(
-        type.label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyHint extends StatelessWidget {
-  const _EmptyHint({
-    required this.icon,
-    required this.text,
-    required this.detail,
-    this.onAction,
-    this.actionLabel,
-    this.compact = false,
-  });
-
-  final IconData icon;
-  final String text;
-  final String detail;
-  final VoidCallback? onAction;
-  final String? actionLabel;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = MochiCatPalette.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(MochiCatSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: compact ? 26 : 40,
-              color: p.primary.withValues(alpha: .55),
-            ),
-            const SizedBox(height: MochiCatSpacing.md),
-            Text(
-              text,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: MochiCatSpacing.xs),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: p.textSecondary),
-            ),
-            if (onAction != null) ...[
-              const SizedBox(height: MochiCatSpacing.md),
-              MochiButton(
-                label: actionLabel ?? '开始',
-                type: MochiButtonType.primary,
-                onPressed: onAction,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }

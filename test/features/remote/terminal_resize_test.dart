@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:toolbox/features/remote/remote_models.dart';
 import 'package:toolbox/features/remote/ssh_session.dart';
-import 'package:toolbox/ui/theme/mochi_cat_theme.dart';
+import 'package:toolbox/ui/theme/forui_theme.dart';
 import 'package:xterm/xterm.dart';
 
 /// 验证终端面板在窗口尺寸变化时无溢出。
@@ -21,8 +22,9 @@ void main() {
     };
     addTearDown(() => FlutterError.onError = old);
 
-    Widget build(double height) => MaterialApp(
-          theme: MochiCatTheme.light(),
+    Widget build(double height) => FTheme(
+      data: AppTheme.light,
+      child: MaterialApp(
           home: Scaffold(
             body: Center(
               child: SizedBox(
@@ -32,7 +34,8 @@ void main() {
               ),
             ),
           ),
-        );
+        ),
+    );
 
     // 初始 300px，缩小到 150，再放大到 350。
     await tester.pumpWidget(build(300));

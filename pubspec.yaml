@@ -1,77 +1,42 @@
 name: toolbox
-description: "A modern desktop toolbox with Mochi Cat themed UI, built with Flutter."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+description: "ToolBox — a modern Windows desktop toolbox with a ForUI-based interface, built with Flutter."
+publish_to: 'none'
 
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
-version: 1.4.0+1
+# 版本号三段式 + 构建号。CI 发版时用 `--build-name`（取 git tag）覆盖 exe 内嵌版本。
+version: 1.5.0+1
 
 environment:
-  sdk: ^3.12.2
+  # forui 0.26.x 要求 Dart >=3.13.0 / Flutter >=3.47.0，此处声明真实下限。
+  sdk: ^3.13.0
 
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  window_manager: ^0.5.2
-  flutter_riverpod: ^3.4.2
-  file_picker: ^12.0.0
+  window_manager: ^0.5.2      # 窗口初始化 / 几何记忆 / 关窗拦截
+  flutter_riverpod: ^3.4.2    # 状态管理（设置、页面导航、监控）
+  file_picker: ^12.0.0        # 私钥选择、备份导出/导入的文件对话框
+  forui: ^0.26.0              # 全部界面组件与主题
   dartssh2:
-    path: lib/third_party/dartssh2
+    path: lib/third_party/dartssh2   # SSH/SFTP（vendor 后做过传输优化）
   xterm:
-    path: lib/third_party/xterm
+    path: lib/third_party/xterm      # 终端模拟（vendor 后做过性能调整）
+  tray_manager: ^0.5.3        # 托盘常驻
+  archive: ^3.6.1             # 数据备份的 zip 打包/解包
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
-
-# The following section is specific to Flutter packages.
 flutter:
-
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
-
-  # An image asset can refer to one or more resolution-specific "variants", see
-  # https://flutter.dev/to/resolution-aware-images
-
-  # For details regarding adding assets from package dependencies, see
-  # https://flutter.dev/to/asset-from-package
+  # 系统托盘图标（托盘常驻用）。
+  # tray_manager 在 Windows 下按 `<exe>/data/flutter_assets/<资源键>` 解析路径，
+  # 所以图标必须打成资源；内容与 windows/runner/resources/app_icon.ico 一致。
+  assets:
+    - assets/tray_icon.ico
 
   # 字体统一使用 Windows 系统字体 Microsoft YaHei UI（微软雅黑），
   # 无需打包字体资产，故此处不声明 fonts 段。

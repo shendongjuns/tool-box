@@ -3,11 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:toolbox/ui/shell/navigation_controller.dart';
 
 void main() {
-  test('初始为首页且无打开页面', () {
+  test('初始没有打开任何页面（activeId 为空）', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final nav = container.read(pageNavProvider);
-    expect(nav.isHome, isTrue);
     expect(nav.openIds, isEmpty);
     expect(nav.activeId, isNull);
   });
@@ -38,20 +37,6 @@ void main() {
 
     notifier.activate('x');
     expect(container.read(pageNavProvider).activeId, 'a');
-  });
-
-  test('goHome 回首页并保活已打开页面', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final notifier = container.read(pageNavProvider.notifier);
-
-    notifier.open('a');
-    notifier.open('b');
-    notifier.goHome();
-
-    final nav = container.read(pageNavProvider);
-    expect(nav.isHome, isTrue);
-    expect(nav.openIds, ['a', 'b']);
   });
 
   test('close 关闭非当前页不影响激活页', () {
@@ -88,7 +73,7 @@ void main() {
     expect(container.read(pageNavProvider).activeId, 'a');
   });
 
-  test('close 关闭最后一页回首页', () {
+  test('close 关闭最后一页后回到空状态', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(pageNavProvider.notifier);
@@ -97,7 +82,7 @@ void main() {
     notifier.close('a');
 
     final nav = container.read(pageNavProvider);
-    expect(nav.isHome, isTrue);
+    expect(nav.activeId, isNull);
     expect(nav.openIds, isEmpty);
   });
 }
