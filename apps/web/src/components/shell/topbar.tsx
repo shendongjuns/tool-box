@@ -90,11 +90,15 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
             {user?.displayName ?? user?.username}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => void navigate({ to: "/settings" })}>
+          <DropdownMenuItem
+            onSelect={() => void navigate({ to: "/settings", search: { tab: "account" } })}
+          >
             <User className="h-4 w-4" />
             账户与安全
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void navigate({ to: "/settings" })}>
+          <DropdownMenuItem
+            onSelect={() => void navigate({ to: "/settings", search: { tab: "general" } })}
+          >
             <Settings className="h-4 w-4" />
             设置
           </DropdownMenuItem>

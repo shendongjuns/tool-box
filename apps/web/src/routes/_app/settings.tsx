@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Sun } from "lucide-react";
@@ -21,7 +22,13 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+const tabSchema = z.enum(["general", "appearance", "account", "about"]).catch("general");
+
 export const Route = createFileRoute("/_app/settings")({
+  // 支持 /settings?tab=appearance 直达，也便于截图与文档引用
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: tabSchema.parse(search.tab),
+  }),
   component: SettingsPage,
 });
 
@@ -35,6 +42,9 @@ const accents: { id: Accent; label: string; color: string }[] = [
 ];
 
 function SettingsPage() {
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6">
       <header>
@@ -42,7 +52,12 @@ function SettingsPage() {
         <p className="mt-1 text-sm text-muted-foreground">外观、数据源、账户与安全</p>
       </header>
 
-      <Tabs defaultValue="general">
+      <Tabs
+        value={tab}
+        onValueChange={(value) =>
+          void navigate({ to: "/settings", search: { tab: value as "general" } })
+        }
+      >
         <TabsList>
           <TabsTrigger value="general">通用</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
