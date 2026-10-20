@@ -1,0 +1,21 @@
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	# 安全响应头（Helmet 已覆盖大部分，这里补齐 TLS 层）
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy toolbox:3000 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

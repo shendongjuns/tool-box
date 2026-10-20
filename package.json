@@ -1,0 +1,33 @@
+{
+  "name": "toolbox",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @toolbox/server --filter @toolbox/web dev",
+    "dev:server": "pnpm --filter @toolbox/server dev",
+    "dev:web": "pnpm --filter @toolbox/web dev",
+    "build": "pnpm --filter @toolbox/contracts build --if-present && pnpm --filter @toolbox/data build --if-present && pnpm --filter @toolbox/web build && pnpm --filter @toolbox/server build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm --filter @toolbox/server test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @toolbox/data db:generate",
+    "desktop:dev": "pnpm --filter @toolbox/desktop dev",
+    "desktop:build": "pnpm --filter @toolbox/desktop build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^16.4.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0"
+  }
+}

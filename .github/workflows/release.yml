@@ -2,64 +2,71 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ["v*"]
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
-  build-windows:
+  server-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+  desktop:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: pnpm/action-setup@v4
         with:
-          channel: stable
+          version: 11.28.5
 
-      - name: Install dependencies
-        run: flutter pub get
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
 
-      - name: Analyze
-        run: flutter analyze
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Test
-        run: flutter test
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
 
-      - name: Build Windows
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        run: pnpm --filter @toolbox/web build
+
+      - name: Build desktop
         env:
-          APP_VERSION: ${{ github.ref_name }}  # 例如 v1.2.0
-        run: |
-          $ver = $env:APP_VERSION.TrimStart('v')
-          # Runner.rc 内嵌模板版本 1.0.0，显式传 --build-name 使 exe 文件版本与 tag 一致。
-          flutter build windows --release --build-name $ver --build-number 1
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm --filter @toolbox/desktop build
 
-      - name: Compress portable zip
-        shell: bash
-        run: |
-          cd build/windows/x64/runner/Release
-          # 用 * 而非 . ：7z 对 . 参数会生成带 ./ 前缀的条目（解压后出现 . 目录）
-          7z a ../../../../../ToolBox-portable.zip *
-
-      # wangyucode/setup-innosetup action 已不可用（repository not found），
-      # 改用 windows-latest 自带 chocolatey 安装 Inno Setup 6。
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-
-      - name: Build installer
-        env:
-          APP_VERSION: ${{ github.ref_name }}  # 例如 v1.2.0
-        run: |
-          $ver = $env:APP_VERSION.TrimStart('v')
-          $env:APP_VERSION = $ver
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$ver .github/installer/toolbox.iss
-
-      - name: Release
+      - name: Upload installers
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ToolBox-Setup-*.exe
-            ToolBox-portable.zip
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.sig

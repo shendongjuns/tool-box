@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ToolBox 2.0 · 实施计划与原型</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #16181d;
+    --muted: #5f6673;
+    --card: #f7f8fa;
+    --border: #e3e6eb;
+    --primary: #5b5bd6;
+    --primary-soft: #eeeffc;
+    --code-bg: #f4f5f8;
+    --ok: #148f5b;
+    --warn: #b7791f;
+    --danger: #c0392b;
+  }
+  html[data-theme="dark"] {
+    --bg: #0f1115;
+    --fg: #e8eaee;
+    --muted: #9aa1ad;
+    --card: #171a20;
+    --border: #262b34;
+    --primary: #8b8bf5;
+    --primary-soft: #1d2033;
+    --code-bg: #14171d;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.7 "Inter", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .layout { display: grid; grid-template-columns: 248px minmax(0,1fr); min-height: 100vh; }
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); padding: 22px 16px 40px; background: var(--card);
+  }
+  nav .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  nav .brand .logo {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; font-size: 13px; font-weight: 800;
+  }
+  nav .ver { color: var(--muted); font-size: 12px; margin-bottom: 18px; padding-left: 35px; }
+  nav ol { list-style: none; margin: 0; padding: 0; counter-reset: sec; }
+  nav ol li { counter-increment: sec; }
+  nav ol li a {
+    display: flex; gap: 8px; padding: 6px 9px; border-radius: 7px; color: var(--muted);
+    font-size: 13.5px; text-decoration: none;
+  }
+  nav ol li a::before { content: counter(sec); color: var(--muted); opacity: .6; font-variant-numeric: tabular-nums; }
+  nav ol li a:hover { background: var(--primary-soft); color: var(--fg); text-decoration: none; }
+  .toolbar { display: flex; gap: 6px; margin-top: 18px; }
+  .toolbar button {
+    flex: 1; font: inherit; font-size: 12px; cursor: pointer; padding: 6px 8px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+  }
+  .toolbar button:hover { color: var(--fg); border-color: var(--primary); }
+  main { padding: 44px 56px 96px; max-width: 980px; }
+  h1 { font-size: 31px; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 10px; }
+  .lede { color: var(--muted); font-size: 16px; margin: 0 0 26px; }
+  h2 {
+    font-size: 22px; letter-spacing: -.01em; margin: 52px 0 14px; padding-top: 18px;
+    border-top: 1px solid var(--border); scroll-margin-top: 20px;
+  }
+  h3 { font-size: 16.5px; margin: 28px 0 8px; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 5px 0; }
+  code {
+    font: 13px/1.5 "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    background: var(--code-bg); padding: 1.5px 5px; border-radius: 5px; border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; font-size: 12.8px; line-height: 1.65;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: none; }
+  tbody tr:hover { background: var(--card); }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px;
+    border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+  }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .pill.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 14px; margin: 16px 0; }
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--card); }
+  .card h3 { margin-top: 0; }
+  .shot { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 16px 0 26px; background: var(--card); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot figcaption { padding: 9px 14px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--border); }
+  .callout { border-left: 3px solid var(--primary); background: var(--primary-soft); border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 16px 0; }
+  .callout.warn { border-color: var(--warn); }
+  .kbd { font-size: 11.5px; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--bg); }
+  .toc-note { font-size: 12px; color: var(--muted); }
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    main { padding: 26px 20px 60px; }
+    h1 { font-size: 25px; }
+  }
+  @media print {
+    nav, .toolbar { display: none; }
+    .layout { grid-template-columns: 1fr; }
+    main { padding: 0; max-width: none; }
+    h2 { page-break-after: avoid; }
+    .shot { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <div class="brand"><span class="logo">T</span> ToolBox 2.0</div>
+  <div class="ver">实施计划 · 2026-10-20</div>
+  <ol>
+    <li><a href="#overview">目标与验收</a></li>
+    <li><a href="#teardown">拆除范围</a></li>
+    <li><a href="#stack">技术选型</a></li>
+    <li><a href="#datasource">本地 / 云端双数据源</a></li>
+    <li><a href="#repo">仓库结构</a></li>
+    <li><a href="#data">数据模型</a></li>
+    <li><a href="#auth">认证与会话</a></li>
+    <li><a href="#desktop">桌面端实现</a></li>
+    <li><a href="#deploy">部署与 CI</a></li>
+    <li><a href="#screens">界面原型</a></li>
+    <li><a href="#milestones">里程碑</a></li>
+    <li><a href="#test">测试</a></li>
+    <li><a href="#risk">风险与决定</a></li>
+    <li><a href="#status">实施状态</a></li>
+  </ol>
+  <div class="toolbar">
+    <button type="button" id="themeBtn">切换深浅色</button>
+    <button type="button" onclick="window.print()">打印 / PDF</button>
+  </div>
+  <p class="toc-note" style="margin-top:16px">单文件离线可用，无外部依赖。</p>
+</nav>
+
+<main>
+<h1>ToolBox 2.0 大版本重构 · 实施计划</h1>
+<p class="lede">
+  从 Flutter 桌面应用重写为 <strong>React 网页端 + Tauri 2 桌面端</strong>，云端 SQLite 作为共享数据源；
+  桌面端另有独立的本地数据源，<strong>两套数据完全隔离、互不覆盖</strong>，默认使用本地。
+</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3>产品形态</h3>
+    <p style="margin:0;color:var(--muted);font-size:14px">网页端（浏览器访问）+ 桌面端（Windows 安装包，约 6–10MB）。同一份 React 代码，两种外壳。</p>
+  </div>
+  <div class="card">
+    <h3>账号体系</h3>
+    <p style="margin:0;color:var(--muted);font-size:14px">单用户；首次部署后引导注册；会话 30 天、滑动续期；每个数据源各自一套账号。</p>
+  </div>
+  <div class="card">
+    <h3>数据</h3>
+    <p style="margin:0;color:var(--muted);font-size:14px">SQLite。云端在服务器，本地在 <code>%APPDATA%</code>；切换数据源只改「读写哪一套」。</p>
+  </div>
+</div>
+
+<h2 id="overview">1 · 目标与验收</h2>
+<table>
+  <thead><tr><th style="width:44px">#</th><th>验收标准</th><th style="width:90px">状态</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>pnpm install &amp;&amp; pnpm dev</code> 同时起服务端与网页端，登录后进入壳层</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>2</td><td>空库首次访问进入注册页，注册成功后不再出现注册入口</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>3</td><td>会话 30 天、活跃自动续期；关掉浏览器 30 天内重开仍在线</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>4</td><td>桌面端默认本地数据源，断网可完整使用；设置里可切到云端</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>5</td><td>两套数据互不读写、互不覆盖；切回后原数据原样还在</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>6</td><td>1.x 残留为 0：Dart/Flutter/ForUI/vendored 依赖全部移除</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>7</td><td>交付本计划文档 + 可点击原型</td><td><span class="pill ok">已交付</span></td></tr>
+    <tr><td>8</td><td><code>docker compose up -d</code> 一条命令完成云端部署</td><td><span class="pill ok">已交付</span></td></tr>
+  </tbody>
+</table>
+
+<h2 id="teardown">2 · 拆除范围</h2>
+<p>2.0 不与 1.5 兼容：旧实现全部移除，1.x 历史保留在 <code>v1.5.0</code> tag，可随时回看。</p>
+<pre><code>删除  lib/ (223 个 Dart 文件)  test/  windows/  assets/  build/  .dart_tool/
+删除  pubspec.yaml  pubspec.lock  analysis_options.yaml  .metadata
+删除  .flutter-plugins-dependencies  .github/installer/  .github/workflows/release.yml
+重写  .gitignore  README.md
+保留  LICENSE  .git 历史  GitHub 仓库名</code></pre>
+<div class="callout">
+  <strong>没有数据迁移。</strong>1.x 的 <code>user/*.json</code> 与 2.0 的 SQLite 结构无关，直接丢弃；如需保留旧数据，请在升级前自行备份旧目录。
+</div>
+
+<h2 id="stack">3 · 技术选型</h2>
+<h3>UI 框架：shadcn/ui + Tailwind CSS v4</h3>
+<table>
+  <thead><tr><th>候选</th><th>漂亮</th><th>生态</th><th>可定制</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td><strong>shadcn/ui（Radix）</strong></td><td>★★★★★</td><td>★★★★☆</td><td>★★★★★（源码在仓库）</td><td><span class="pill ok">采用</span></td></tr>
+    <tr><td>Mantine v8</td><td>★★★★</td><td>★★★★★</td><td>★★★</td><td>备选</td></tr>
+    <tr><td>Ant Design v5</td><td>★★★</td><td>★★★★★</td><td>★★</td><td>不采用（视觉偏重）</td></tr>
+    <tr><td>HeroUI</td><td>★★★★</td><td>★★★</td><td>★★★★</td><td>不采用（长期稳定性）</td></tr>
+  </tbody>
+</table>
+<p>理由：组件源码落在仓库里，主题用 OKLCH 语义色，能做出一眼记住的视觉；底层 Radix 保证键盘、焦点与弹层行为正确；与 TanStack、sonner、lucide 天然组合。</p>
+
+<h3>桌面外壳：Tauri 2</h3>
+<table>
+  <thead><tr><th>维度</th><th>Tauri 2（采用）</th><th>Electron 44</th></tr></thead>
+  <tbody>
+    <tr><td>安装包</td><td><strong>6–10MB</strong></td><td>90–120MB</td></tr>
+    <tr><td>内存占用</td><td>30–80MB</td><td>100–200MB</td></tr>
+    <tr><td>运行时</td><td>系统 WebView2（Win10 1803+ 自带）</td><td>自带 Chromium</td></tr>
+    <tr><td>前置环境</td><td>Rust + MSVC（本机已具备）</td><td>无</td></tr>
+    <tr><td>原生能力</td><td>Rust：托盘 / 单实例 / 更新 / 本地 SQLite</td><td>Node 生态最全</td></tr>
+  </tbody>
+</table>
+
+<h3>锁定版本</h3>
+<pre><code>运行时  Node 24.17 · pnpm 11.28 · Rust 1.99.1
+前端    React 19.3 · Vite 7.3.7 · TypeScript 5.9.3 · Tailwind 4.3.3
+路由    TanStack Router 1.170 · TanStack Query 5.104 · Zustand 5.0
+组件    Radix · lucide-react · sonner · cmdk
+服务端  Fastify 5.12 · Drizzle ORM 0.45 · better-sqlite3 13 · @node-rs/argon2
+桌面    Tauri 2.12 · rusqlite (bundled) · tiny_http · plugin-{store,log,updater,window-state,opener,dialog,single-instance}
+质量    Vitest 5.0 · Playwright 1.64 · ESLint 9.39 · Prettier 3.9</code></pre>
+
+<h2 id="datasource">4 · 本地 / 云端双数据源（核心）</h2>
+<p>这一版最关键的改动。数据源<strong>只决定读写哪一套数据</strong>，界面、工具、交互完全一致。</p>
+<table>
+  <thead><tr><th></th><th>本地数据源（桌面端默认）</th><th>云端数据源</th></tr></thead>
+  <tbody>
+    <tr><td>数据位置</td><td><code>%APPDATA%com.shendongjuns.toolboxlocal.db</code></td><td>服务器 <code>/app/data/toolbox.db</code></td></tr>
+    <tr><td>网络</td><td><strong>完全不需要</strong>，可离线</td><td>需要</td></tr>
+    <tr><td>账号</td><td>本机独立账号</td><td>与网页端共用</td></tr>
+    <tr><td>访问方式</td><td>Rust 在本机起 127.0.0.1 随机端口的 HTTP 服务，前端照常发请求</td><td>直连用户配置的服务器地址，Bearer 令牌</td></tr>
+    <tr><td>两套关系</td><td colspan="2"><strong>完全独立</strong>：没有同步、没有覆盖、没有合并。切换只是换一个数据源连接。</td></tr>
+  </tbody>
+</table>
+
+<h3>切换流程</h3>
+<pre><code>设置 → 通用 → 数据源：[本地数据]  [云端数据]
+   │
+   ├─ 选择另一个数据源 → 清空当前登录态 → 跳该数据源的登录页
+   ├─ 登录成功 → 数据层指向新源 → 回到仪表盘
+   └─ 原数据源的数据原封不动，切回来即可继续用</code></pre>
+
+<div class="callout warn">
+  <strong>为什么不像上一版那样「启动时把云端覆盖到本地」？</strong>
+  覆盖会丢数据，也无法解释「本地模式改了之后云端怎么办」。当前实现是两套库、两个账号、两条连接，
+  语义最清晰，也最不容易出错。
+</div>
+
+<h3>一套逻辑，两种执行环境</h3>
+<p>
+  页面代码只依赖 <code>@toolbox/api-client</code> 暴露的方法；底层传输层按数据源选择实现：
+  网页端用 Cookie，桌面端云端用 Bearer，桌面端本地打向本机 127.0.0.1 服务。
+  服务端与本地服务的接口形状一致，因此业务组件零分支。
+</p>
+
+<h2 id="repo">5 · 仓库结构</h2>
+<pre><code>tool-box/
+├─ apps/
+│  ├─ server/        Fastify 5：路由 / 鉴权 / Cookie / 限流 / 静态托管
+│  ├─ web/           React 19 SPA（网页端与桌面渲染层共用）
+│  └─ desktop/       Tauri 2：src-tauri/(Rust) + tauri.conf.json + icons
+├─ packages/
+│  ├─ contracts/     Zod schema + DTO + 内置工具目录（前后端唯一真源）
+│  ├─ data/          Drizzle schema + 迁移 SQL + repository
+│  └─ api-client/    传输层：web-fetch(cookie) / desktop(bearer)
+├─ docker/           Dockerfile · compose.yml · Caddyfile
+├─ docs/plan-2.0/    index.html（本文）· prototype.html · assets/
+└─ .github/workflows/ ci.yml · release.yml</code></pre>
+<p>常用脚本：<code>pnpm dev</code>、<code>pnpm build</code>、<code>pnpm test</code>、<code>pnpm lint</code>、<code>pnpm desktop:dev</code>、<code>pnpm desktop:build</code>。</p>
+
+<h2 id="data">6 · 数据模型</h2>
+<p>两套库<strong>同构</strong>：本地库与云端库使用同一份迁移 SQL，因此 repository 代码只写一遍。</p>
+<pre><code>users(id, username UNIQUE, password_hash, display_name,
+      created_at, updated_at, password_changed_at, last_login_at)
+
+sessions(id, user_id → users, token_hash UNIQUE, kind('web'|'desktop'|'local'),
+         device_name, user_agent, ip,
+         created_at, last_used_at, expires_at, revoked_at)
+
+settings(key PK, value, updated_at)
+
+tool_prefs(tool_id PK, pinned, sort_order, last_opened_at, updated_at)</code></pre>
+<ul>
+  <li>时间统一为 <strong>epoch 毫秒整数</strong>，避免时区问题。</li>
+  <li><code>PRAGMA journal_mode=WAL, busy_timeout=5000, foreign_keys=ON</code>。</li>
+  <li>会话表只存令牌的 <code>sha256</code>，明文只存在于客户端。</li>
+  <li>迁移脚本幂等（<code>IF NOT EXISTS</code>），服务端启动自动执行，失败拒绝启动。</li>
+</ul>
+
+<h2 id="auth">7 · 认证与会话</h2>
+<table>
+  <thead><tr><th>项目</th><th>实现</th></tr></thead>
+  <tbody>
+    <tr><td>首次注册</td><td><code>GET /api/auth/bootstrap</code> 返回 <code>initialized</code>；<code>POST</code> 仅在 users 为空时成功（409 表示已初始化）；可选一次性 <code>SETUP_TOKEN</code></td></tr>
+    <tr><td>密码哈希</td><td>Argon2id（19456 KiB / t=2 / p=1）；本地库用 sha256(salt+password) 轻量方案</td></tr>
+    <tr><td>规则</td><td>用户名 3–32 位 <code>[a-zA-Z0-9_-]</code>，密码 10–128 位，前后端共用同一份 Zod schema</td></tr>
+    <tr><td>令牌</td><td><code>base64url(randomBytes(32))</code>，库中只存 sha256</td></tr>
+    <tr><td>有效期</td><td>30 天；距上次使用超过 1 小时才写库续期（写节流），无绝对上限</td></tr>
+    <tr><td>撤销</td><td>登出 / 改密（保留当前会话）/ 手动下线设备 / 过期清理</td></tr>
+    <tr><td>网页端</td><td>Cookie <code>tb_session</code>：HttpOnly、SameSite=Lax、生产 Secure、Max-Age 30d；非安全方法校验 Origin</td></tr>
+    <tr><td>桌面端</td><td>Cookie 不参与；<code>Authorization: Bearer</code>，令牌存 Tauri store（本地模式存内存）</td></tr>
+    <tr><td>限流</td><td>登录 10 次/分钟/IP，首次注册 5 次/分钟/IP</td></tr>
+  </tbody>
+</table>
+
+<h3>接口清单</h3>
+<pre><code>GET  /api/auth/bootstrap          POST /api/auth/bootstrap
+POST /api/auth/login              POST /api/auth/desktop-login
+POST /api/auth/logout             GET  /api/auth/me
+POST /api/auth/password           GET  /api/auth/sessions
+DELETE /api/auth/sessions/:id     POST /api/auth/sessions/revoke-all
+GET  /api/settings                PUT  /api/settings
+GET  /api/tools                   PATCH /api/tools/:id      POST /api/tools/:id/touch
+GET  /api/dashboard               GET  /api/health</code></pre>
+<p>统一错误体 <code>{ code, message, details? }</code>；401 时前端清空登录态并跳转登录页。</p>
+
+<h2 id="desktop">8 · 桌面端实现</h2>
+<h3>进程与安全</h3>
+<ul>
+  <li>Rust 主进程：窗口、托盘、单实例、更新、本地 SQLite 服务。</li>
+  <li>WebView：React 应用，自定义标题栏（<code>-webkit-app-region: drag</code>）。</li>
+  <li>CSP 收紧到 <code>default-src 'self'</code>，外部链接一律交给系统浏览器。</li>
+  <li>关闭按钮默认最小化到托盘，真正退出走托盘菜单（可在设置中改为直接退出）。</li>
+  <li>单实例锁：第二次启动只聚焦已有窗口。</li>
+</ul>
+
+<h3>本地数据服务</h3>
+<p>
+  启动时在 <code>127.0.0.1</code> 的随机端口起一个极小的 HTTP 服务（Rust + rusqlite），
+  提供与云端同形的 <code>/api/auth/*</code>、<code>/api/settings</code>、<code>/api/tools</code> 接口。
+  前端通过 <code>invoke("local_api_port")</code> 拿到端口，之后所有本地请求直接打过去。
+  这样做的好处：<strong>页面代码完全不知道数据来自哪里</strong>。
+</p>
+<pre><code>WebView (React) ──fetch──▶ 127.0.0.1:&lt;随机端口&gt; (Rust) ──▶ rusqlite ──▶ local.db
+WebView (React) ──fetch──▶ https://你的服务器       (Node)  ──▶ better-sqlite3 ──▶ toolbox.db</code></pre>
+
+<h3>窗口与打包</h3>
+<ul>
+  <li>默认 1200×800、居中、最小 960×640；记住尺寸与最大化，不记位置（避免换显示器后开到屏幕外）。</li>
+  <li>托盘：单击显示窗口，右键「显示主窗口 / 退出 ToolBox」。</li>
+  <li>日志：Tauri log 插件，写入用户目录，轮转保留。</li>
+  <li>更新：<code>plugin-updater</code> + GitHub Releases，签名私钥只在 CI 中注入。</li>
+  <li>打包：<code>tauri build</code> 产出 NSIS（按用户安装，免管理员）与 MSI。</li>
+</ul>
+
+<h2 id="deploy">9 · 部署与 CI</h2>
+<pre><code># 1. 准备
+cp docker/.env.example docker/.env   # 填 DOMAIN / PUBLIC_ORIGIN / SETUP_TOKEN
+
+# 2. 启动（首次启动前不要暴露到公网，或依赖 SETUP_TOKEN）
+cd docker &amp;&amp; docker compose up -d --build
+
+# 3. 打开 https://你的域名 → 首次注册 → 开始使用</code></pre>
+<ul>
+  <li>容器：多阶段构建，运行阶段非 root，内置 <code>HEALTHCHECK /api/health</code>。</li>
+  <li>反代：Caddy 自动申请与续期 HTTPS 证书。</li>
+  <li>持久化：<code>./data</code> 挂载到 <code>/app/data</code>，备份直接拷目录或用 <code>VACUUM INTO</code>。</li>
+  <li>升级：拉新镜像重启，迁移在启动时自动执行。</li>
+</ul>
+<table>
+  <thead><tr><th>环境变量</th><th>默认</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>PORT</code></td><td>3000</td><td>监听端口</td></tr>
+    <tr><td><code>DATABASE_PATH</code></td><td>./data/toolbox.db</td><td>SQLite 文件路径</td></tr>
+    <tr><td><code>PUBLIC_ORIGIN</code></td><td>http://localhost:5173</td><td>允许的来源（CSRF 校验），多个用逗号分隔</td></tr>
+    <tr><td><code>SESSION_TTL_DAYS</code></td><td>30</td><td>会话有效期</td></tr>
+    <tr><td><code>COOKIE_SECURE</code></td><td>false</td><td>生产环境务必 true</td></tr>
+    <tr><td><code>SETUP_TOKEN</code></td><td>空</td><td>一次性注册口令，留空不校验</td></tr>
+    <tr><td><code>TRUST_PROXY</code></td><td>false</td><td>在反代后设为 true 以取真实 IP</td></tr>
+  </tbody>
+</table>
+
+<h2 id="screens">10 · 界面原型</h2>
+<p>以下截图直接取自本仓库运行中的实现（1440×900），不是设计稿。</p>
+
+<figure class="shot">
+  <img src="assets/01-login.png" alt="登录页" />
+  <figcaption>登录 / 首次注册：左侧品牌区，右侧表单；桌面端顶部多一个数据源切换。</figcaption>
+</figure>
+
+<figure class="shot">
+  <img src="assets/02-dashboard.png" alt="仪表盘" />
+  <figcaption>仪表盘：四个统计卡 + 最近使用 + 服务状态；侧栏按分类折叠工具。</figcaption>
+</figure>
+
+<figure class="shot">
+  <img src="assets/03-tool.png" alt="工具页" />
+  <figcaption>工具页（JSON 格式化）：输入/结果分页、合法性提示、缩进选择。</figcaption>
+</figure>
+
+<figure class="shot">
+  <img src="assets/04-settings.png" alt="设置页" />
+  <figcaption>设置 · 数据源：本地与云端并列，明确写出「互不覆盖」；网页端隐藏桌面专属项。</figcaption>
+</figure>
+
+<figure class="shot">
+  <img src="assets/05-appearance.png" alt="外观设置" />
+  <figcaption>设置 · 外观：浅色 / 深色 / 跟随系统，六套强调色，选择会写回当前数据源。</figcaption>
+</figure>
+
+<figure class="shot">
+  <img src="assets/06-dark.png" alt="深色主题" />
+  <figcaption>深色主题下的仪表盘：同一套语义色 token，深色下自动调亮强调色。</figcaption>
+</figure>
+
+<p>带交互的原型见 <a href="prototype.html">prototype.html</a>（注册 → 登录 → 仪表盘 → 工具 → 设置 → 命令面板，可切深浅色与网页/桌面外框）。</p>
+
+<h2 id="milestones">11 · 里程碑</h2>
+<table>
+  <thead><tr><th style="width:150px">里程碑</th><th>内容</th><th style="width:90px">状态</th></tr></thead>
+  <tbody>
+    <tr><td>M0 拆除与骨架</td><td>删除 1.x 全部文件，建立 workspace、ESLint、Prettier、tsconfig</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M1 数据与契约</td><td>contracts / data 包、Drizzle schema、迁移 SQL、repository</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M2 服务端底座</td><td>config、db、错误处理、健康检查、静态托管</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M3 认证</td><td>首次注册、登录、登出、改密、会话管理、限流</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M4 Web 壳层</td><td>设计系统、侧栏、顶栏、命令面板、登录/注册页</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M5 工具与设置</td><td>6 个内置工具、仪表盘、设置四页、主题持久化</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M6 桌面端</td><td>Tauri 外壳、本地数据服务、数据源切换、托盘、单实例</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M7 部署与 CI</td><td>Dockerfile、compose、Caddy、CI 与发版工作流</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M8 文档</td><td>本计划、可点击原型、截图、README</td><td><span class="pill ok">完成</span></td></tr>
+  </tbody>
+</table>
+<p>后续 Roadmap（不在本次）：SSH 终端、SFTP、代码仓库管理、系统监控。</p>
+
+<h2 id="test">12 · 测试</h2>
+<ul>
+  <li><strong>单元 / 集成</strong>：Vitest + <code>fastify.inject</code> + 临时 SQLite；覆盖首次注册、重复注册 409、错误密码、30 天有效期、Bearer 访问、登出失效、改密撤销其他会话、设置读写、工具置顶、健康检查（14 个用例全绿）。</li>
+  <li><strong>类型</strong>：<code>pnpm -r typecheck</code> 全部通过（含 <code>cargo check</code>）。</li>
+  <li><strong>静态检查</strong>：ESLint 0 error。</li>
+  <li><strong>手工回归</strong>：登录、仪表盘、工具、设置、深浅色（截图即回归记录）。</li>
+</ul>
+<pre><code>$ pnpm --filter @toolbox/server test
+ Test Files  1 passed (1)
+      Tests  14 passed (14)</code></pre>
+
+<h2 id="risk">13 · 风险与关键决定</h2>
+<table>
+  <thead><tr><th style="width:210px">风险 / 决定</th><th>应对</th></tr></thead>
+  <tbody>
+    <tr><td>本地与云端语义混淆</td><td>顶栏与登录页常驻数据源徽标；切换时明确提示「需要重新登录」</td></tr>
+    <tr><td>本地 HTTP 服务端口冲突</td><td>监听 <code>127.0.0.1:0</code> 由系统分配，端口通过 <code>invoke</code> 告知前端</td></tr>
+    <tr><td>本地服务仅本机可访问</td><td>绑定 127.0.0.1，不监听 0.0.0.0；令牌校验与云端同规则</td></tr>
+    <tr><td>Tauri 首次编译慢</td><td>CI 缓存 cargo 与 target；本地增量编译</td></tr>
+    <tr><td>WebView2 缺失</td><td>安装包使用 downloadBootstrapper 兜底</td></tr>
+    <tr><td>更新私钥丢失</td><td>私钥只存 CI secrets 并离线备份；丢失后已安装用户无法自动更新</td></tr>
+    <tr><td>未签名 exe</td><td>会触发 SmartScreen 提示，README 中说明；后续可购买代码签名证书</td></tr>
+    <tr><td>SQLite 单写者</td><td>单进程 + WAL + 短事务；备份用 <code>VACUUM INTO</code></td></tr>
+  </tbody>
+</table>
+
+<h3>已确定的产品决策</h3>
+<table>
+  <thead><tr><th style="width:40px">#</th><th>决策</th><th>取值</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>UI 框架</td><td>shadcn/ui + Tailwind v4</td></tr>
+    <tr><td>2</td><td>桌面外壳</td><td>Tauri 2（体积优先）</td></tr>
+    <tr><td>3</td><td>默认数据源</td><td><strong>本地</strong>，设置中可切云端</td></tr>
+    <tr><td>4</td><td>本地模式登录</td><td>需要，本地账号与云端账号独立</td></tr>
+    <tr><td>5</td><td>数据源切换</td><td>设置内即时切换 + 重新登录，无需重启</td></tr>
+    <tr><td>6</td><td>两套数据关系</td><td><strong>完全独立</strong>，不同步、不覆盖</td></tr>
+    <tr><td>7</td><td>会话续期</td><td>纯滑动 30 天，无绝对上限</td></tr>
+    <tr><td>8</td><td>2.0 范围</td><td>认证 + 壳层 + 工具框架 + 6 个内置工具</td></tr>
+  </tbody>
+</table>
+
+<h2 id="status">14 · 实施状态</h2>
+<div class="grid2">
+  <div class="card">
+    <h3>已完成</h3>
+    <ul style="margin:0;padding-left:18px;color:var(--muted);font-size:14px">
+      <li>workspace 与三端骨架</li>
+      <li>服务端全部接口 + 14 个集成测试</li>
+      <li>网页端全部页面与 6 个工具</li>
+      <li>Tauri 外壳 + 本地 SQLite 服务（cargo check 通过）</li>
+      <li>Docker / Caddy / CI / Release</li>
+      <li>本计划文档与截图</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>下一步建议</h3>
+    <ul style="margin:0;padding-left:18px;color:var(--muted);font-size:14px">
+      <li>桌面安装包在真机上跑一遍（NSIS + 托盘 + 更新）</li>
+      <li>Playwright E2E 覆盖登录与数据源切换</li>
+      <li>按 Roadmap 迁移 SSH / SFTP 等旧工具</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  ToolBox 2.0 · 2026-10-20 · 本文档与截图均来自仓库当前实现，可离线打开。
+</footer>
+</main>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var stored = localStorage.getItem("doc-theme");
+    if (stored) root.setAttribute("data-theme", stored);
+    document.getElementById("themeBtn").addEventListener("click", function () {
+      var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem("doc-theme", next);
+    });
+  })();
+</script>
+</body>
+</html>

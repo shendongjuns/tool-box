@@ -1,0 +1,5 @@
+dist
+node_modules
+docs
+data
+apps/desktop/src-tauri/target

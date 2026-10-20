@@ -1,0 +1,50 @@
+services:
+  toolbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: toolbox/server:2.0.0
+    container_name: toolbox
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_PATH: /app/data/toolbox.db
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://tool.example.com}
+      SESSION_TTL_DAYS: 30
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      BACKUP_KEEP: 7
+      LOG_LEVEL: info
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: toolbox-caddy
+    restart: unless-stopped
+    depends_on:
+      toolbox:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-tool.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
