@@ -9,6 +9,7 @@ import type {
   PatchToolRequest,
   PutSettingsRequest,
   SessionListResponse,
+  SetLocalAuthModeRequest,
   ToolListResponse,
 } from "@toolbox/contracts";
 import type { ApiTransport } from "./types.js";
@@ -32,7 +33,7 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
   return {
     getBootstrap: () => get<BootstrapStatus>("/api/auth/bootstrap"),
 
-    /** 创建唯一管理员：仅当库里没有用户时服务端才接受。 */
+    /** 创建唯一账号：仅当库里没有用户时服务端才接受。 */
     bootstrap: (body: { username: string; password: string; displayName?: string }) =>
       transport.request<LoginResponse>({ path: "/api/auth/bootstrap", method: "POST", body }),
 
@@ -59,6 +60,17 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
 
     desktopLogin: (body: LoginRequest) =>
       send<DesktopLoginResponse>("/api/auth/desktop-login", "POST", body),
+
+    /** 仅桌面端本地数据源：无密码模式下一键进入。 */
+    localSession: () => send<LoginResponse>("/api/auth/local-session", "POST"),
+
+    /** 仅桌面端本地数据源：切换无密码 / 密码模式。 */
+    setLocalAuthMode: (body: SetLocalAuthModeRequest) =>
+      send<{ mode: "none" | "password"; passwordless: boolean }>(
+        "/api/auth/local-mode",
+        "PUT",
+        body,
+      ),
 
     logout: () => send<void>("/api/auth/logout", "POST"),
 

@@ -436,3 +436,41 @@ describe("单用户：注册入口只在无用户时存在", () => {
     expect(status.json()).toMatchObject({ initialized: true, username: "my-own-name" });
   });
 });
+describe("服务端永远要求密码（无密码模式仅限桌面端本地）", () => {
+  it("bootstrap 返回 passwordless=false", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
+    expect(response.json().passwordless).toBe(false);
+  });
+
+  it("空密码注册被拒绝", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "nobody", password: "" },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("短密码注册被拒绝", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "nobody", password: "short" },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("不存在免密登录接口", async () => {
+    const response = await app.inject({ method: "POST", url: "/api/auth/local-session" });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("不存在切换本地模式的接口", async () => {
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/auth/local-mode",
+      payload: { mode: "none" },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});

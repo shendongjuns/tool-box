@@ -19,8 +19,14 @@ export async function applySession(input: {
   const source = useDataSource.getState().source;
 
   if (isTauriRuntime() && input.token) {
-    if (source === "local") await setLocalSessionToken(input.token);
-    else await setCloudToken(input.token);
+    // 令牌持久化失败不应该阻断登录：内存里的令牌仍然有效，
+    // 只是下次启动需要重新进入。
+    try {
+      if (source === "local") await setLocalSessionToken(input.token);
+      else await setCloudToken(input.token);
+    } catch (error) {
+      console.warn("保存登录令牌失败，本次会话仍然有效", error);
+    }
   }
 
   invalidateApiCache();
@@ -30,8 +36,12 @@ export async function applySession(input: {
 /** 退出登录：清空令牌与内存状态。 */
 export async function clearSession(): Promise<void> {
   if (isTauriRuntime()) {
-    await setCloudToken(null);
-    await setLocalSessionToken(null);
+    try {
+      await setCloudToken(null);
+      await setLocalSessionToken(null);
+    } catch {
+      // 清不掉也不影响内存状态
+    }
   }
   invalidateApiCache();
   useAuth.getState().setAuth(null);

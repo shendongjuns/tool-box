@@ -18,6 +18,8 @@ export default tseslint.config(
       ".tmp-v2/**",
       ".tmp-fresh/**",
       ".tmp-doc/**",
+      ".tmp-auto/**",
+      ".tmp-web/**",
       "apps/desktop/src-tauri/target/**",
       "apps/desktop/src-tauri/gen/**",
       "**/routeTree.gen.ts",

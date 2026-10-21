@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getApi, invalidateApiCache } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
@@ -20,6 +20,8 @@ function LoginPage() {
   const { source, cloudBaseUrl, setCloudBaseUrl } = useDataSource();
   const [serverUrl, setServerUrl] = useState(cloudBaseUrl);
   const [savingServer, setSavingServer] = useState(false);
+  const [autoEntering, setAutoEntering] = useState(false);
+  const attempted = useRef(false);
 
   const bootstrap = useQuery({
     queryKey: ["bootstrap", source, cloudBaseUrl],
@@ -31,12 +33,37 @@ function LoginPage() {
   /**
    * 只有明确拿到 false 才显示注册表单。
    *
-   * 查询中 / 查询失败时按「已初始化」显示登录，避免把用户误导向注册页；
-   * 真正的注册入口由服务端 users 表为空与否决定，前端只是展示。
+   * 查询中 / 查询失败时按「已初始化」显示登录，避免把用户误导向注册页。
    */
   const initialized = bootstrap.data?.initialized ?? true;
+  const passwordless = bootstrap.data?.passwordless ?? false;
   const sourceInfo = DATA_SOURCES[source];
   const offline = bootstrap.isError;
+
+  /**
+   * 桌面端本地数据源的无密码模式：直接签发会话进入，不显示登录页。
+   *
+   * 只在「本地 + 无密码 + 已初始化」时触发，且每个挂载周期只尝试一次，
+   * 失败则退回普通登录表单（例如用户刚开启了密码模式）。
+   */
+  useEffect(() => {
+    if (!passwordless || !initialized || offline || attempted.current) return;
+    if (source !== "local") return;
+    attempted.current = true;
+
+    // setState 放进异步回调里，避免 effect 内同步触发级联渲染
+    void (async () => {
+      await Promise.resolve();
+      setAutoEntering(true);
+      try {
+        const result = await getApi().localSession();
+        await applySession({ token: result.token, user: result.user, session: result.session });
+        await navigate({ to: "/dashboard" });
+      } catch {
+        setAutoEntering(false);
+      }
+    })();
+  }, [passwordless, initialized, offline, source, navigate]);
 
   async function updateServer() {
     const next = serverUrl.trim().replace(/\/$/, "");
@@ -55,6 +82,14 @@ function LoginPage() {
     } finally {
       setSavingServer(false);
     }
+  }
+
+  if (autoEntering) {
+    return (
+      <AuthLayout title="正在进入" description="本地数据源已开启无密码模式">
+        <p className="text-sm text-muted-foreground">正在打开你的本地数据…</p>
+      </AuthLayout>
+    );
   }
 
   return (
@@ -79,14 +114,13 @@ function LoginPage() {
             ? await api.login({ username, password })
             : await api.bootstrap({ username, password });
 
-          // 桌面端：令牌写进 Tauri store；网页端：服务端已写 Cookie
           await applySession({
             token: result.token,
             user: result.user,
             session: result.session,
           });
 
-          toast.success(initialized ? "登录成功" : "管理员已创建，已自动登录");
+          toast.success(initialized ? "登录成功" : "账号已创建，已自动登录");
           await navigate({ to: "/dashboard" });
         }}
         extra={
@@ -118,9 +152,7 @@ function LoginPage() {
                   保存
                 </button>
               </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                切换后需要重新登录。
-              </p>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">切换后需要重新登录。</p>
             </div>
           ) : null
         }

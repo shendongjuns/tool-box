@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Check, Cloud, Database, KeyRound, LogOut, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { toast } from "sonner";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -160,6 +160,8 @@ function GeneralTab() {
           })}
         </CardContent>
       </Card>
+
+      {isDesktop() && source === "local" ? <LocalSecurityCard /> : null}
 
       {isDesktop() ? (
         <Card>
@@ -454,6 +456,143 @@ function AccountTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * 本地数据源的访问模式。
+ *
+ * 桌面端本地库默认无密码（打开即用）；需要时可在此设置密码，
+ * 之后进入本地数据就要输入密码。云端数据源始终要求密码。
+ */
+function LocalSecurityCard() {
+  const api = useApi();
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ["local-bootstrap"],
+    queryFn: () => api.getBootstrap(),
+    staleTime: 5_000,
+  });
+
+  const passwordless = data?.passwordless ?? false;
+  const [enabling, setEnabling] = useState(false);
+  const [username, setUsername] = useState(data?.username ?? "");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function enablePassword() {
+    if (username.trim().length < 3) {
+      toast.error("用户名至少 3 个字符");
+      return;
+    }
+    if (password.length < 10) {
+      toast.error("密码至少 10 个字符");
+      return;
+    }
+    if (password !== confirm) {
+      toast.error("两次输入的密码不一致");
+      return;
+    }
+    setPending(true);
+    try {
+      await api.setLocalAuthMode({ mode: "password", username: username.trim(), password });
+      toast.success("已开启密码保护，请重新登录");
+      await clearSession();
+      window.location.assign("/login");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function disablePassword() {
+    setPending(true);
+    try {
+      await api.setLocalAuthMode({ mode: "none" });
+      toast.success("已关闭密码保护，下次打开直接进入");
+      setEnabling(false);
+      await refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="h-4 w-4 text-primary" />
+          本地密码保护
+        </CardTitle>
+        <CardDescription>
+          本地数据默认无需密码即可进入（仅本机可访问）。开启后，进入本地数据需要输入密码。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-2">
+          <div>
+            <p className="text-sm font-medium">
+              {isLoading ? "读取中…" : passwordless ? "无密码模式" : "密码模式"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {passwordless ? "打开桌面端即可直接使用本地数据" : "进入本地数据需要输入密码"}
+            </p>
+          </div>
+          <Switch
+            checked={!passwordless}
+            disabled={isLoading || pending}
+            onCheckedChange={(checked) => {
+              if (checked) setEnabling(true);
+              else void disablePassword();
+            }}
+          />
+        </div>
+
+        {enabling && passwordless ? (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <Field>
+              <FieldLabel htmlFor="local-username">用户名</FieldLabel>
+              <Input
+                id="local-username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="3–32 位"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="local-password">密码</FieldLabel>
+              <Input
+                id="local-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="至少 10 个字符"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="local-confirm">确认密码</FieldLabel>
+              <Input
+                id="local-confirm"
+                type="password"
+                value={confirm}
+                onChange={(event) => setConfirm(event.target.value)}
+              />
+            </Field>
+            <div className="flex gap-2">
+              <Button onClick={() => void enablePassword()} disabled={pending}>
+                {pending ? "保存中…" : "开启密码保护"}
+              </Button>
+              <Button variant="outline" onClick={() => setEnabling(false)} disabled={pending}>
+                取消
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

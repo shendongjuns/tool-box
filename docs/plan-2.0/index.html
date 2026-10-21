@@ -496,7 +496,8 @@ cd docker &amp;&amp; docker compose up -d --build
     <tr><td>11</td><td>刷新桌面端就掉登录</td><td>本地令牌只存内存 —— 已改为存 Tauri store，与云端令牌分开保存。</td></tr>
     <tr><td>12</td><td>构建因空 pubkey 失败</td><td>updater 未配置签名 —— 已移除该插件依赖，避免阻断构建。</td></tr>
     <tr><td>13</td><td>注册入口会永久消失</td><td>原先只在 users 为空时显示注册页，一旦错过就没有入口 —— 改为登录页直接内嵌「创建账号」，库中无用户时永远可见，创建后永久关闭。</td></tr>
-    <tr><td>14</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>。</td></tr>
+    <tr><td>14</td><td>本地数据源需要密码</td><td>桌面端本地库默认改为免密（打开即用），可在设置中开启密码保护；网页端与云端数据源始终要求密码，服务端不提供免密接口。</td></tr>
+    <tr><td>15</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>。</td></tr>
   </tbody>
 </table>
 

@@ -62,6 +62,48 @@ fn verify_password(stored: &str, password: &str) -> bool {
     sha256_hex(&format!("{salt}{password}")) == expected
 }
 
+/// 本地数据源的访问模式。
+///
+/// 只存在于桌面端本地库：`None` = 无密码（打开即用），`Password` = 需要密码。
+/// 云端服务端没有这个概念，永远要求密码。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AuthMode {
+    None,
+    Password,
+}
+
+const AUTH_MODE_KEY: &str = "auth.mode";
+const LOCAL_USERNAME_KEY: &str = "auth.username";
+
+fn read_setting(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .and_then(|raw| serde_json::from_str::<String>(&raw).ok())
+}
+
+fn write_setting(conn: &Connection, key: &str, value: &str, now: i64) {
+    let encoded = serde_json::to_string(value).unwrap_or_default();
+    let _ = conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, encoded, now],
+    );
+}
+
+/// 桌面端默认无密码；只有显式设置成 password 才要求密码。
+fn auth_mode_of(conn: &Connection) -> AuthMode {
+    match read_setting(conn, AUTH_MODE_KEY).as_deref() {
+        Some("password") => AuthMode::Password,
+        _ => AuthMode::None,
+    }
+}
+
 fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
@@ -242,34 +284,193 @@ fn handle(state: &AppState, mut request: Request) {
         }
 
         (Method::Get, "/api/auth/bootstrap") => {
-            let (count, username): (i64, Option<String>) = {
-                match state.conn.lock() {
-                    Ok(conn) => {
-                        let count = conn
-                            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
-                            .unwrap_or(0);
-                        let username = conn
-                            .query_row("SELECT username FROM users LIMIT 1", [], |row| {
-                                row.get::<_, String>(0)
-                            })
-                            .optional()
-                            .unwrap_or(None);
-                        (count, username)
-                    }
-                    Err(_) => {
-                        respond_json(
-                            request,
-                            500,
-                            &error_body("INTERNAL_ERROR", "本地数据库不可用"),
-                        );
-                        return;
-                    }
+            let payload = match state.conn.lock() {
+                Ok(conn) => {
+                    let count: i64 = conn
+                        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+                        .unwrap_or(0);
+                    let username: Option<String> = conn
+                        .query_row("SELECT username FROM users LIMIT 1", [], |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()
+                        .unwrap_or(None);
+                    let mode = auth_mode_of(&conn);
+                    serde_json::json!({
+                        "initialized": count > 0,
+                        "username": username,
+                        "passwordless": mode == AuthMode::None
+                    })
                 }
+                Err(_) => {
+                    respond_json(
+                        request,
+                        500,
+                        &error_body("INTERNAL_ERROR", "本地数据库不可用"),
+                    );
+                    return;
+                }
+            };
+            respond_json(request, 200, &payload);
+        }
+
+        // 无密码模式下的一键进入。
+        //
+        // 本地库只有一个用户，且服务只监听 127.0.0.1，因此这里不需要凭据：
+        // 直接为库里已有的账号签发会话。开启密码模式后此接口返回 403。
+        (Method::Post, "/api/auth/local-session") => {
+            let conn = match state.conn.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+            if auth_mode_of(&conn) == AuthMode::Password {
+                drop(conn);
+                respond_json(
+                    request,
+                    403,
+                    &error_body("PASSWORD_REQUIRED", "本地数据源已开启密码，请使用密码登录"),
+                );
+                return;
+            }
+            let user: Option<(String, String, Option<String>, i64, Option<i64>)> = conn
+                .query_row(
+                    "SELECT id, username, display_name, created_at, last_login_at FROM users LIMIT 1",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                )
+                .optional()
+                .unwrap_or(None);
+            drop(conn);
+
+            let Some((id, username, display_name, created_at, _)) = user else {
+                respond_json(
+                    request,
+                    404,
+                    &error_body("NOT_INITIALIZED", "本地还没有账号"),
+                );
+                return;
+            };
+
+            let now = now_ms();
+            if let Ok(conn) = state.conn.lock() {
+                let _ = conn.execute(
+                    "UPDATE users SET last_login_at = ?1, updated_at = ?1 WHERE id = ?2",
+                    params![now, id],
+                );
+            }
+            let Some((token, expires_at)) = issue_session(state, &id) else {
+                respond_json(request, 500, &error_body("INTERNAL_ERROR", "创建会话失败"));
+                return;
             };
             respond_json(
                 request,
                 200,
-                &serde_json::json!({ "initialized": count > 0, "username": username }),
+                &serde_json::json!({
+                    "token": token,
+                    "session": session_json(now, expires_at),
+                    "user": {
+                        "id": id, "username": username, "displayName": display_name,
+                        "createdAt": created_at, "lastLoginAt": now
+                    }
+                }),
+            );
+        }
+
+        // 切换本地访问模式：无密码 / 需要密码。
+        (Method::Put, "/api/auth/local-mode") => {
+            let body = read_body(&mut request);
+            let mode = body["mode"].as_str().unwrap_or_default();
+            let username = body["username"].as_str().unwrap_or_default().trim().to_string();
+            let password = body["password"].as_str().unwrap_or_default().to_string();
+            let now = now_ms();
+
+            if mode != "none" && mode != "password" {
+                respond_json(
+                    request,
+                    400,
+                    &error_body("VALIDATION_FAILED", "mode 只能是 none 或 password"),
+                );
+                return;
+            }
+
+            if mode == "password" {
+                if username.len() < 3 {
+                    respond_json(
+                        request,
+                        400,
+                        &error_body("VALIDATION_FAILED", "用户名至少 3 个字符"),
+                    );
+                    return;
+                }
+                if password.len() < 10 {
+                    respond_json(
+                        request,
+                        400,
+                        &error_body("VALIDATION_FAILED", "密码至少 10 个字符"),
+                    );
+                    return;
+                }
+            }
+
+            let conn = match state.conn.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+
+            let existing: Option<(String, i64)> = conn
+                .query_row(
+                    "SELECT id, created_at FROM users LIMIT 1",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .unwrap_or(None);
+
+            match mode {
+                "password" => {
+                    match existing {
+                        // 已有账号：更新用户名与密码
+                        Some((id, _)) => {
+                            let _ = conn.execute(
+                                "UPDATE users SET username = ?1, password_hash = ?2, display_name = ?1,
+                                 updated_at = ?3, password_changed_at = ?3 WHERE id = ?4",
+                                params![username, hash_password(&password), now, id],
+                            );
+                        }
+                        // 还没有账号：创建
+                        None => {
+                            let id = format!("user-{now}");
+                            let _ = conn.execute(
+                                "INSERT INTO users (id, username, password_hash, display_name, created_at, updated_at, password_changed_at, last_login_at)
+                                 VALUES (?1, ?2, ?3, ?2, ?4, ?4, ?4, ?4)",
+                                params![id, username, hash_password(&password), now],
+                            );
+                        }
+                    }
+                    write_setting(&conn, AUTH_MODE_KEY, "password", now);
+                    write_setting(&conn, LOCAL_USERNAME_KEY, &username, now);
+                    // 开启密码后，撤销所有现存会话，强制重新登录
+                    let _ = conn.execute(
+                        "UPDATE sessions SET revoked_at = ?1 WHERE revoked_at IS NULL",
+                        params![now],
+                    );
+                }
+                _ => {
+                    write_setting(&conn, AUTH_MODE_KEY, "none", now);
+                }
+            }
+            drop(conn);
+
+            respond_json(
+                request,
+                200,
+                &serde_json::json!({ "mode": mode, "passwordless": mode == "none" }),
             );
         }
 
@@ -287,11 +488,6 @@ fn handle(state: &AppState, mut request: Request) {
                 );
                 return;
             }
-            if password.len() < 10 {
-                respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码至少 10 个字符"));
-                return;
-            }
-
             let conn = match state.conn.lock() {
                 Ok(conn) => conn,
                 Err(_) => {
@@ -311,12 +507,25 @@ fn handle(state: &AppState, mut request: Request) {
                 );
                 return;
             }
+            // 无密码模式允许空密码；密码模式必须满足长度要求
+            let mode = auth_mode_of(&conn);
+            if mode == AuthMode::Password && password.len() < 10 {
+                drop(conn);
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码至少 10 个字符"));
+                return;
+            }
 
             let id = format!("user-{now}");
+            // 无密码模式下写入一个不可用于登录的占位哈希
+            let stored_hash = if mode == AuthMode::Password {
+                hash_password(&password)
+            } else {
+                "!passwordless".to_string()
+            };
             let inserted = conn.execute(
                 "INSERT INTO users (id, username, password_hash, display_name, created_at, updated_at, password_changed_at, last_login_at)
                  VALUES (?1, ?2, ?3, ?2, ?4, ?4, ?4, ?4)",
-                params![id, username, hash_password(&password), now],
+                params![id, username, stored_hash, now],
             );
             drop(conn);
 
@@ -374,7 +583,8 @@ fn handle(state: &AppState, mut request: Request) {
                 respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
                 return;
             };
-            if !verify_password(&hash, &password) {
+            // 占位哈希（无密码模式下创建）永远不能用于密码登录
+            if hash == "!passwordless" || !verify_password(&hash, &password) {
                 respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
                 return;
             }
