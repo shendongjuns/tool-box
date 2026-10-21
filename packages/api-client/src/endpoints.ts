@@ -32,13 +32,9 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
   return {
     getBootstrap: () => get<BootstrapStatus>("/api/auth/bootstrap"),
 
-    /** 首次注册：桌面端要拿到 token，因此用 desktop 版本 */
-    bootstrap: (body: {
-      username: string;
-      password: string;
-      displayName?: string;
-      setupToken?: string;
-    }) => transport.request<LoginResponse>({ path: "/api/auth/bootstrap", method: "POST", body }),
+    /** 创建唯一管理员：仅当库里没有用户时服务端才接受。 */
+    bootstrap: (body: { username: string; password: string; displayName?: string }) =>
+      transport.request<LoginResponse>({ path: "/api/auth/bootstrap", method: "POST", body }),
 
     /** 桌面端走 desktop-login 才拿得到 token；网页端走 login 写 Cookie。 */
     login: (body: LoginRequest) =>

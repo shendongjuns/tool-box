@@ -55,6 +55,16 @@ export class AuthService {
     return (await countUsers(this.db)) > 0;
   }
 
+  /**
+   * 首个（也是唯一一个）管理员。
+   *
+   * 单用户系统里用户名固定为 owner：注册表单只让用户设置密码，
+   * 避免「用户名记错就再也登不进去」这种自锁情况。
+   */
+  async findOwner(): Promise<UserRow | undefined> {
+    return findUserByUsername(this.db, OWNER_USERNAME);
+  }
+
   /** 创建会话：令牌明文返回给调用方，库里只留 sha256。 */
   async issueSession(userId: string, meta: LoginMeta, now = Date.now()): Promise<IssuedSession> {
     const token = generateToken();
@@ -72,6 +82,7 @@ export class AuthService {
     return { token, sessionId: row.id, expiresAt: row.expiresAt };
   }
 
+  /** 只在 users 为空时调用（路由层已做检查，这里再做一次兜底）。 */
   async createFirstUser(input: {
     username: string;
     passwordHash: string;
@@ -118,3 +129,6 @@ export class AuthService {
     return { user, sessionId: session.id, expiresAt: session.expiresAt, kind: session.kind };
   }
 }
+
+/** 单用户系统的固定用户名。 */
+export const OWNER_USERNAME = "owner";

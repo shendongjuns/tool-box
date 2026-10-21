@@ -13,6 +13,8 @@ export default tseslint.config(
       "docs/**",
       ".tmp-shots/**",
       ".tmp-check/**",
+      ".tmp-verify/**",
+      ".tmp-empty/**",
       "apps/desktop/src-tauri/target/**",
       "apps/desktop/src-tauri/gen/**",
       "**/routeTree.gen.ts",

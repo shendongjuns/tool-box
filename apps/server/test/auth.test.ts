@@ -40,10 +40,10 @@ async function bootstrap() {
 }
 
 describe("首次注册", () => {
-  it("空库时 initialized=false", async () => {
+  it("空库时 initialized=false 且没有用户名", async () => {
     const response = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ initialized: false });
+    expect(response.json()).toMatchObject({ initialized: false, username: null });
   });
 
   it("注册成功后初始化状态变为 true，并下发 Cookie", async () => {
@@ -54,12 +54,16 @@ describe("首次注册", () => {
     expect(cookie?.httpOnly).toBe(true);
 
     const status = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
-    expect(status.json()).toMatchObject({ initialized: true });
+    expect(status.json()).toMatchObject({ initialized: true, username: "owner" });
   });
 
-  it("重复注册返回 409", async () => {
+  it("注册后不允许再创建第二个用户", async () => {
     expect((await bootstrap()).statusCode).toBe(201);
-    const second = await bootstrap();
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "intruder", password: "another-strong-pass" },
+    });
     expect(second.statusCode).toBe(409);
     expect(second.json().code).toBe("ALREADY_INITIALIZED");
   });
@@ -376,5 +380,46 @@ describe("设置与工具按数据源隔离（回归）", () => {
   it("未认证访问设置返回 401", async () => {
     const response = await app.inject({ method: "GET", url: "/api/settings" });
     expect(response.statusCode).toBe(401);
+  });
+});
+describe("单用户：注册入口只在无用户时存在", () => {
+  it("注册后 bootstrap 永远返回 initialized=true", async () => {
+    await bootstrap();
+    for (let i = 0; i < 3; i += 1) {
+      const response = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
+      expect(response.json().initialized).toBe(true);
+    }
+  });
+
+  it("管理员用固定用户名 owner 登录", async () => {
+    await bootstrap();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "owner", password: credentials.password },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user.username).toBe("owner");
+  });
+
+  it("不存在的用户名登录失败（防止创建第二个账号的错觉）", async () => {
+    await bootstrap();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "someone-else", password: credentials.password },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("空库时桌面端也可以直接创建管理员并拿到令牌", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      headers: { "x-toolbox-client": "desktop", origin: "tauri://localhost" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(201);
+    expect(typeof response.json().token).toBe("string");
   });
 });

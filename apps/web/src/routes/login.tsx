@@ -25,11 +25,15 @@ function LoginPage() {
     queryKey: ["bootstrap", source, cloudBaseUrl],
     queryFn: () => getApi().getBootstrap(),
     retry: false,
-    staleTime: 5_000,
+    staleTime: 0,
   });
 
-  // 只有明确拿到 false 才进注册页；查询失败时按「已初始化」显示登录，
-  // 否则断网会错误地把用户带到注册页。
+  /**
+   * 只有明确拿到 false 才显示注册表单。
+   *
+   * 查询中 / 查询失败时按「已初始化」显示登录，避免把用户误导向注册页；
+   * 真正的注册入口由服务端 users 表为空与否决定，前端只是展示。
+   */
   const initialized = bootstrap.data?.initialized ?? true;
   const sourceInfo = DATA_SOURCES[source];
   const offline = bootstrap.isError;
@@ -55,13 +59,13 @@ function LoginPage() {
 
   return (
     <AuthLayout
-      title={initialized ? "欢迎回来" : "创建你的账号"}
+      title={initialized ? "欢迎回来" : "创建管理员"}
       description={
         offline
           ? `无法连接${sourceInfo.label}，请检查服务器地址或网络`
           : initialized
             ? `登录以继续使用${sourceInfo.label}`
-            : "这是首次使用，设置一个账号即可开始"
+            : "系统尚未初始化，设置密码即可开始"
       }
       badge={<SourceSwitch compact />}
     >
@@ -69,15 +73,11 @@ function LoginPage() {
         source={source}
         initialized={initialized}
         disabled={offline}
-        onSubmit={async ({ username, password, setupToken }) => {
+        onSubmit={async ({ username, password }) => {
           const api = getApi();
           const result = initialized
             ? await api.login({ username, password })
-            : await api.bootstrap({
-                username,
-                password,
-                ...(setupToken ? { setupToken } : {}),
-              });
+            : await api.bootstrap({ username, password });
 
           // 桌面端：令牌写进 Tauri store；网页端：服务端已写 Cookie
           await applySession({
@@ -86,7 +86,7 @@ function LoginPage() {
             session: result.session,
           });
 
-          toast.success(initialized ? "登录成功" : "账号创建成功，已自动登录");
+          toast.success(initialized ? "登录成功" : "管理员已创建，已自动登录");
           await navigate({ to: "/dashboard" });
         }}
         extra={
@@ -119,7 +119,7 @@ function LoginPage() {
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                例如 http://127.0.0.1:3000 或你的 nginx 地址。切换后需要重新登录。
+                切换后需要重新登录。
               </p>
             </div>
           ) : null

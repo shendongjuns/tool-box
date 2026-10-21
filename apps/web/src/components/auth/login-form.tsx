@@ -1,16 +1,18 @@
 import * as React from "react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import type { DataSource } from "@/lib/platform";
 import { DATA_SOURCES } from "@/lib/source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
 
+/** 单用户系统固定的管理员用户名。 */
+export const OWNER_USERNAME = "owner";
+
 export interface LoginFormValues {
   username: string;
   password: string;
   confirmPassword?: string;
-  setupToken?: string;
 }
 
 export function LoginForm({
@@ -21,16 +23,15 @@ export function LoginForm({
   extra,
 }: {
   source: DataSource;
+  /** false 表示库里还没有用户 —— 显示「创建管理员」表单 */
   initialized: boolean;
   /** 服务器不可达时禁用提交，避免用户对着按钮反复点 */
   disabled?: boolean;
   onSubmit: (values: LoginFormValues) => Promise<void>;
   extra?: React.ReactNode;
 }) {
-  const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [setupToken, setSetupToken] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -57,9 +58,9 @@ export function LoginForm({
     setPending(true);
     try {
       await onSubmit({
-        username: username.trim(),
+        username: OWNER_USERNAME,
         password,
-        ...(isSetup ? { confirmPassword, setupToken: setupToken.trim() } : {}),
+        ...(isSetup ? { confirmPassword } : {}),
       });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "操作失败，请稍后重试");
@@ -70,21 +71,22 @@ export function LoginForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      <Field>
-        <FieldLabel htmlFor="username">用户名</FieldLabel>
-        <Input
-          id="username"
-          autoFocus
-          autoComplete="username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          placeholder={isSetup ? "给自己起一个名字" : "输入用户名"}
-          required
-        />
-      </Field>
+      {isSetup ? (
+        <div className="flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="text-xs leading-relaxed">
+            <p className="font-medium text-foreground">初始化管理员</p>
+            <p className="mt-0.5 text-muted-foreground">
+              系统还没有任何用户。设置一个密码即可创建唯一的管理员
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono">{OWNER_USERNAME}</code>
+              ，之后不再提供注册入口。
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <Field>
-        <FieldLabel htmlFor="password">密码</FieldLabel>
+        <FieldLabel htmlFor="password">{isSetup ? "设置密码" : "密码"}</FieldLabel>
         <div className="relative">
           <Input
             id="password"
@@ -93,6 +95,7 @@ export function LoginForm({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder={isSetup ? "至少 10 个字符" : "输入密码"}
+            autoFocus
             required
             className="pr-10"
           />
@@ -125,19 +128,6 @@ export function LoginForm({
         </Field>
       ) : null}
 
-      {isSetup && source === "cloud" ? (
-        <Field>
-          <FieldLabel htmlFor="setup-token">初始化口令（可选）</FieldLabel>
-          <Input
-            id="setup-token"
-            value={setupToken}
-            onChange={(event) => setSetupToken(event.target.value)}
-            placeholder="服务器要求时填写"
-          />
-          <FieldHint>部署时设置了 SETUP_TOKEN 才需要填写。</FieldHint>
-        </Field>
-      ) : null}
-
       {extra}
 
       {error ? (
@@ -148,7 +138,7 @@ export function LoginForm({
 
       <Button type="submit" className="w-full" size="lg" disabled={pending || disabled}>
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {pending ? "请稍候…" : isSetup ? "创建账号并进入" : "登录"}
+        {pending ? "请稍候…" : isSetup ? "创建管理员并登录" : "登录"}
       </Button>
 
       <p className="text-center text-xs text-muted-foreground">

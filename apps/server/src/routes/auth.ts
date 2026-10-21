@@ -9,7 +9,7 @@ import {
 } from "@toolbox/contracts";
 import { listSessions, revokeSession, revokeUserSessions } from "@toolbox/data";
 import { hashPassword, verifyPassword } from "../auth/password.js";
-import { toPublicUser } from "../auth/service.js";
+import { OWNER_USERNAME, toPublicUser } from "../auth/service.js";
 import { ApiError, conflict, unauthorized } from "../plugins/errors.js";
 
 const sessionParamsSchema = z.object({ id: z.string().min(1) });
@@ -35,31 +35,38 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     reply.setCookie(config.cookieName, token, {
       httpOnly: true,
       sameSite: "lax",
-      // secure: "auto" —— 经 nginx 转发 HTTPS 时自动加 Secure，纯 HTTP 时也能用
+      // secure: "auto" —— 经反向代理转发 HTTPS 时自动加 Secure，纯 HTTP 也能用
       secure: "auto",
       path: "/",
       maxAge: Math.floor(config.sessionTtlMs / 1000),
     });
   };
 
-  /** 是否已完成首次注册（前端据此决定进注册页还是登录页）。 */
-  app.get("/api/auth/bootstrap", async () => ({
-    initialized: await authService.isInitialized(),
-    requireSetupToken: config.setupToken.length > 0,
-  }));
+  /**
+   * 初始化状态。
+   *
+   * `initialized: false` 表示数据库里一个用户都没有 —— 前端据此把登录页
+   * 切换成「创建管理员」。只要注册成功过一次，这里永远是 true，
+   * 系统里不会再出现任何创建用户的入口。
+   */
+  app.get("/api/auth/bootstrap", async () => {
+    const initialized = await authService.isInitialized();
+    const owner = initialized ? await authService.findOwner() : undefined;
+    return {
+      initialized,
+      username: owner?.username ?? null,
+    };
+  });
 
-  /** 首次注册：仅当 users 为空时成功；可选一次性 SETUP_TOKEN。 */
+  /** 创建唯一管理员：仅当 users 为空时成功，并发下也只有一次能成功。 */
   app.post(
     "/api/auth/bootstrap",
     { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const body = bootstrapRequestSchema.parse(request.body);
 
-      if (config.setupToken.length > 0 && body.setupToken !== config.setupToken) {
-        throw new ApiError(403, "SETUP_TOKEN_INVALID", "初始化口令不正确");
-      }
       if (await authService.isInitialized()) {
-        throw conflict("ALREADY_INITIALIZED", "系统已完成初始化，请直接登录");
+        throw conflict("ALREADY_INITIALIZED", "管理员已创建，请直接登录");
       }
 
       const passwordHash = await hashPassword(body.password);
@@ -71,8 +78,9 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           displayName: body.displayName ?? body.username,
         });
       } catch (error) {
+        // 并发注册时唯一约束会抛错，统一转成 409
         if (String(error).includes("UNIQUE")) {
-          throw conflict("ALREADY_INITIALIZED", "系统已完成初始化，请直接登录");
+          throw conflict("ALREADY_INITIALIZED", "管理员已创建，请直接登录");
         }
         throw error;
       }
@@ -225,4 +233,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(204).send();
     },
   );
+
+  // OWNER_USERNAME 由 service 导出，这里显式引用以保持契约清晰
+  void OWNER_USERNAME;
 }

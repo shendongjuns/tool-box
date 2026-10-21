@@ -34,9 +34,17 @@ export const sessionDeviceSchema = z.object({
 });
 export type SessionDevice = z.infer<typeof sessionDeviceSchema>;
 
+/**
+ * 初始化状态。
+ *
+ * 单用户系统：`initialized === false` 表示库里一个用户都没有，
+ * 此时登录页会切换成「创建管理员」表单；注册成功后永远返回 true，
+ * 不再提供任何创建用户的入口。
+ */
 export const bootstrapStatusSchema = z.object({
   initialized: z.boolean(),
-  requireSetupToken: z.boolean(),
+  /** 已注册的管理员用户名，仅 initialized 时有值，用于登录页提示 */
+  username: z.string().nullable(),
 });
 export type BootstrapStatus = z.infer<typeof bootstrapStatusSchema>;
 
@@ -44,7 +52,6 @@ export const bootstrapRequestSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   displayName: displayNameSchema,
-  setupToken: z.string().trim().max(128).optional(),
 });
 export type BootstrapRequest = z.infer<typeof bootstrapRequestSchema>;
 
