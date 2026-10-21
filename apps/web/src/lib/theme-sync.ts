@@ -1,44 +1,33 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
-import { useApi } from "./api-context";
-import { useAuth } from "./auth-session";
 import { useTheme } from "./theme";
 
 const MODES: ThemeMode[] = ["light", "dark", "system"];
 const ACCENTS: Accent[] = ["indigo", "violet", "emerald", "amber", "rose", "slate"];
 
-/**
- * 把服务端保存的外观设置同步到本地主题。
- *
- * 主题模式/强调色存在当前数据源（本地库或云端库）里，
- * 换设备、换数据源都会各自记住自己的外观。
- */
-export function useThemeSync(): void {
-  const api = useApi();
-  const authed = useAuth((state) => state.auth !== null);
-  const setMode = useTheme((state) => state.setMode);
-  const setAccent = useTheme((state) => state.setAccent);
+/** 把服务端保存的外观设置应用到本地主题（不额外发请求）。 */
+export function applyRemoteTheme(
+  values: Record<string, string | number | boolean> | undefined,
+): void {
+  if (!values) return;
+  const { setMode, setAccent } = useTheme.getState();
 
-  const settings = useQuery({
-    queryKey: ["settings"],
-    queryFn: () => api.getSettings(),
-    enabled: authed,
-    staleTime: 60_000,
-  });
+  const mode = values["ui.themeMode"];
+  if (typeof mode === "string" && MODES.includes(mode as ThemeMode)) {
+    setMode(mode as ThemeMode);
+  }
 
+  const accent = values["ui.accent"];
+  if (typeof accent === "string" && ACCENTS.includes(accent as Accent)) {
+    setAccent(accent as Accent);
+  }
+}
+
+/** 设置数据到达后同步一次远程外观。 */
+export function useThemeSync(
+  values: Record<string, string | number | boolean> | undefined,
+): void {
   useEffect(() => {
-    const values = settings.data?.values;
-    if (!values) return;
-
-    const mode = values["ui.themeMode"];
-    if (typeof mode === "string" && MODES.includes(mode as ThemeMode)) {
-      setMode(mode as ThemeMode);
-    }
-
-    const accent = values["ui.accent"];
-    if (typeof accent === "string" && ACCENTS.includes(accent as Accent)) {
-      setAccent(accent as Accent);
-    }
-  }, [settings.data, setMode, setAccent]);
+    applyRemoteTheme(values);
+  }, [values]);
 }

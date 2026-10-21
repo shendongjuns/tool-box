@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowUpRight, Boxes, Clock3, HardDrive, Pin } from "lucide-react";
+import { Activity, ArrowUpRight, Boxes, Clock3, HardDrive, Pin, WifiOff } from "lucide-react";
 import { toolCatalog } from "@toolbox/contracts";
-import { useApi } from "@/lib/api-context";
+import { useDashboardQuery } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth-session";
 import { useDataSource } from "@/lib/data-source";
 import { DATA_SOURCES } from "@/lib/source";
@@ -17,15 +16,9 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 function DashboardPage() {
-  const api = useApi();
   const user = useAuth((state) => state.auth?.user);
   const source = useDataSource((state) => state.source);
-
-  const dashboard = useQuery({
-    queryKey: ["dashboard", source],
-    queryFn: () => api.dashboard(),
-    staleTime: 15_000,
-  });
+  const dashboard = useDashboardQuery();
 
   const hour = new Date().getHours();
   const greeting = hour < 6 ? "夜深了" : hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
@@ -35,26 +28,37 @@ function DashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">{greeting}，{user?.displayName ?? user?.username}</p>
+          <p className="text-sm text-muted-foreground">
+            {greeting}，{user?.displayName ?? user?.username}
+          </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">仪表盘</h1>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant={source === "local" ? "success" : "default"}>{DATA_SOURCES[source].label}</Badge>
+          <Badge variant={source === "local" ? "success" : "default"}>
+            {DATA_SOURCES[source].label}
+          </Badge>
           <SourceSwitch />
         </div>
       </header>
 
+      {dashboard.isError ? (
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          {dashboard.error instanceof Error ? dashboard.error.message : "加载失败"}
+        </div>
+      ) : null}
+
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="可用工具"
-          value={stats?.totalTools}
+          value={stats?.totalTools ?? toolCatalog.length}
           icon={<Boxes className="h-4 w-4" />}
-          hint={toolCatalog.length > 0 ? `共 ${toolCatalog.length} 个内置工具` : undefined}
+          hint={`共 ${toolCatalog.length} 个内置工具`}
           loading={dashboard.isLoading}
         />
         <StatCard
           label="置顶工具"
-          value={stats?.pinnedTools}
+          value={stats?.pinnedTools ?? 0}
           icon={<Pin className="h-4 w-4" />}
           hint="在工具页可置顶常用项"
           loading={dashboard.isLoading}
@@ -163,9 +167,9 @@ function StatCard({
           <span className="text-xs font-medium">{label}</span>
           {icon}
         </div>
-        <p className="mt-2 text-2xl font-semibold tracking-tight">
+        <div className="mt-2 h-7 text-2xl font-semibold tracking-tight">
           {loading ? <Skeleton className="h-7 w-12" /> : (value ?? "—")}
-        </p>
+        </div>
         {hint ? <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{hint}</p> : null}
       </CardContent>
     </Card>

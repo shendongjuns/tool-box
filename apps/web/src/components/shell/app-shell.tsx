@@ -2,18 +2,22 @@ import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { CommandPalette } from "./command-palette";
+import { useSettingsQuery } from "@/lib/hooks";
 import { useThemeSync } from "@/lib/theme-sync";
 import { cn } from "@/lib/utils";
 
 /**
  * 应用壳层：侧栏 + 顶栏 + 内容区。
  *
- * 桌面端在顶部留出拖拽区（-webkit-app-region），网页端无影响。
+ * 设置查询在这里统一发起：主题同步与侧栏宽度都依赖同一份 /api/settings，
+ * 只请求一次，避免每个子组件各拉一遍。
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = React.useState(false);
+  const settings = useSettingsQuery();
   const [commandOpen, setCommandOpen] = React.useState(false);
-  useThemeSync();
+  const [collapsed, setCollapsed] = React.useState(false);
+
+  useThemeSync(settings.data?.values);
 
   React.useEffect(() => {
     const handler = (event: KeyboardEvent) => {

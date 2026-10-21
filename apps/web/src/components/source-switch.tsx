@@ -1,6 +1,6 @@
-import { Database, Cloud } from "lucide-react";
-import { useAuth } from "@/lib/auth-session";
+import { Cloud, Database } from "lucide-react";
 import { useDataSource } from "@/lib/data-source";
+import { switchDataSource } from "@/lib/session";
 import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
  * 数据源切换（仅桌面端可见）。
  *
  * 切换只改变「使用哪一套数据」，两套数据完全独立，互不覆盖。
+ * 切换后清空登录态与 Query 缓存，避免把旧数据源的数据带过去。
  */
 export function SourceSwitch({
   compact = false,
@@ -16,8 +17,7 @@ export function SourceSwitch({
   compact?: boolean;
   onChanged?: () => void;
 }) {
-  const { source, setSource } = useDataSource();
-  const setAuth = useAuth((state) => state.setAuth);
+  const source = useDataSource((state) => state.source);
 
   if (!canSwitchSource()) return null;
 
@@ -38,10 +38,9 @@ export function SourceSwitch({
             key={id}
             type="button"
             aria-pressed={active}
-            onClick={() => {
+            onClick={async () => {
               if (active) return;
-              setSource(id);
-              setAuth(null);
+              await switchDataSource(id);
               onChanged?.();
             }}
             className={cn(

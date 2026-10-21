@@ -356,16 +356,21 @@ WebView (React) ──fetch──▶ https://你的服务器       (Node)  ─�
 </ul>
 
 <h2 id="deploy">9 · 部署与 CI</h2>
-<pre><code># 1. 准备
-cp docker/.env.example docker/.env   # 填 DOMAIN / PUBLIC_ORIGIN / SETUP_TOKEN
+<pre><code># 1. 准备（可选：设置一次性注册口令）
+cp docker/.env.example docker/.env
 
-# 2. 启动（首次启动前不要暴露到公网，或依赖 SETUP_TOKEN）
+# 2. 启动（只监听 127.0.0.1:3000）
 cd docker &amp;&amp; docker compose up -d --build
 
-# 3. 打开 https://你的域名 → 首次注册 → 开始使用</code></pre>
+# 3. 宿主机 nginx 反代 → https://你的域名 → 首次注册</code></pre>
+<div class="callout">
+  <strong>应用不配置域名与 HTTPS。</strong>证书、跳转、HSTS 全部由 nginx 负责；
+  应用只监听 HTTP，靠 <code>X-Forwarded-*</code> 头识别真实 Host / 协议 / 客户端 IP。
+  CSRF 校验比较浏览器 <code>Origin</code> 与请求 Host，换域名无需改任何配置。
+</div>
 <ul>
-  <li>容器：多阶段构建，运行阶段非 root，内置 <code>HEALTHCHECK /api/health</code>。</li>
-  <li>反代：Caddy 自动申请与续期 HTTPS 证书。</li>
+  <li>容器：多阶段构建，运行阶段非 root，内置 <code>HEALTHCHECK /api/health</code>；只绑定 <code>127.0.0.1:3000</code>。</li>
+  <li>反代：宿主机 nginx（示例见 <code>docker/nginx.conf.example</code>），证书由你现有的方式签发。</li>
   <li>持久化：<code>./data</code> 挂载到 <code>/app/data</code>，备份直接拷目录或用 <code>VACUUM INTO</code>。</li>
   <li>升级：拉新镜像重启，迁移在启动时自动执行。</li>
 </ul>
@@ -374,11 +379,10 @@ cd docker &amp;&amp; docker compose up -d --build
   <tbody>
     <tr><td><code>PORT</code></td><td>3000</td><td>监听端口</td></tr>
     <tr><td><code>DATABASE_PATH</code></td><td>./data/toolbox.db</td><td>SQLite 文件路径</td></tr>
-    <tr><td><code>PUBLIC_ORIGIN</code></td><td>http://localhost:5173</td><td>允许的来源（CSRF 校验），多个用逗号分隔</td></tr>
-    <tr><td><code>SESSION_TTL_DAYS</code></td><td>30</td><td>会话有效期</td></tr>
-    <tr><td><code>COOKIE_SECURE</code></td><td>false</td><td>生产环境务必 true</td></tr>
+    <tr><td><code>SESSION_TTL_DAYS</code></td><td>30</td><td>会话有效期（天）</td></tr>
+    <tr><td><code>SESSION_RENEW_THROTTLE_MIN</code></td><td>60</td><td>滑动续期的写库节流</td></tr>
     <tr><td><code>SETUP_TOKEN</code></td><td>空</td><td>一次性注册口令，留空不校验</td></tr>
-    <tr><td><code>TRUST_PROXY</code></td><td>false</td><td>在反代后设为 true 以取真实 IP</td></tr>
+    <tr><td><code>TRUST_PROXY</code></td><td>true</td><td>信任 X-Forwarded-*，nginx 后面保持开启</td></tr>
   </tbody>
 </table>
 
@@ -475,7 +479,28 @@ cd docker &amp;&amp; docker compose up -d --build
   </tbody>
 </table>
 
-<h2 id="status">14 · 实施状态</h2>
+<h2 id="fixes">14 · 2026-10-21 修复记录</h2>
+<p>首轮交付后做了一次全面审查，修复了以下问题（均已补回归测试）：</p>
+<table>
+  <thead><tr><th style="width:46px">#</th><th style="width:150px">问题</th><th>原因与修复</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>桌面端无法启动</td><td>缺少 <code>src/main.rs</code>，只编译了 lib，产不出 exe —— 已补回入口文件。</td></tr>
+    <tr><td>2</td><td>桌面端本地数据全部请求失败</td><td>Rust 本地 HTTP 服务没有 CORS 与 OPTIONS 处理，WebView 的 <code>tauri://localhost</code> 跨源被拦 —— 已补齐 CORS 头与预检响应。</td></tr>
+    <tr><td>3</td><td>桌面端插件全部不可用</td><td>缺少 <code>capabilities/default.json</code> —— 已按最小权限补齐。</td></tr>
+    <tr><td>4</td><td>桌面端窗口无法关闭/拖动</td><td>配置了 <code>decorations:false</code> 却没有实现自定义标题栏 —— 已恢复系统标题栏。</td></tr>
+    <tr><td>5</td><td><code>tauri dev/build</code> 不出前端</td><td><code>beforeDevCommand</code>/<code>beforeBuildCommand</code> 为空 —— 已指向 web 构建命令。</td></tr>
+    <tr><td>6</td><td>桌面端云端登录拿不到令牌</td><td>走的是网页端 <code>/api/auth/login</code>，且从不发 <code>X-Toolbox-Client</code> —— 已改为桌面端走 desktop-login 并带标识头。</td></tr>
+    <tr><td>7</td><td>所有写操作返回 403</td><td>Vite 代理 <code>changeOrigin:true</code> 改写 Host，导致 Origin 与 Host 不一致 —— 已关闭改写，CSRF 同时兼容 <code>X-Forwarded-Host</code>。</td></tr>
+    <tr><td>8</td><td>整站白屏 / Too many re-renders</td><td>Base64、URL 编解码在渲染期间 <code>setState</code> —— 改为 <code>useMemo</code> 纯计算。</td></tr>
+    <tr><td>9</td><td>侧栏与顶栏消失</td><td><code>_app.tsx</code> 漏掉 <code>AppShell</code> 包裹 —— 已恢复。</td></tr>
+    <tr><td>10</td><td>切换数据源后数据串台</td><td>Query 缓存键没有带数据源 —— 已统一加 <code>sourceKey</code> 前缀并清缓存。</td></tr>
+    <tr><td>11</td><td>刷新桌面端就掉登录</td><td>本地令牌只存内存 —— 已改为存 Tauri store，与云端令牌分开保存。</td></tr>
+    <tr><td>12</td><td>构建因空 pubkey 失败</td><td>updater 未配置签名 —— 已移除该插件依赖，避免阻断构建。</td></tr>
+    <tr><td>13</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>，nginx 负责 TLS。</td></tr>
+  </tbody>
+</table>
+
+<h2 id="status">15 · 实施状态</h2>
 <div class="grid2">
   <div class="card">
     <h3>已完成</h3>

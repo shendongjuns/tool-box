@@ -1,11 +1,10 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { toast } from "sonner";
-import { setLocalToken, useApi } from "@/lib/api-context";
-import { setCloudToken } from "@/lib/desktop";
+import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
+import { clearSession } from "@/lib/session";
 import { useTheme } from "@/lib/theme";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,7 +19,6 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
   const api = useApi();
   const navigate = useNavigate();
   const user = useAuth((state) => state.auth?.user);
-  const setAuth = useAuth((state) => state.setAuth);
   const { resolved, setMode, mode } = useTheme();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
@@ -36,13 +34,12 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
   async function logout() {
     try {
       await api.logout();
-    } finally {
-      await setCloudToken(null);
-      setLocalToken(null);
-      setAuth(null);
-      toast.success("已退出登录");
-      await navigate({ to: "/login" });
+    } catch {
+      // 服务端不可达时也要让本地退出，不能把用户困在已登录界面
     }
+    await clearSession();
+    toast.success("已退出登录");
+    await navigate({ to: "/login" });
   }
 
   return (
@@ -77,18 +74,14 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className={cn(
-              "app-no-drag grid h-8 w-8 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary transition-colors hover:bg-primary/20",
-            )}
+            className="app-no-drag grid h-8 w-8 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
             title={user?.username}
           >
             {(user?.displayName ?? user?.username ?? "U").slice(0, 1).toUpperCase()}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuLabel>
-            {user?.displayName ?? user?.username}
-          </DropdownMenuLabel>
+          <DropdownMenuLabel>{user?.displayName ?? user?.username}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => void navigate({ to: "/settings", search: { tab: "account" } })}

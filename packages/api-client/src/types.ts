@@ -25,4 +25,13 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+
+  /** status 0 表示请求没有到达服务器（断网 / 地址错误） */
+  get isNetworkError(): boolean {
+    return this.status === 0;
+  }
 }

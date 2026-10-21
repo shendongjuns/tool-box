@@ -1,3 +1,4 @@
+# 只跑应用本身。HTTPS、域名、证书全部交给宿主机的 nginx。
 services:
   toolbox:
     build:
@@ -9,42 +10,22 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      HOST: 0.0.0.0
       DATABASE_PATH: /app/data/toolbox.db
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://tool.example.com}
-      SESSION_TTL_DAYS: 30
-      COOKIE_SECURE: "true"
+      # 在 nginx 后面：信任 X-Forwarded-* 头
       TRUST_PROXY: "true"
+      SESSION_TTL_DAYS: 30
+      # 一次性注册口令，留空则不校验
       SETUP_TOKEN: ${SETUP_TOKEN:-}
-      BACKUP_KEEP: 7
       LOG_LEVEL: info
     volumes:
       - ./data:/app/data
-    expose:
-      - "3000"
+    ports:
+      # 只监听本机，nginx 通过 127.0.0.1:3000 反代；不直接对外暴露
+      - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: toolbox-caddy
-    restart: unless-stopped
-    depends_on:
-      toolbox:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN:-tool.example.com}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
-volumes:
-  caddy_data:
-  caddy_config:

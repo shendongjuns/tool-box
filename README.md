@@ -80,24 +80,43 @@ pnpm lint         # ESLint
 
 ## 部署（云端）
 
+应用**只监听 HTTP**，域名、HTTPS、证书全部交给宿主机 nginx。
+
 ```bash
 cp docker/.env.example docker/.env
-# 编辑 docker/.env：DOMAIN、PUBLIC_ORIGIN、SETUP_TOKEN（建议设置）
+# 可选：在 docker/.env 里设置一次性注册口令 SETUP_TOKEN
 cd docker && docker compose up -d --build
 ```
 
-打开 `https://你的域名` 完成首次注册。
+容器只绑定 `127.0.0.1:3000`，不会直接暴露到公网。把
+[`docker/nginx.conf.example`](docker/nginx.conf.example) 复制到 nginx 的 `conf.d/`，
+改掉 `server_name` 与证书路径即可。
+
+nginx 必须转发这几个头（否则 Cookie 的 Secure 判断与限流取到的 IP 会不准）：
+
+```nginx
+proxy_set_header Host              $host;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host  $host;
+```
+
+> 应用不校验固定域名：CSRF 保护比较的是浏览器 `Origin` 与本次请求的 Host，
+> 所以换成任何域名都不需要改配置。
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `PORT` | 3000 | 监听端口 |
+| `HOST` | 0.0.0.0 | 监听地址 |
 | `DATABASE_PATH` | ./data/toolbox.db | SQLite 文件路径 |
-| `PUBLIC_ORIGIN` | http://localhost:5173 | 允许来源（CSRF 校验），多个用逗号分隔 |
-| `SESSION_TTL_DAYS` | 30 | 会话有效期 |
-| `COOKIE_SECURE` | false | 生产环境务必 true |
-| `TRUST_PROXY` | false | 在反代后设为 true |
+| `SESSION_TTL_DAYS` | 30 | 会话有效期（天） |
+| `SESSION_RENEW_THROTTLE_MIN` | 60 | 滑动续期的写库节流（分钟） |
+| `TRUST_PROXY` | true | 信任 `X-Forwarded-*`（nginx 后面保持开启） |
 | `SETUP_TOKEN` | 空 | 一次性注册口令，留空则不校验 |
-| `BACKUP_KEEP` | 7 | 备份保留份数 |
+| `LOG_LEVEL` | info | 日志级别 |
+
+> **没有域名 / HTTPS 配置项**，这些由 nginx 负责；Cookie 的 `Secure` 由服务端按请求协议自动判断。
 
 > **安全提示**：首次注册前不要把服务暴露到公网，或务必设置 `SETUP_TOKEN`。
 > 备份直接拷贝 `docker/data` 目录即可。
@@ -105,16 +124,18 @@ cd docker && docker compose up -d --build
 ## 桌面端
 
 ```bash
-pnpm --filter @toolbox/web dev        # 终端 A：前端
-pnpm --filter @toolbox/desktop dev    # 终端 B：Tauri 外壳
+# 一条命令即可：Tauri 会自动拉起 Vite（beforeDevCommand）
+pnpm --filter @toolbox/desktop dev
 ```
 
-打包：
+打包（会自动先构建前端）：
 
 ```bash
-pnpm --filter @toolbox/web build
 pnpm --filter @toolbox/desktop build   # 产物在 apps/desktop/src-tauri/target/release/bundle/
 ```
+
+桌面端启动时会在 `127.0.0.1` 的随机端口起一个本地 SQLite 服务（Rust + rusqlite），
+并在设置里提供「本地数据 / 云端数据」两种数据源，两套数据完全独立。
 
 - 托盘常驻：单击显示窗口，右键「显示主窗口 / 退出 ToolBox」；关闭按钮默认最小化到托盘。
 - 单实例：重复启动只会聚焦已有窗口。

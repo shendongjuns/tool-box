@@ -244,3 +244,137 @@ describe("健康检查", () => {
     expect(response.json()).toMatchObject({ status: "ok", db: "ok" });
   });
 });
+describe("跨源与代理场景（回归）", () => {
+  beforeEach(async () => {
+    await bootstrap();
+  });
+
+  it("桌面端 origin + Bearer 可以登录（tauri://localhost）", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/desktop-login",
+      headers: { origin: "tauri://localhost", "x-toolbox-client": "desktop" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(typeof response.json().token).toBe("string");
+  });
+
+  it("Windows 上的 http://tauri.localhost 同样放行", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/desktop-login",
+      headers: { origin: "http://tauri.localhost" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("来源与 Host 一致时放行（nginx / 同源部署）", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { host: "tool.example.com", origin: "https://tool.example.com" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("X-Forwarded-Host 与 Origin 一致时也放行（nginx 改写了 Host）", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: {
+        host: "127.0.0.1:3000",
+        "x-forwarded-host": "tool.example.com",
+        origin: "https://tool.example.com",
+      },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("无关来源仍然拒绝（403）", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { origin: "https://evil.example" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("预检请求返回 CORS 头", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/api/auth/login",
+      headers: {
+        origin: "tauri://localhost",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,authorization",
+      },
+    });
+    expect(response.statusCode).toBeLessThan(300);
+    expect(response.headers["access-control-allow-origin"]).toBe("tauri://localhost");
+  });
+
+  it("带 X-Toolbox-Client: desktop 的 /api/auth/login 会返回 token", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { "x-toolbox-client": "desktop" },
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(typeof response.json().token).toBe("string");
+  });
+
+  it("网页端登录不返回 token（只下发 Cookie）", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: credentials,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().token).toBeUndefined();
+    expect(response.cookies.some((item) => item.name === "tb_session")).toBe(true);
+  });
+});
+
+describe("设置与工具按数据源隔离（回归）", () => {
+  let token: string;
+
+  beforeEach(async () => {
+    await bootstrap();
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/desktop-login",
+      payload: credentials,
+    });
+    token = login.json().token as string;
+  });
+
+  it("PUT 设置后 GET 能读回，且默认值仍在", async () => {
+    await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { values: { "ui.themeMode": "dark", "ui.accent": "violet" } },
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.json().values).toMatchObject({
+      "ui.themeMode": "dark",
+      "ui.accent": "violet",
+      "ui.sidebarWidth": 260,
+    });
+  });
+
+  it("未认证访问设置返回 401", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/settings" });
+    expect(response.statusCode).toBe(401);
+  });
+});

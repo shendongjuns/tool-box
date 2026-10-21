@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { toast } from "sonner";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
-import { setLocalToken, useApi } from "@/lib/api-context";
-import { setCloudToken } from "@/lib/desktop";
+import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
+import { queryKeys, useCurrentSourceKey, useSettingsQuery } from "@/lib/hooks";
+import { clearSession, switchDataSource } from "@/lib/session";
 import { useDataSource } from "@/lib/data-source";
 import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { isDesktop } from "@/lib/platform";
@@ -23,9 +24,10 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabSchema = z.enum(["general", "appearance", "account", "about"]).catch("general");
+type SettingsTab = z.infer<typeof tabSchema>;
 
 export const Route = createFileRoute("/_app/settings")({
-  // 支持 /settings?tab=appearance 直达，也便于截图与文档引用
+  // 支持 /settings?tab=appearance 直达
   validateSearch: (search: Record<string, unknown>) => ({
     tab: tabSchema.parse(search.tab),
   }),
@@ -55,7 +57,7 @@ function SettingsPage() {
       <Tabs
         value={tab}
         onValueChange={(value) =>
-          void navigate({ to: "/settings", search: { tab: value as "general" } })
+          void navigate({ to: "/settings", search: { tab: value as SettingsTab } })
         }
       >
         <TabsList>
@@ -83,24 +85,18 @@ function SettingsPage() {
 }
 
 function GeneralTab() {
-  const { source, setSource, cloudBaseUrl, setCloudBaseUrl } = useDataSource();
+  const source = useDataSource((state) => state.source);
   const api = useApi();
   const queryClient = useQueryClient();
-  const setAuth = useAuth((state) => state.setAuth);
+  const sourceKey = useCurrentSourceKey();
   const navigate = useNavigate();
-  const [urlDraft, setUrlDraft] = useState(cloudBaseUrl);
-
-  const settings = useQuery({
-    queryKey: ["settings"],
-    queryFn: () => api.getSettings(),
-    staleTime: 30_000,
-  });
+  const settings = useSettingsQuery();
 
   const saveSetting = useMutation({
     mutationFn: (values: Record<string, string | number | boolean>) => api.putSettings({ values }),
     onSuccess: () => {
       toast.success("设置已保存");
-      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings(sourceKey) });
     },
   });
 
@@ -128,11 +124,10 @@ function GeneralTab() {
                 key={id}
                 type="button"
                 disabled={!canSwitchSource() || active}
-                onClick={() => {
-                  setSource(id);
-                  setAuth(null);
+                onClick={async () => {
+                  await switchDataSource(id);
                   toast.success(`已切换到${info.label}，请重新登录`);
-                  void navigate({ to: "/login" });
+                  await navigate({ to: "/login" });
                 }}
                 className={cn(
                   "flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors",
@@ -163,69 +158,44 @@ function GeneralTab() {
               </button>
             );
           })}
-
-          {canSwitchSource() ? (
-            <Field className="pt-2">
-              <FieldLabel htmlFor="cloud-url">云端服务器地址</FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="cloud-url"
-                  value={urlDraft}
-                  onChange={(event) => setUrlDraft(event.target.value)}
-                  placeholder="https://tool.example.com"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setCloudBaseUrl(urlDraft);
-                    toast.success("服务器地址已更新");
-                  }}
-                  disabled={urlDraft === cloudBaseUrl}
-                >
-                  保存
-                </Button>
-              </div>
-              <FieldHint>云端模式下所有请求发往此地址；修改后需要重新登录。</FieldHint>
-            </Field>
-          ) : null}
         </CardContent>
       </Card>
 
       {isDesktop() ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>桌面行为</CardTitle>
-          <CardDescription>仅在桌面端生效</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">关闭窗口时</p>
-              <p className="text-xs text-muted-foreground">决定点击关闭按钮后的行为</p>
+        <Card>
+          <CardHeader>
+            <CardTitle>桌面行为</CardTitle>
+            <CardDescription>仅在桌面端生效</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">关闭窗口时</p>
+                <p className="text-xs text-muted-foreground">决定点击关闭按钮后的行为</p>
+              </div>
+              <select
+                value={closeBehavior}
+                onChange={(event) => saveSetting.mutate({ "ui.closeBehavior": event.target.value })}
+                className="h-9 rounded-md border border-border bg-card px-2 text-sm"
+              >
+                <option value="ask">每次询问</option>
+                <option value="tray">最小化到托盘</option>
+                <option value="quit">直接退出</option>
+              </select>
             </div>
-            <select
-              value={closeBehavior}
-              onChange={(event) => saveSetting.mutate({ "ui.closeBehavior": event.target.value })}
-              className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-            >
-              <option value="ask">每次询问</option>
-              <option value="tray">最小化到托盘</option>
-              <option value="quit">直接退出</option>
-            </select>
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">紧凑侧栏</p>
-              <p className="text-xs text-muted-foreground">只显示图标，为内容留出更多空间</p>
+            <Separator />
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">紧凑侧栏</p>
+                <p className="text-xs text-muted-foreground">只显示图标，为内容留出更多空间</p>
+              </div>
+              <Switch
+                checked={Boolean(settings.data?.values["ui.sidebarCollapsed"])}
+                onCheckedChange={(checked) => saveSetting.mutate({ "ui.sidebarCollapsed": checked })}
+              />
             </div>
-            <Switch
-              checked={Boolean(settings.data?.values["ui.sidebarCollapsed"])}
-              onCheckedChange={(checked) => saveSetting.mutate({ "ui.sidebarCollapsed": checked })}
-            />
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );
@@ -235,11 +205,15 @@ function AppearanceTab() {
   const theme = useTheme();
   const api = useApi();
   const queryClient = useQueryClient();
+  const sourceKey = useCurrentSourceKey();
 
   const persist = (values: Record<string, string>) => {
-    void api.putSettings({ values }).then(() => {
-      void queryClient.invalidateQueries({ queryKey: ["settings"] });
-    });
+    void api
+      .putSettings({ values })
+      .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.settings(sourceKey) }))
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "保存失败");
+      });
   };
 
   const modes: { id: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -322,7 +296,7 @@ function AccountTab() {
   const api = useApi();
   const user = useAuth((state) => state.auth?.user);
   const session = useAuth((state) => state.auth?.session);
-  const setAuth = useAuth((state) => state.setAuth);
+  const sourceKey = useCurrentSourceKey();
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -330,14 +304,20 @@ function AccountTab() {
   const [pending, setPending] = useState(false);
 
   const sessions = useQuery({
-    queryKey: ["sessions"],
+    queryKey: queryKeys.sessions(sourceKey),
     queryFn: () => api.listSessions(),
     staleTime: 10_000,
   });
 
   async function changePassword() {
-    if (newPassword.length < 10) return toast.error("新密码至少 10 个字符");
-    if (newPassword !== confirmPassword) return toast.error("两次输入的新密码不一致");
+    if (newPassword.length < 10) {
+      toast.error("新密码至少 10 个字符");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
     setPending(true);
     try {
       await api.changePassword({ currentPassword, newPassword });
@@ -354,10 +334,12 @@ function AccountTab() {
   }
 
   async function logout() {
-    await api.logout();
-    await setCloudToken(null);
-    setLocalToken(null);
-    setAuth(null);
+    try {
+      await api.logout();
+    } catch {
+      // 服务端不可达也要能退出
+    }
+    await clearSession();
     await navigate({ to: "/login" });
   }
 
@@ -370,14 +352,8 @@ function AccountTab() {
         <CardContent className="space-y-2 text-sm">
           <Row label="用户名" value={user?.username ?? "—"} />
           <Row label="显示名称" value={user?.displayName ?? "—"} />
-          <Row
-            label="创建时间"
-            value={user ? formatDateTime(user.createdAt) : "—"}
-          />
-          <Row
-            label="会话到期"
-            value={session ? formatDateTime(session.expiresAt) : "—"}
-          />
+          <Row label="创建时间" value={user ? formatDateTime(user.createdAt) : "—"} />
+          <Row label="会话到期" value={session ? formatDateTime(session.expiresAt) : "—"} />
         </CardContent>
       </Card>
 
@@ -392,6 +368,7 @@ function AccountTab() {
             <Input
               id="current"
               type="password"
+              autoComplete="current-password"
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
             />
@@ -401,6 +378,7 @@ function AccountTab() {
             <Input
               id="new"
               type="password"
+              autoComplete="new-password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
             />
@@ -411,6 +389,7 @@ function AccountTab() {
             <Input
               id="confirm-new"
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
@@ -427,35 +406,39 @@ function AccountTab() {
           <CardDescription>会话有效期 30 天，使用中会自动续期</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {sessions.data?.items.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  {item.deviceName ?? (item.kind === "web" ? "浏览器" : "桌面端")}
-                  {item.current ? <Badge variant="success">当前</Badge> : null}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  最近使用 {formatDateTime(item.lastUsedAt)} · {item.ip ?? "未知 IP"}
-                </p>
+          {sessions.data?.items.length ? (
+            sessions.data.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    {item.deviceName ?? (item.kind === "web" ? "浏览器" : "桌面端")}
+                    {item.current ? <Badge variant="success">当前</Badge> : null}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    最近使用 {formatDateTime(item.lastUsedAt)} · {item.ip ?? "未知 IP"}
+                  </p>
+                </div>
+                {!item.current ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await api.revokeSession(item.id);
+                      toast.success("已下线该设备");
+                      void sessions.refetch();
+                    }}
+                  >
+                    下线
+                  </Button>
+                ) : null}
               </div>
-              {!item.current ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    await api.revokeSession(item.id);
-                    toast.success("已下线该设备");
-                    void sessions.refetch();
-                  }}
-                >
-                  下线
-                </Button>
-              ) : null}
-            </div>
-          ))}
+            ))
+          ) : (
+            <p className="py-4 text-center text-sm text-muted-foreground">暂无其它设备</p>
+          )}
         </CardContent>
       </Card>
 

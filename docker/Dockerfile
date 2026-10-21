@@ -5,21 +5,22 @@ WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@11.28.5 --activate
 
 # 先复制清单，命中依赖缓存
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/data/package.json packages/data/
 COPY packages/api-client/package.json packages/api-client/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 
-RUN pnpm install --frozen-lockfile --filter @toolbox/server... --filter @toolbox/web...
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
 
-RUN pnpm --filter @toolbox/web build && pnpm --filter @toolbox/server build
+RUN pnpm --filter @toolbox/web build \
+ && pnpm --filter @toolbox/server build
 
 # 只保留生产依赖
 RUN pnpm install --frozen-lockfile --prod --filter @toolbox/server...
@@ -42,7 +43,6 @@ COPY --from=build --chown=toolbox:toolbox /repo/apps/server/node_modules ./apps/
 COPY --from=build --chown=toolbox:toolbox /repo/apps/server/dist ./apps/server/dist
 COPY --from=build --chown=toolbox:toolbox /repo/apps/server/package.json ./apps/server/package.json
 COPY --from=build --chown=toolbox:toolbox /repo/apps/web/dist ./apps/server/public
-COPY --from=build --chown=toolbox:toolbox /repo/packages ./packages
 
 RUN mkdir -p /app/data && chown -R toolbox:toolbox /app/data
 USER toolbox

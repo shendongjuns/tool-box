@@ -3,7 +3,6 @@ import { useState } from "react";
 import { ArrowRight, LayoutDashboard, Settings } from "lucide-react";
 import { toolCatalog } from "@toolbox/contracts";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 
 /** Ctrl/Cmd+K 命令面板：搜索并跳转工具与页面。 */
 export function CommandPalette({
@@ -17,7 +16,13 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
 
   const items = [
-    { id: "dashboard", name: "仪表盘", desc: "概览与最近使用", to: "/dashboard", icon: LayoutDashboard },
+    {
+      id: "dashboard",
+      name: "仪表盘",
+      desc: "概览与最近使用",
+      to: "/dashboard",
+      icon: LayoutDashboard,
+    },
     { id: "settings", name: "设置", desc: "外观、数据源与账户", to: "/settings", icon: Settings },
     ...toolCatalog.map((tool) => ({
       id: tool.id,
@@ -28,12 +33,11 @@ export function CommandPalette({
     })),
   ];
 
-  const filtered = items.filter((item) => {
-    const text = `${item.name} ${item.desc}`.toLowerCase();
-    return text.includes(query.trim().toLowerCase());
-  });
+  const filtered = items.filter((item) =>
+    `${item.name} ${item.desc}`.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
-  /** 关闭时清空搜索词：放到 onOpenChange 里，避免 effect 内同步 setState。 */
+  /** 关闭时清空搜索词：放在这里而不是 effect 里，避免同步 setState 引发的连锁渲染。 */
   const handleOpenChange = (next: boolean) => {
     if (!next) setQuery("");
     onOpenChange(next);
@@ -62,13 +66,10 @@ export function CommandPalette({
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  onOpenChange(false);
+                  handleOpenChange(false);
                   void navigate({ to: item.to });
                 }}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                )}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <item.icon className="h-4 w-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">

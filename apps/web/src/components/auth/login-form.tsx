@@ -16,11 +16,14 @@ export interface LoginFormValues {
 export function LoginForm({
   source,
   initialized,
+  disabled = false,
   onSubmit,
   extra,
 }: {
   source: DataSource;
   initialized: boolean;
+  /** 服务器不可达时禁用提交，避免用户对着按钮反复点 */
+  disabled?: boolean;
   onSubmit: (values: LoginFormValues) => Promise<void>;
   extra?: React.ReactNode;
 }) {
@@ -41,28 +44,32 @@ export function LoginForm({
     setError(null);
 
     if (isSetup) {
-      if (password.length < 10) return setError("密码至少需要 10 个字符");
-      if (password !== confirmPassword) return setError("两次输入的密码不一致");
+      if (password.length < 10) {
+        setError("密码至少需要 10 个字符");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("两次输入的密码不一致");
+        return;
+      }
     }
 
     setPending(true);
     try {
       await onSubmit({
-        username,
+        username: username.trim(),
         password,
-        ...(isSetup ? { confirmPassword, setupToken } : {}),
+        ...(isSetup ? { confirmPassword, setupToken: setupToken.trim() } : {}),
       });
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "操作失败，请稍后重试";
-      setError(message);
+      setError(submitError instanceof Error ? submitError.message : "操作失败，请稍后重试");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       <Field>
         <FieldLabel htmlFor="username">用户名</FieldLabel>
         <Input
@@ -73,7 +80,6 @@ export function LoginForm({
           onChange={(event) => setUsername(event.target.value)}
           placeholder={isSetup ? "给自己起一个名字" : "输入用户名"}
           required
-          minLength={3}
         />
       </Field>
 
@@ -140,7 +146,7 @@ export function LoginForm({
         </p>
       ) : null}
 
-      <Button type="submit" className="w-full" size="lg" disabled={pending}>
+      <Button type="submit" className="w-full" size="lg" disabled={pending || disabled}>
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {pending ? "请稍候…" : isSetup ? "创建账号并进入" : "登录"}
       </Button>

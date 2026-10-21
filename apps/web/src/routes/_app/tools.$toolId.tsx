@@ -2,8 +2,8 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { findTool } from "@toolbox/contracts";
 import { ToolRunner } from "@/components/tools/tool-runner";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_app/tools/$toolId")({
   loader: ({ params }) => {

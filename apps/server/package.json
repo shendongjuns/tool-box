@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",
+    "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.2.0",
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/static": "^10.1.6",
@@ -20,18 +21,18 @@
     "@toolbox/contracts": "workspace:*",
     "@toolbox/data": "workspace:*",
     "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "fastify-type-provider-zod": "^7.0.0",
     "pino": "^10.4.0",
-    "zod": "^4.6.7",
-    "drizzle-orm": "^0.45.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.5",
-    "esbuild": "^0.28.2"
+    "vitest": "^5.0.5"
   }
 }

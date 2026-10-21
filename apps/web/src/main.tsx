@@ -27,7 +27,8 @@ declare module "@tanstack/react-router" {
 }
 
 async function bootstrap() {
-  // 桌面端需要先拿到本地服务端口与已保存的云端令牌，再渲染
+  // 桌面端必须先拿到本地服务端口与已保存的令牌，再渲染，
+  // 否则首个 /api/auth/me 会打在错误的地址上。
   await initDesktopBridge();
 
   const root = document.getElementById("root");

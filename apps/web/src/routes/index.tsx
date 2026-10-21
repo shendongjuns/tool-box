@@ -5,10 +5,9 @@ export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     try {
       await getApi().me();
-      throw redirect({ to: "/dashboard" });
-    } catch (error) {
-      if (error && typeof error === "object" && "to" in error) throw error;
+    } catch {
       throw redirect({ to: "/login" });
     }
+    throw redirect({ to: "/dashboard" });
   },
 });

@@ -1,48 +1,51 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BootstrapStatus, DashboardResponse, GetSettingsResponse } from "@toolbox/contracts";
+import { useQuery } from "@tanstack/react-query";
+import type { DashboardResponse, GetSettingsResponse } from "@toolbox/contracts";
 import { useApi } from "./api-context";
 import { useAuth } from "./auth-session";
+import { sourceKey, useDataSource } from "./data-source";
 
+/**
+ * 查询键必须带数据源前缀。
+ *
+ * 本地与云端是两套完全独立的数据，切换后若沿用同一个缓存键，
+ * 会把云端的数据显示在本地模式下（反之亦然）。
+ */
 export const queryKeys = {
-  bootstrap: (source: string) => ["bootstrap", source] as const,
-  me: (source: string) => ["me", source] as const,
-  settings: (source: string) => ["settings", source] as const,
-  tools: (source: string) => ["tools", source] as const,
-  dashboard: (source: string) => ["dashboard", source] as const,
-  sessions: (source: string) => ["sessions", source] as const,
+  settings: (key: string) => ["settings", key] as const,
+  dashboard: (key: string) => ["dashboard", key] as const,
+  tools: (key: string) => ["tools", key] as const,
+  sessions: (key: string) => ["sessions", key] as const,
+  bootstrap: (key: string) => ["bootstrap", key] as const,
 };
 
-/** 首次注册状态（决定登录页还是注册页）。 */
-export function useBootstrap() {
-  const api = useApi();
-  const source = useAuth((state) => state.auth !== null);
-  return useQuery<BootstrapStatus>({
-    queryKey: queryKeys.bootstrap(String(source)),
-    queryFn: () => api.getBootstrap(),
-    staleTime: 10_000,
-    retry: false,
-  });
+export function useCurrentSourceKey(): string {
+  const source = useDataSource((state) => state.source);
+  const cloudBaseUrl = useDataSource((state) => state.cloudBaseUrl);
+  return sourceKey(source, cloudBaseUrl);
 }
 
-export function useSettings() {
+export function useSettingsQuery() {
   const api = useApi();
+  const key = useCurrentSourceKey();
+  const authed = useAuth((state) => state.auth !== null);
+
   return useQuery<GetSettingsResponse>({
-    queryKey: queryKeys.settings("current"),
+    queryKey: queryKeys.settings(key),
     queryFn: () => api.getSettings(),
-    enabled: useAuth((state) => state.auth !== null),
+    enabled: authed,
+    staleTime: 30_000,
   });
 }
 
-export function useDashboard() {
+export function useDashboardQuery() {
   const api = useApi();
-  return useQuery<DashboardResponse>({
-    queryKey: queryKeys.dashboard("current"),
-    queryFn: () => api.dashboard(),
-    enabled: useAuth((state) => state.auth !== null),
-  });
-}
+  const key = useCurrentSourceKey();
+  const authed = useAuth((state) => state.auth !== null);
 
-export function useInvalidateAll() {
-  const client = useQueryClient();
-  return () => client.invalidateQueries();
+  return useQuery<DashboardResponse>({
+    queryKey: queryKeys.dashboard(key),
+    queryFn: () => api.dashboard(),
+    enabled: authed,
+    staleTime: 15_000,
+  });
 }

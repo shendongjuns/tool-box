@@ -13,11 +13,18 @@ import type {
 } from "@toolbox/contracts";
 import type { ApiTransport } from "./types.js";
 
+export interface CreateApiOptions {
+  /** 桌面端：让服务端识别会话类型并返回 Bearer 令牌 */
+  desktop?: boolean;
+}
+
 /**
  * 业务接口封装：所有客户端（网页 / 桌面本地 / 桌面云端）共用同一套方法签名。
  * 数据源差异只体现在 transport 上，页面代码不感知。
  */
-export function createApi(transport: ApiTransport) {
+export function createApi(transport: ApiTransport, options: CreateApiOptions = {}) {
+  const clientHeader = options.desktop ? { "x-toolbox-client": "desktop" } : {};
+
   const get = <T>(path: string) => transport.request<T>({ path });
   const send = <T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown) =>
     transport.request<T>({ path, method, body });
@@ -25,10 +32,34 @@ export function createApi(transport: ApiTransport) {
   return {
     getBootstrap: () => get<BootstrapStatus>("/api/auth/bootstrap"),
 
-    bootstrap: (body: { username: string; password: string; displayName?: string; setupToken?: string }) =>
-      send<LoginResponse>("/api/auth/bootstrap", "POST", body),
+    /** 首次注册：桌面端要拿到 token，因此用 desktop 版本 */
+    bootstrap: (body: {
+      username: string;
+      password: string;
+      displayName?: string;
+      setupToken?: string;
+    }) => transport.request<LoginResponse>({ path: "/api/auth/bootstrap", method: "POST", body }),
 
-    login: (body: LoginRequest) => send<LoginResponse>("/api/auth/login", "POST", body),
+    /** 桌面端走 desktop-login 才拿得到 token；网页端走 login 写 Cookie。 */
+    login: (body: LoginRequest) =>
+      options.desktop
+        ? transport
+            .request<DesktopLoginResponse>({
+              path: "/api/auth/desktop-login",
+              method: "POST",
+              body,
+            })
+            .then((result) => ({
+              user: result.user,
+              token: result.token,
+              session: {
+                createdAt: Date.now(),
+                lastUsedAt: Date.now(),
+                expiresAt: result.expiresAt,
+                kind: "desktop" as const,
+              },
+            }))
+        : transport.request<LoginResponse>({ path: "/api/auth/login", method: "POST", body }),
 
     desktopLogin: (body: LoginRequest) =>
       send<DesktopLoginResponse>("/api/auth/desktop-login", "POST", body),
@@ -47,7 +78,10 @@ export function createApi(transport: ApiTransport) {
 
     revokeAllSessions: () => send<void>("/api/auth/sessions/revoke-all", "POST"),
 
-    getSettings: () => get<{ values: Record<string, string | number | boolean>; updatedAt: number | null }>("/api/settings"),
+    getSettings: () =>
+      get<{ values: Record<string, string | number | boolean>; updatedAt: number | null }>(
+        "/api/settings",
+      ),
 
     putSettings: (body: PutSettingsRequest) =>
       send<{ values: Record<string, string | number | boolean>; updatedAt: number }>(
@@ -61,9 +95,13 @@ export function createApi(transport: ApiTransport) {
     patchTool: (id: string, body: PatchToolRequest) =>
       send<ToolListResponse>(`/api/tools/${encodeURIComponent(id)}`, "PATCH", body),
 
-    touchTool: (id: string) => send<{ ok: true }>(`/api/tools/${encodeURIComponent(id)}/touch`, "POST"),
+    touchTool: (id: string) =>
+      send<{ ok: true }>(`/api/tools/${encodeURIComponent(id)}/touch`, "POST"),
 
     dashboard: () => get<DashboardResponse>("/api/dashboard"),
+
+    /** 供 transport 注入的客户端标识头 */
+    clientHeaders: clientHeader,
   };
 }
 

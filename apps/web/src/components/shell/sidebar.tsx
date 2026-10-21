@@ -91,7 +91,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
               return (
                 <SidebarLink
                   key={tool.id}
-                  to={`/tools/${tool.id}`}
+                  to="/tools/$toolId"
+                  params={{ toolId: tool.id }}
                   active={pathname === `/tools/${tool.id}`}
                   collapsed={collapsed}
                   icon={<Icon className="h-4 w-4" />}
@@ -147,6 +148,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
 function SidebarLink({
   to,
+  params,
   active,
   collapsed,
   icon,
@@ -154,6 +156,7 @@ function SidebarLink({
   title,
 }: {
   to: string;
+  params?: Record<string, string>;
   active: boolean;
   collapsed: boolean;
   icon: React.ReactNode;
@@ -163,6 +166,7 @@ function SidebarLink({
   return (
     <Link
       to={to}
+      params={params}
       title={title ?? label}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",

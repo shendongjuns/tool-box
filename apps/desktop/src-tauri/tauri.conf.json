@@ -4,39 +4,34 @@
   "version": "2.0.0",
   "identifier": "com.shendongjuns.toolbox",
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
+    "beforeDevCommand": "pnpm --filter @toolbox/web dev",
+    "beforeBuildCommand": "pnpm --filter @toolbox/web build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../../web/dist"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "ToolBox",
         "width": 1200,
         "height": 800,
         "minWidth": 960,
         "minHeight": 640,
         "center": true,
-        "decorations": false,
+        "decorations": true,
         "transparent": false,
         "resizable": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:* https:;"
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "ToolBox"
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* https:;"
     }
   },
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
-      "msi"
+      "nsis"
     ],
     "icon": [
       "icons/32x32.png",
@@ -51,14 +46,6 @@
         "installMode": "currentUser",
         "displayLanguageSelector": false
       }
-    }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/shendongjuns/tool-box/releases/latest/download/latest.json"
-      ],
-      "pubkey": ""
     }
   }
 }

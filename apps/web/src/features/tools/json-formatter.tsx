@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Check, Copy, Minimize2, Sparkles, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +33,7 @@ export function JsonFormatterTool() {
   async function copy(value: string) {
     await navigator.clipboard.writeText(value);
     setCopied(true);
+    toast.success("已复制");
     setTimeout(() => setCopied(false), 1500);
   }
 

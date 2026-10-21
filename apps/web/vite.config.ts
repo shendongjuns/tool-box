@@ -25,8 +25,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
-      "/api": { target: "http://localhost:3000", changeOrigin: true },
+      // changeOrigin 必须为 false：服务端的 CSRF 校验比较 Origin 与 Host，
+      // 改写 Host 会让两者不一致，所有写请求都会被 403 拒绝。
+      "/api": { target: "http://127.0.0.1:3000", changeOrigin: false },
     },
   },
   build: {

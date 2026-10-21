@@ -2,11 +2,11 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getApi, setLocalToken } from "@/lib/api-context";
+import { getApi, invalidateApiCache } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
-import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { useDataSource } from "@/lib/data-source";
-import { setCloudToken } from "@/lib/desktop";
+import { applySession, switchDataSource } from "@/lib/session";
+import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { LoginForm } from "@/components/auth/login-form";
 import { SourceSwitch } from "@/components/source-switch";
@@ -17,8 +17,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const setAuth = useAuth((state) => state.setAuth);
-  const { source, cloudBaseUrl, setCloudBaseUrl, setSource } = useDataSource();
+  const { source, cloudBaseUrl, setCloudBaseUrl } = useDataSource();
   const [serverUrl, setServerUrl] = useState(cloudBaseUrl);
   const [savingServer, setSavingServer] = useState(false);
 
@@ -29,15 +28,24 @@ function LoginPage() {
     staleTime: 5_000,
   });
 
+  // 只有明确拿到 false 才进注册页；查询失败时按「已初始化」显示登录，
+  // 否则断网会错误地把用户带到注册页。
   const initialized = bootstrap.data?.initialized ?? true;
   const sourceInfo = DATA_SOURCES[source];
   const offline = bootstrap.isError;
 
   async function updateServer() {
+    const next = serverUrl.trim().replace(/\/$/, "");
+    if (!next) {
+      toast.error("请填写服务器地址");
+      return;
+    }
     setSavingServer(true);
     try {
-      setCloudBaseUrl(serverUrl);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      setCloudBaseUrl(next);
+      setServerUrl(next);
+      invalidateApiCache();
+      useAuth.getState().setAuth(null);
       await bootstrap.refetch();
       toast.success("服务器地址已更新");
     } finally {
@@ -55,29 +63,30 @@ function LoginPage() {
             ? `登录以继续使用${sourceInfo.label}`
             : "这是首次使用，设置一个账号即可开始"
       }
-      badge={<SourceSwitch compact onChanged={() => setAuth(null)} />}
+      badge={<SourceSwitch compact />}
     >
       <LoginForm
         source={source}
         initialized={initialized}
+        disabled={offline}
         onSubmit={async ({ username, password, setupToken }) => {
-          const result = !initialized
-            ? await getApi().bootstrap({
+          const api = getApi();
+          const result = initialized
+            ? await api.login({ username, password })
+            : await api.bootstrap({
                 username,
                 password,
                 ...(setupToken ? { setupToken } : {}),
-              })
-            : await getApi().login({ username, password });
+              });
 
-          // 桌面端把令牌落到本地（云端存 Tauri store，本地存内存），
-          // 之后的请求由 getApi() 自动带上 Authorization 头。
-          if (result.token) {
-            if (source === "local") setLocalToken(result.token);
-            else await setCloudToken(result.token);
-          }
+          // 桌面端：令牌写进 Tauri store；网页端：服务端已写 Cookie
+          await applySession({
+            token: result.token,
+            user: result.user,
+            session: result.session,
+          });
 
-          const me = await getApi().me();
-          setAuth({ user: me.user, session: me.session });
+          toast.success(initialized ? "登录成功" : "账号创建成功，已自动登录");
           await navigate({ to: "/dashboard" });
         }}
         extra={
@@ -91,37 +100,40 @@ function LoginPage() {
                   id="server-url"
                   value={serverUrl}
                   onChange={(event) => setServerUrl(event.target.value)}
-                  placeholder="https://tool.example.com"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void updateServer();
+                    }
+                  }}
+                  placeholder="http://127.0.0.1:3000"
                   className="h-9 flex-1 rounded-md border border-input bg-card px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                 />
                 <button
                   type="button"
                   onClick={() => void updateServer()}
-                  disabled={savingServer || serverUrl === cloudBaseUrl}
+                  disabled={savingServer || serverUrl.trim() === cloudBaseUrl}
                   className="h-9 rounded-md border border-border px-3 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
                 >
                   保存
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                切换服务器后需要重新登录。
+                例如 http://127.0.0.1:3000 或你的 nginx 地址。切换后需要重新登录。
               </p>
             </div>
           ) : null
         }
       />
+
       {canSwitchSource() ? (
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          当前使用{" "}
-          <span className="font-medium text-foreground">{sourceInfo.label}</span>
+          当前使用 <span className="font-medium text-foreground">{sourceInfo.label}</span>
           {" · "}
           <button
             type="button"
             className="font-medium text-primary underline-offset-2 hover:underline"
-            onClick={() => {
-              setSource(source === "local" ? "cloud" : "local");
-              setAuth(null);
-            }}
+            onClick={() => void switchDataSource(source === "local" ? "cloud" : "local")}
           >
             切换到{DATA_SOURCES[source === "local" ? "cloud" : "local"].label}
           </button>

@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Copy } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -16,14 +18,16 @@ export function TimestampTool() {
     return () => clearInterval(timer);
   }, []);
 
-  const numeric = Number(value);
-  const timestamp = Number.isFinite(numeric) && value.trim() !== ""
-    ? ms
-      ? numeric
-      : numeric * 1000
-    : null;
-  const date = timestamp !== null && timestamp > 0 ? new Date(timestamp) : null;
-  const valid = date !== null && !Number.isNaN(date.getTime());
+  const parsed = useMemo(() => {
+    const trimmed = value.trim();
+    if (trimmed === "") return { date: null, valid: false };
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric) || numeric <= 0) return { date: null, valid: false };
+    const date = new Date(ms ? numeric : numeric * 1000);
+    return { date, valid: !Number.isNaN(date.getTime()) };
+  }, [value, ms]);
+
+  const current = ms ? now : Math.floor(now / 1000);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -41,9 +45,19 @@ export function TimestampTool() {
         <CardContent className="space-y-4">
           <div>
             <p className="text-xs text-muted-foreground">Unix 时间戳（{ms ? "毫秒" : "秒"}）</p>
-            <p className="mt-1 font-mono text-2xl font-semibold">
-              {ms ? now : Math.floor(now / 1000)}
-            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="font-mono text-2xl font-semibold">{current}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(String(current));
+                  toast.success("已复制");
+                }}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">本地时间</p>
@@ -72,12 +86,12 @@ export function TimestampTool() {
           </Field>
           <div className="rounded-lg border border-border bg-muted/40 p-4">
             <p className="text-xs text-muted-foreground">转换结果</p>
-            <p className={"mt-1 text-lg " + (valid ? "" : "text-destructive")}>
-              {valid && date ? formatDateTime(date.getTime()) : "无效时间戳"}
+            <p className={`mt-1 text-lg ${parsed.valid ? "" : "text-destructive"}`}>
+              {parsed.valid && parsed.date ? formatDateTime(parsed.date.getTime()) : "无效时间戳"}
             </p>
-            {valid && date ? (
+            {parsed.valid && parsed.date ? (
               <p className="mt-1 font-mono text-xs text-muted-foreground">
-                {date.toISOString()}
+                {parsed.date.toISOString()}
               </p>
             ) : null}
           </div>

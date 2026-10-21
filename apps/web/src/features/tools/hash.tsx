@@ -1,28 +1,31 @@
 import { useEffect, useState } from "react";
 import { Copy } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-async function digest(algorithm: "MD5" | "SHA-1" | "SHA-256", text: string): Promise<string> {
+async function sha(algorithm: "SHA-1" | "SHA-256", text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
-
-  if (algorithm === "MD5") {
-    // Web Crypto 不提供 MD5；这里用一个精简实现（仅用于非安全场景的校验值计算）
-    return md5(data);
-  }
   const buffer = await crypto.subtle.digest(algorithm, data);
   return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** 精简 MD5 实现（RFC 1321），仅用于工具页的校验值展示。 */
+/** 精简 MD5（RFC 1321），仅用于校验值展示，不作为安全用途。 */
 function md5(bytes: Uint8Array): string {
-  const s = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
-  const k = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32));
+  const shifts = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
+    14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15,
+    21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+  ];
+  const k = Array.from({ length: 64 }, (_, i) =>
+    Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32),
+  );
+
   const padded = new Uint8Array((((bytes.length + 8) >> 6) + 1) << 6);
   padded.set(bytes);
   padded[bytes.length] = 0x80;
   const view = new DataView(padded.buffer);
-  view.setUint32(padded.length - 8, bytes.length * 8, true);
+  view.setUint32(padded.length - 8, (bytes.length * 8) >>> 0, true);
 
   let a0 = 0x67452301;
   let b0 = 0xefcdab89;
@@ -31,7 +34,11 @@ function md5(bytes: Uint8Array): string {
 
   for (let offset = 0; offset < padded.length; offset += 64) {
     const words = Array.from({ length: 16 }, (_, i) => view.getUint32(offset + i * 4, true));
-    let [a, b, c, d] = [a0, b0, c0, d0];
+    let a = a0;
+    let b = b0;
+    let c = c0;
+    let d = d0;
+
     for (let i = 0; i < 64; i += 1) {
       let f: number;
       let g: number;
@@ -48,13 +55,15 @@ function md5(bytes: Uint8Array): string {
         f = c ^ (b | ~d);
         g = (7 * i) % 16;
       }
-      const tmp = d;
+      const rotated = (a + f + k[i]! + (words[g] ?? 0)) >>> 0;
+      const shift = shifts[i]!;
+      const next = (b + ((rotated << shift) | (rotated >>> (32 - shift)))) >>> 0;
+      a = d;
       d = c;
       c = b;
-      const sum = (a + f + (k[i] ?? 0) + (words[g] ?? 0)) >>> 0;
-      b = (b + ((sum << s[(i >> 4) * 4 + (i % 4)]!) | (sum >>> (32 - s[(i >> 4) * 4 + (i % 4)]!)))) >>> 0;
-      a = tmp;
+      b = next;
     }
+
     a0 = (a0 + a) >>> 0;
     b0 = (b0 + b) >>> 0;
     c0 = (c0 + c) >>> 0;
@@ -76,14 +85,17 @@ export function HashTool() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      digest("MD5", text),
-      digest("SHA-1", text),
-      digest("SHA-256", text),
-    ]).then(([md5Value, sha1, sha256]) => {
-      if (cancelled) return;
-      setHashes({ MD5: md5Value, "SHA-1": sha1, "SHA-256": sha256 });
-    });
+    const run = async () => {
+      try {
+        const [sha1, sha256] = await Promise.all([sha("SHA-1", text), sha("SHA-256", text)]);
+        if (cancelled) return;
+        setHashes({ MD5: md5(new TextEncoder().encode(text)), "SHA-1": sha1, "SHA-256": sha256 });
+      } catch {
+        // 某些环境（非安全上下文）没有 crypto.subtle，MD5 仍可用
+        if (!cancelled) setHashes({ MD5: md5(new TextEncoder().encode(text)) });
+      }
+    };
+    void run();
     return () => {
       cancelled = true;
     };
@@ -98,6 +110,7 @@ export function HashTool() {
         <textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
+          spellCheck={false}
           className="h-28 w-full resize-none rounded-lg border border-border bg-card p-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         />
         <div className="space-y-2">
@@ -110,7 +123,14 @@ export function HashTool() {
                 {algorithm}
               </span>
               <code className="min-w-0 flex-1 truncate font-mono text-xs">{value}</code>
-              <Button variant="ghost" size="icon-sm" onClick={() => void navigator.clipboard.writeText(value)}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(value);
+                  toast.success("已复制");
+                }}
+              >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>

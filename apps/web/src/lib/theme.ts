@@ -27,10 +27,20 @@ function paint(mode: ThemeMode, accent: Accent) {
   return resolved;
 }
 
+/**
+ * 默认跟随系统。resolved 初值在浏览器里直接算一次，
+ * 避免首帧用 "dark" 造成闪烁，也避免在 SSR 环境下访问 window。
+ */
+const initialMode: ThemeMode = "system";
+const initialResolved: "light" | "dark" =
+  typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+
 export const useTheme = create<ThemeState>((set, get) => ({
-  mode: "system",
+  mode: initialMode,
   accent: "indigo",
-  resolved: "dark",
+  resolved: initialResolved,
   setMode: (mode) => {
     set({ mode, resolved: paint(mode, get().accent) });
   },

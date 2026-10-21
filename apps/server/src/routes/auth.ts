@@ -14,6 +14,7 @@ import { ApiError, conflict, unauthorized } from "../plugins/errors.js";
 
 const sessionParamsSchema = z.object({ id: z.string().min(1) });
 
+/** 桌面端会带 X-Toolbox-Client: desktop，据此区分会话类型并返回 Bearer 令牌。 */
 function sessionKindFor(request: FastifyRequest): SessionKind {
   return request.headers["x-toolbox-client"] === "desktop" ? "desktop" : "web";
 }
@@ -34,7 +35,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     reply.setCookie(config.cookieName, token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: config.cookieSecure,
+      // secure: "auto" —— 经 nginx 转发 HTTPS 时自动加 Secure，纯 HTTP 时也能用
+      secure: "auto",
       path: "/",
       maxAge: Math.floor(config.sessionTtlMs / 1000),
     });

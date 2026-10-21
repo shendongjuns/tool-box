@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import { JsonFormatterTool } from "@/features/tools/json-formatter";
 import { Base64Tool } from "@/features/tools/base64";
 import { UrlCodecTool } from "@/features/tools/url-codec";
@@ -6,7 +7,7 @@ import { HashTool } from "@/features/tools/hash";
 import { UuidTool } from "@/features/tools/uuid";
 import { Card, CardContent } from "@/components/ui/card";
 
-const registry: Record<string, React.ComponentType> = {
+const registry: Record<string, ComponentType> = {
   "json-formatter": JsonFormatterTool,
   base64: Base64Tool,
   "url-codec": UrlCodecTool,
