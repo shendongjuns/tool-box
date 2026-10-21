@@ -54,7 +54,7 @@ describe("首次注册", () => {
     expect(cookie?.httpOnly).toBe(true);
 
     const status = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
-    expect(status.json()).toMatchObject({ initialized: true, username: "owner" });
+    expect(status.json()).toMatchObject({ initialized: true, username: credentials.username });
   });
 
   it("注册后不允许再创建第二个用户", async () => {
@@ -391,15 +391,15 @@ describe("单用户：注册入口只在无用户时存在", () => {
     }
   });
 
-  it("管理员用固定用户名 owner 登录", async () => {
+  it("用注册时的用户名登录", async () => {
     await bootstrap();
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { username: "owner", password: credentials.password },
+      payload: { username: credentials.username, password: credentials.password },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().user.username).toBe("owner");
+    expect(response.json().user.username).toBe(credentials.username);
   });
 
   it("不存在的用户名登录失败（防止创建第二个账号的错觉）", async () => {
@@ -412,7 +412,7 @@ describe("单用户：注册入口只在无用户时存在", () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it("空库时桌面端也可以直接创建管理员并拿到令牌", async () => {
+  it("空库时桌面端也可以直接创建账号并拿到令牌", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/bootstrap",
@@ -421,5 +421,18 @@ describe("单用户：注册入口只在无用户时存在", () => {
     });
     expect(response.statusCode).toBe(201);
     expect(typeof response.json().token).toBe("string");
+  });
+
+  it("自定义用户名会被正确保存并回显", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "my-own-name", password: "a-strong-password" },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().user.username).toBe("my-own-name");
+
+    const status = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
+    expect(status.json()).toMatchObject({ initialized: true, username: "my-own-name" });
   });
 });

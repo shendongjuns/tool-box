@@ -14,8 +14,6 @@ use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 const SESSION_TTL_MS: i64 = 30 * 24 * 3600 * 1000;
-/// 单用户系统固定的管理员用户名
-const OWNER_USERNAME: &str = "owner";
 
 #[derive(Clone)]
 struct AppState {
@@ -277,15 +275,18 @@ fn handle(state: &AppState, mut request: Request) {
 
         (Method::Post, "/api/auth/bootstrap") => {
             let body = read_body(&mut request);
-            // 单用户系统：用户名固定 owner，前端只让用户设置密码
-            let username = body["username"]
-                .as_str()
-                .unwrap_or(OWNER_USERNAME)
-                .trim()
-                .to_string();
+            let username = body["username"].as_str().unwrap_or_default().trim().to_string();
             let password = body["password"].as_str().unwrap_or_default().to_string();
             let now = now_ms();
 
+            if username.len() < 3 {
+                respond_json(
+                    request,
+                    400,
+                    &error_body("VALIDATION_FAILED", "用户名至少 3 个字符"),
+                );
+                return;
+            }
             if password.len() < 10 {
                 respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码至少 10 个字符"));
                 return;

@@ -9,7 +9,7 @@ import {
 } from "@toolbox/contracts";
 import { listSessions, revokeSession, revokeUserSessions } from "@toolbox/data";
 import { hashPassword, verifyPassword } from "../auth/password.js";
-import { OWNER_USERNAME, toPublicUser } from "../auth/service.js";
+import { toPublicUser } from "../auth/service.js";
 import { ApiError, conflict, unauthorized } from "../plugins/errors.js";
 
 const sessionParamsSchema = z.object({ id: z.string().min(1) });
@@ -233,7 +233,4 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(204).send();
     },
   );
-
-  // OWNER_USERNAME 由 service 导出，这里显式引用以保持契约清晰
-  void OWNER_USERNAME;
 }

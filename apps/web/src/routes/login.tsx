@@ -65,7 +65,7 @@ function LoginPage() {
           ? `无法连接${sourceInfo.label}，请检查服务器地址或网络`
           : initialized
             ? `登录以继续使用${sourceInfo.label}`
-            : "系统尚未初始化，设置密码即可开始"
+            : "系统尚未初始化，创建唯一的账号即可开始"
       }
       badge={<SourceSwitch compact />}
     >

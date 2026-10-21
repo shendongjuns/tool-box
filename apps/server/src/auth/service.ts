@@ -5,6 +5,7 @@ import {
   findActiveSessionByTokenHash,
   findUserById,
   findUserByUsername,
+  listUsers,
   touchSession,
   updateLastLogin,
   updateUserPassword,
@@ -51,18 +52,19 @@ export class AuthService {
     private readonly config: AppConfig,
   ) {}
 
+  /** 库里是否已经有用户（单用户系统里最多一个）。 */
   async isInitialized(): Promise<boolean> {
     return (await countUsers(this.db)) > 0;
   }
 
-  /**
-   * 首个（也是唯一一个）管理员。
-   *
-   * 单用户系统里用户名固定为 owner：注册表单只让用户设置密码，
-   * 避免「用户名记错就再也登不进去」这种自锁情况。
-   */
+  /** 已注册的账号（用于登录页提示用户名）。 */
   async findOwner(): Promise<UserRow | undefined> {
-    return findUserByUsername(this.db, OWNER_USERNAME);
+    return this.firstUser();
+  }
+
+  private async firstUser(): Promise<UserRow | undefined> {
+    const rows = await listUsers(this.db);
+    return rows[0];
   }
 
   /** 创建会话：令牌明文返回给调用方，库里只留 sha256。 */
@@ -129,6 +131,3 @@ export class AuthService {
     return { user, sessionId: session.id, expiresAt: session.expiresAt, kind: session.kind };
   }
 }
-
-/** 单用户系统的固定用户名。 */
-export const OWNER_USERNAME = "owner";

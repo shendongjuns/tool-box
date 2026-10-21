@@ -1,13 +1,10 @@
 import * as React from "react";
-import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Loader2, UserPlus } from "lucide-react";
 import type { DataSource } from "@/lib/platform";
 import { DATA_SOURCES } from "@/lib/source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
-
-/** 单用户系统固定的管理员用户名。 */
-export const OWNER_USERNAME = "owner";
 
 export interface LoginFormValues {
   username: string;
@@ -30,6 +27,7 @@ export function LoginForm({
   onSubmit: (values: LoginFormValues) => Promise<void>;
   extra?: React.ReactNode;
 }) {
+  const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
@@ -37,6 +35,7 @@ export function LoginForm({
   const [error, setError] = React.useState<string | null>(null);
 
   const isSetup = !initialized;
+  const usernameTooShort = username.length > 0 && username.trim().length < 3;
   const passwordTooShort = password.length > 0 && password.length < 10;
   const mismatch = isSetup && confirmPassword.length > 0 && password !== confirmPassword;
 
@@ -44,21 +43,28 @@ export function LoginForm({
     event.preventDefault();
     setError(null);
 
-    if (isSetup) {
-      if (password.length < 10) {
-        setError("密码至少需要 10 个字符");
-        return;
-      }
-      if (password !== confirmPassword) {
-        setError("两次输入的密码不一致");
-        return;
-      }
+    const name = username.trim();
+    if (name.length < 3) {
+      setError("用户名至少 3 个字符");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      setError("用户名只能包含字母、数字、下划线与连字符");
+      return;
+    }
+    if (password.length < 10) {
+      setError("密码至少需要 10 个字符");
+      return;
+    }
+    if (isSetup && password !== confirmPassword) {
+      setError("两次输入的密码不一致");
+      return;
     }
 
     setPending(true);
     try {
       await onSubmit({
-        username: OWNER_USERNAME,
+        username: name,
         password,
         ...(isSetup ? { confirmPassword } : {}),
       });
@@ -73,17 +79,32 @@ export function LoginForm({
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       {isSetup ? (
         <div className="flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div className="text-xs leading-relaxed">
-            <p className="font-medium text-foreground">初始化管理员</p>
+            <p className="font-medium text-foreground">创建管理员账号</p>
             <p className="mt-0.5 text-muted-foreground">
-              系统还没有任何用户。设置一个密码即可创建唯一的管理员
-              <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono">{OWNER_USERNAME}</code>
-              ，之后不再提供注册入口。
+              系统还没有任何用户。这是唯一的账号，创建后将不再提供注册入口，请记住用户名与密码。
             </p>
           </div>
         </div>
       ) : null}
+
+      <Field>
+        <FieldLabel htmlFor="username">用户名</FieldLabel>
+        <Input
+          id="username"
+          autoFocus
+          autoComplete="username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder={isSetup ? "给自己起一个用户名" : "输入用户名"}
+          required
+        />
+        {isSetup ? (
+          <FieldHint>3–32 位，可用字母、数字、下划线与连字符。</FieldHint>
+        ) : null}
+        {usernameTooShort ? <FieldError>至少 3 个字符。</FieldError> : null}
+      </Field>
 
       <Field>
         <FieldLabel htmlFor="password">{isSetup ? "设置密码" : "密码"}</FieldLabel>
@@ -95,7 +116,6 @@ export function LoginForm({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder={isSetup ? "至少 10 个字符" : "输入密码"}
-            autoFocus
             required
             className="pr-10"
           />
@@ -138,7 +158,7 @@ export function LoginForm({
 
       <Button type="submit" className="w-full" size="lg" disabled={pending || disabled}>
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {pending ? "请稍候…" : isSetup ? "创建管理员并登录" : "登录"}
+        {pending ? "请稍候…" : isSetup ? "创建账号并登录" : "登录"}
       </Button>
 
       <p className="text-center text-xs text-muted-foreground">
