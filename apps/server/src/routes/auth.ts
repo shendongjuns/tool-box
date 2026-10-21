@@ -55,8 +55,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     return {
       initialized,
       username: owner?.username ?? null,
-      // 服务端（网页端 / 云端）永远要求密码，不支持无密码模式
-      passwordless: false,
+      // 服务端（网页端 / 云端）永远要求账号密码
+      authMode: "password",
     };
   });
 

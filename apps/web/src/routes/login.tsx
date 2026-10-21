@@ -20,7 +20,7 @@ function LoginPage() {
   const { source, cloudBaseUrl, setCloudBaseUrl } = useDataSource();
   const [serverUrl, setServerUrl] = useState(cloudBaseUrl);
   const [savingServer, setSavingServer] = useState(false);
-  const [autoEntering, setAutoEntering] = useState(false);
+  const [entering, setEntering] = useState(false);
   const attempted = useRef(false);
 
   const bootstrap = useQuery({
@@ -31,39 +31,33 @@ function LoginPage() {
   });
 
   /**
-   * 只有明确拿到 false 才显示注册表单。
-   *
-   * 查询中 / 查询失败时按「已初始化」显示登录，避免把用户误导向注册页。
+   * 登录方式由服务端决定：
+   * - `none`：桌面端本地数据源 —— 不需要账号密码，直接以「（本地）」身份进入。
+   * - `password`：网页端与云端 —— 必须账号 + 密码。
    */
+  const authMode = bootstrap.data?.authMode ?? "password";
   const initialized = bootstrap.data?.initialized ?? true;
-  const passwordless = bootstrap.data?.passwordless ?? false;
+  const passwordless = authMode === "none";
   const sourceInfo = DATA_SOURCES[source];
   const offline = bootstrap.isError;
 
-  /**
-   * 桌面端本地数据源的无密码模式：直接签发会话进入，不显示登录页。
-   *
-   * 只在「本地 + 无密码 + 已初始化」时触发，且每个挂载周期只尝试一次，
-   * 失败则退回普通登录表单（例如用户刚开启了密码模式）。
-   */
   useEffect(() => {
-    if (!passwordless || !initialized || offline || attempted.current) return;
-    if (source !== "local") return;
+    if (!passwordless || offline || attempted.current) return;
     attempted.current = true;
 
-    // setState 放进异步回调里，避免 effect 内同步触发级联渲染
+    // 放进异步回调，避免 effect 内同步 setState 触发级联渲染
     void (async () => {
       await Promise.resolve();
-      setAutoEntering(true);
+      setEntering(true);
       try {
         const result = await getApi().localSession();
         await applySession({ token: result.token, user: result.user, session: result.session });
         await navigate({ to: "/dashboard" });
       } catch {
-        setAutoEntering(false);
+        setEntering(false);
       }
     })();
-  }, [passwordless, initialized, offline, source, navigate]);
+  }, [passwordless, offline, navigate]);
 
   async function updateServer() {
     const next = serverUrl.trim().replace(/\/$/, "");
@@ -77,6 +71,7 @@ function LoginPage() {
       setServerUrl(next);
       invalidateApiCache();
       useAuth.getState().setAuth(null);
+      attempted.current = false;
       await bootstrap.refetch();
       toast.success("服务器地址已更新");
     } finally {
@@ -84,9 +79,9 @@ function LoginPage() {
     }
   }
 
-  if (autoEntering) {
+  if (entering) {
     return (
-      <AuthLayout title="正在进入" description="本地数据源已开启无密码模式">
+      <AuthLayout title="正在进入" description="本地数据源无需登录">
         <p className="text-sm text-muted-foreground">正在打开你的本地数据…</p>
       </AuthLayout>
     );
@@ -165,7 +160,10 @@ function LoginPage() {
           <button
             type="button"
             className="font-medium text-primary underline-offset-2 hover:underline"
-            onClick={() => void switchDataSource(source === "local" ? "cloud" : "local")}
+            onClick={() => {
+              attempted.current = false;
+              void switchDataSource(source === "local" ? "cloud" : "local");
+            }}
           >
             切换到{DATA_SOURCES[source === "local" ? "cloud" : "local"].label}
           </button>

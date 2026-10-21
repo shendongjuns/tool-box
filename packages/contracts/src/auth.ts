@@ -37,18 +37,20 @@ export type SessionDevice = z.infer<typeof sessionDeviceSchema>;
 /**
  * 初始化状态。
  *
- * 单用户系统：`initialized === false` 表示库里一个用户都没有，
- * 此时登录页会切换成「创建账号」表单；注册成功后永远返回 true。
- *
- * `passwordless` 只可能出现在桌面端的本地数据源：开启后无需密码即可进入，
- * 服务端（网页端 / 云端）恒为 false，始终要求密码。
+ * - `initialized === false`：库里还没有账号，登录页切换成「创建账号」。
+ * - `authMode`：当前数据源要求的登录方式。
+ *   - `password`：网页端、桌面端云端 —— 必须账号 + 密码。
+ *   - `none`：桌面端本地 —— 不登录，直接以「（本地）」身份进入。
  */
+export const authModeSchema = z.enum(["password", "none"]);
+export type AuthMode = z.infer<typeof authModeSchema>;
+
 export const bootstrapStatusSchema = z.object({
   initialized: z.boolean(),
   /** 已注册账号的用户名，仅 initialized 时有值 */
   username: z.string().nullable(),
-  /** 本地数据源是否处于「无密码模式」；服务端恒为 false */
-  passwordless: z.boolean(),
+  /** 当前数据源要求的登录方式 */
+  authMode: authModeSchema,
 });
 export type BootstrapStatus = z.infer<typeof bootstrapStatusSchema>;
 
@@ -82,18 +84,6 @@ export const loginResponseSchema = z.object({
 });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
-/** 切换本地数据源的访问模式（仅桌面端本地服务支持）。 */
-export const localAuthModeSchema = z.enum(["none", "password"]);
-export type LocalAuthMode = z.infer<typeof localAuthModeSchema>;
-
-export const setLocalAuthModeRequestSchema = z.object({
-  mode: localAuthModeSchema,
-  /** mode=password 时必填：设置（或重置）本地账号密码 */
-  username: usernameSchema.optional(),
-  password: passwordSchema.optional(),
-});
-export type SetLocalAuthModeRequest = z.infer<typeof setLocalAuthModeRequestSchema>;
-
 export const meResponseSchema = z.object({
   user: publicUserSchema,
   session: sessionInfoSchema,
@@ -110,3 +100,7 @@ export const sessionListResponseSchema = z.object({
   items: z.array(sessionDeviceSchema),
 });
 export type SessionListResponse = z.infer<typeof sessionListResponseSchema>;
+
+/** 本地数据源的固定身份显示名。 */
+export const LOCAL_USERNAME = "local";
+export const LOCAL_DISPLAY_NAME = "（本地）";

@@ -437,9 +437,9 @@ describe("单用户：注册入口只在无用户时存在", () => {
   });
 });
 describe("服务端永远要求密码（无密码模式仅限桌面端本地）", () => {
-  it("bootstrap 返回 passwordless=false", async () => {
+  it("bootstrap 返回 authMode=password", async () => {
     const response = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
-    expect(response.json().passwordless).toBe(false);
+    expect(response.json().authMode).toBe("password");
   });
 
   it("空密码注册被拒绝", async () => {
@@ -472,5 +472,10 @@ describe("服务端永远要求密码（无密码模式仅限桌面端本地）"
       payload: { mode: "none" },
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("空库时 bootstrap 也要求密码（不会自动进入）", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/auth/bootstrap" });
+    expect(response.json()).toMatchObject({ initialized: false, authMode: "password" });
   });
 });

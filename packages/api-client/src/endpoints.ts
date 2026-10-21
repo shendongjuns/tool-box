@@ -9,7 +9,6 @@ import type {
   PatchToolRequest,
   PutSettingsRequest,
   SessionListResponse,
-  SetLocalAuthModeRequest,
   ToolListResponse,
 } from "@toolbox/contracts";
 import type { ApiTransport } from "./types.js";
@@ -61,16 +60,8 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
     desktopLogin: (body: LoginRequest) =>
       send<DesktopLoginResponse>("/api/auth/desktop-login", "POST", body),
 
-    /** 仅桌面端本地数据源：无密码模式下一键进入。 */
+    /** 仅桌面端本地数据源：免登录直接进入，身份固定为「（本地）」。 */
     localSession: () => send<LoginResponse>("/api/auth/local-session", "POST"),
-
-    /** 仅桌面端本地数据源：切换无密码 / 密码模式。 */
-    setLocalAuthMode: (body: SetLocalAuthModeRequest) =>
-      send<{ mode: "none" | "password"; passwordless: boolean }>(
-        "/api/auth/local-mode",
-        "PUT",
-        body,
-      ),
 
     logout: () => send<void>("/api/auth/logout", "POST"),
 
