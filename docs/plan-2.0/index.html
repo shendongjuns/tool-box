@@ -177,7 +177,7 @@
   <thead><tr><th style="width:44px">#</th><th>验收标准</th><th style="width:90px">状态</th></tr></thead>
   <tbody>
     <tr><td>1</td><td><code>pnpm install &amp;&amp; pnpm dev</code> 同时起服务端与网页端，登录后进入壳层</td><td><span class="pill ok">已实现</span></td></tr>
-    <tr><td>2</td><td>空库首次访问进入注册页，注册成功后不再出现注册入口</td><td><span class="pill ok">已实现</span></td></tr>
+    <tr><td>2</td><td>库中无用户时登录页直接显示「创建管理员」（只填密码，用户名固定 owner），创建后永久关闭注册</td><td><span class="pill ok">已实现</span></td></tr>
     <tr><td>3</td><td>会话 30 天、活跃自动续期；关掉浏览器 30 天内重开仍在线</td><td><span class="pill ok">已实现</span></td></tr>
     <tr><td>4</td><td>桌面端默认本地数据源，断网可完整使用；设置里可切到云端</td><td><span class="pill ok">已实现</span></td></tr>
     <tr><td>5</td><td>两套数据互不读写、互不覆盖；切回后原数据原样还在</td><td><span class="pill ok">已实现</span></td></tr>
@@ -275,7 +275,7 @@
 │  ├─ contracts/     Zod schema + DTO + 内置工具目录（前后端唯一真源）
 │  ├─ data/          Drizzle schema + 迁移 SQL + repository
 │  └─ api-client/    传输层：web-fetch(cookie) / desktop(bearer)
-├─ docker/           Dockerfile · compose.yml · Caddyfile
+├─ docker/           Dockerfile · compose.yml
 ├─ docs/plan-2.0/    index.html（本文）· prototype.html · assets/
 └─ .github/workflows/ ci.yml · release.yml</code></pre>
 <p>常用脚本：<code>pnpm dev</code>、<code>pnpm build</code>、<code>pnpm test</code>、<code>pnpm lint</code>、<code>pnpm desktop:dev</code>、<code>pnpm desktop:build</code>。</p>
@@ -303,7 +303,7 @@ tool_prefs(tool_id PK, pinned, sort_order, last_opened_at, updated_at)</code></p
 <table>
   <thead><tr><th>项目</th><th>实现</th></tr></thead>
   <tbody>
-    <tr><td>首次注册</td><td><code>GET /api/auth/bootstrap</code> 返回 <code>initialized</code>；<code>POST</code> 仅在 users 为空时成功（409 表示已初始化）；可选一次性 <code>SETUP_TOKEN</code></td></tr>
+    <tr><td>首次注册</td><td><code>GET /api/auth/bootstrap</code> 返回 <code>{ initialized, username }</code>；<code>POST</code> 仅在 users 为空时成功（409 表示已创建）。单用户系统：库中无用户时登录页直接显示「创建管理员」，只填密码，用户名固定 <code>owner</code></td></tr>
     <tr><td>密码哈希</td><td>Argon2id（19456 KiB / t=2 / p=1）；本地库用 sha256(salt+password) 轻量方案</td></tr>
     <tr><td>规则</td><td>用户名 3–32 位 <code>[a-zA-Z0-9_-]</code>，密码 10–128 位，前后端共用同一份 Zod schema</td></tr>
     <tr><td>令牌</td><td><code>base64url(randomBytes(32))</code>，库中只存 sha256</td></tr>
@@ -362,15 +362,15 @@ cp docker/.env.example docker/.env
 # 2. 启动（只监听 127.0.0.1:3000）
 cd docker &amp;&amp; docker compose up -d --build
 
-# 3. 宿主机 nginx 反代 → https://你的域名 → 首次注册</code></pre>
+# 3. 打开 http://127.0.0.1:3000 → 创建管理员</code></pre>
 <div class="callout">
-  <strong>应用不配置域名与 HTTPS。</strong>证书、跳转、HSTS 全部由 nginx 负责；
-  应用只监听 HTTP，靠 <code>X-Forwarded-*</code> 头识别真实 Host / 协议 / 客户端 IP。
-  CSRF 校验比较浏览器 <code>Origin</code> 与请求 Host，换域名无需改任何配置。
+  <strong>应用不关心对外暴露方式。</strong>它只保证在本机 HTTP 可访问，域名 / HTTPS / 证书
+  由部署者自行处理（反向代理、隧道或直连皆可）。CSRF 校验比较浏览器 <code>Origin</code>
+  与请求 Host，因此换任何域名都不需要改应用配置。
 </div>
 <ul>
   <li>容器：多阶段构建，运行阶段非 root，内置 <code>HEALTHCHECK /api/health</code>；只绑定 <code>127.0.0.1:3000</code>。</li>
-  <li>反代：宿主机 nginx（示例见 <code>docker/nginx.conf.example</code>），证书由你现有的方式签发。</li>
+  <li>对外暴露：由部署者自行决定（反向代理 / 隧道 / 直连），应用侧无相关配置。</li>
   <li>持久化：<code>./data</code> 挂载到 <code>/app/data</code>，备份直接拷目录或用 <code>VACUUM INTO</code>。</li>
   <li>升级：拉新镜像重启，迁移在启动时自动执行。</li>
 </ul>
@@ -381,8 +381,7 @@ cd docker &amp;&amp; docker compose up -d --build
     <tr><td><code>DATABASE_PATH</code></td><td>./data/toolbox.db</td><td>SQLite 文件路径</td></tr>
     <tr><td><code>SESSION_TTL_DAYS</code></td><td>30</td><td>会话有效期（天）</td></tr>
     <tr><td><code>SESSION_RENEW_THROTTLE_MIN</code></td><td>60</td><td>滑动续期的写库节流</td></tr>
-    <tr><td><code>SETUP_TOKEN</code></td><td>空</td><td>一次性注册口令，留空不校验</td></tr>
-    <tr><td><code>TRUST_PROXY</code></td><td>true</td><td>信任 X-Forwarded-*，nginx 后面保持开启</td></tr>
+    <tr><td><code>TRUST_PROXY</code></td><td>true</td><td>信任 X-Forwarded-*，放在反向代理后保持开启</td></tr>
   </tbody>
 </table>
 
@@ -432,7 +431,7 @@ cd docker &amp;&amp; docker compose up -d --build
     <tr><td>M4 Web 壳层</td><td>设计系统、侧栏、顶栏、命令面板、登录/注册页</td><td><span class="pill ok">完成</span></td></tr>
     <tr><td>M5 工具与设置</td><td>6 个内置工具、仪表盘、设置四页、主题持久化</td><td><span class="pill ok">完成</span></td></tr>
     <tr><td>M6 桌面端</td><td>Tauri 外壳、本地数据服务、数据源切换、托盘、单实例</td><td><span class="pill ok">完成</span></td></tr>
-    <tr><td>M7 部署与 CI</td><td>Dockerfile、compose、Caddy、CI 与发版工作流</td><td><span class="pill ok">完成</span></td></tr>
+    <tr><td>M7 部署与 CI</td><td>Dockerfile、compose、CI 与发版工作流</td><td><span class="pill ok">完成</span></td></tr>
     <tr><td>M8 文档</td><td>本计划、可点击原型、截图、README</td><td><span class="pill ok">完成</span></td></tr>
   </tbody>
 </table>
@@ -496,7 +495,8 @@ cd docker &amp;&amp; docker compose up -d --build
     <tr><td>10</td><td>切换数据源后数据串台</td><td>Query 缓存键没有带数据源 —— 已统一加 <code>sourceKey</code> 前缀并清缓存。</td></tr>
     <tr><td>11</td><td>刷新桌面端就掉登录</td><td>本地令牌只存内存 —— 已改为存 Tauri store，与云端令牌分开保存。</td></tr>
     <tr><td>12</td><td>构建因空 pubkey 失败</td><td>updater 未配置签名 —— 已移除该插件依赖，避免阻断构建。</td></tr>
-    <tr><td>13</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>，nginx 负责 TLS。</td></tr>
+    <tr><td>13</td><td>注册入口会永久消失</td><td>原先只在 users 为空时显示注册页，一旦错过就没有入口 —— 改为登录页直接内嵌「创建管理员」，库中无用户时永远可见，创建后永久关闭。</td></tr>
+    <tr><td>14</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>。</td></tr>
   </tbody>
 </table>
 
@@ -509,7 +509,7 @@ cd docker &amp;&amp; docker compose up -d --build
       <li>服务端全部接口 + 14 个集成测试</li>
       <li>网页端全部页面与 6 个工具</li>
       <li>Tauri 外壳 + 本地 SQLite 服务（cargo check 通过）</li>
-      <li>Docker / Caddy / CI / Release</li>
+      <li>Docker / CI / Release</li>
       <li>本计划文档与截图</li>
     </ul>
   </div>
