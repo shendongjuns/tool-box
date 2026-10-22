@@ -1,9 +1,8 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { toast } from "sonner";
-import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
-import { clearSession } from "@/lib/session";
+import { logoutCurrent } from "@/lib/session";
 import { useTheme } from "@/lib/theme";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
-  const api = useApi();
   const navigate = useNavigate();
   const user = useAuth((state) => state.auth?.user);
   const { resolved, setMode, mode } = useTheme();
@@ -33,12 +31,7 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
           : "ToolBox";
 
   async function logout() {
-    try {
-      await api.logout();
-    } catch {
-      // 服务端不可达时也要让本地退出，不能把用户困在已登录界面
-    }
-    await clearSession();
+    await logoutCurrent();
     toast.success("已退出登录");
     await navigate({ to: "/login" });
   }

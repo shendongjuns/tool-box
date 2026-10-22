@@ -14,6 +14,8 @@ let localBaseUrl: string | null = null;
 let cloudToken: string | null = null;
 let localToken: string | null = null;
 let localPort = 0;
+/** 并发调用时共享同一个 Promise，避免重复 invoke。 */
+let localPortPromise: Promise<number> | null = null;
 
 interface TokenStore {
   get<T>(key: string): Promise<T | undefined>;
@@ -24,20 +26,34 @@ interface TokenStore {
 
 let storeRef: TokenStore | null = null;
 
-/** 启动时调用一次：拿本地端口、恢复云端令牌。 */
+async function resolveLocalPort(): Promise<number> {
+  if (localPort > 0) return localPort;
+  if (!isTauriRuntime()) return 0;
+  if (localPortPromise) return localPortPromise;
+
+  localPortPromise = (async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const port = await invoke<number>("local_api_port");
+      if (typeof port === "number" && port > 0) {
+        localPort = port;
+        localBaseUrl = `http://127.0.0.1:${port}`;
+      }
+      return localPort;
+    } catch (error) {
+      console.warn("本地数据源未就绪", error);
+      return 0;
+    }
+  })();
+
+  return localPortPromise;
+}
+
+/** 启动时调用一次：拿本地端口、恢复令牌。 */
 export async function initDesktopBridge(): Promise<void> {
   if (!isTauriRuntime()) return;
 
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const port = await invoke<number>("local_api_port");
-    if (typeof port === "number" && port > 0) {
-      localPort = port;
-      localBaseUrl = `http://127.0.0.1:${port}`;
-    }
-  } catch (error) {
-    console.warn("本地数据源未就绪", error);
-  }
+  await resolveLocalPort();
 
   try {
     const { LazyStore } = await import("@tauri-apps/plugin-store");
@@ -50,12 +66,24 @@ export async function initDesktopBridge(): Promise<void> {
   }
 }
 
+/**
+ * 本地服务地址。
+ *
+ * 切换数据源是同步操作，而端口是异步拿到的；如果这时还没拿到，
+ * 这里会返回空串，由调用方等待 `ensureLocalApi()` 后再取。
+ */
 export function getLocalBaseUrl(): string {
-  return localBaseUrl ?? `http://127.0.0.1:${localPort}`;
+  return localBaseUrl ?? "";
 }
 
 export function hasLocalApi(): boolean {
   return localPort > 0;
+}
+
+/** 确保本地端口已就绪（切换数据源前调用）。 */
+export async function ensureLocalApi(): Promise<boolean> {
+  const port = await resolveLocalPort();
+  return port > 0;
 }
 
 export function getCloudToken(): string | null {

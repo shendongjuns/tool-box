@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createApi, createFetchTransport, type Api } from "@toolbox/api-client";
 import { useDataSource } from "./data-source";
-import { authHeaderFor, getLocalBaseUrl, hasLocalApi } from "./desktop";
+import { authHeaderFor, getLocalBaseUrl } from "./desktop";
 import { isTauriRuntime } from "./platform";
 
 const ApiContext = React.createContext<Api | null>(null);
@@ -22,14 +22,13 @@ export function getApi(): Api {
   const key = [type, cloudBaseUrl, authHeaderFor(type).authorization ?? ""].join("|");
   if (cachedApi && cachedKey === key) return cachedApi;
 
+  /*
+   * 本地数据源：端口在启动时异步解析。正常情况下 initDesktopBridge 已经 await 过，
+   * 这里再兜底一次 —— 如果还没就绪，指向一个必然失败的地址，
+   * 由调用方（数据源切换 / 登录页 bootstrap 查询）给出可读错误。
+   */
   const baseUrl =
-    type === "cloud"
-      ? tauri
-        ? cloudBaseUrl
-        : ""
-      : hasLocalApi()
-        ? getLocalBaseUrl()
-        : "http://127.0.0.1:1";
+    type === "cloud" ? (tauri ? cloudBaseUrl : "") : getLocalBaseUrl() || "http://127.0.0.1:1";
 
   cachedApi = createApi(
     createFetchTransport({

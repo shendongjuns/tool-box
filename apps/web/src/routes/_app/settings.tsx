@@ -8,7 +8,7 @@ import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
 import { queryKeys, useCurrentSourceKey, useSettingsQuery } from "@/lib/hooks";
-import { clearSession, switchDataSource } from "@/lib/session";
+import { logoutCurrent, switchDataSource } from "@/lib/session";
 import { useDataSource } from "@/lib/data-source";
 import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
@@ -267,12 +267,7 @@ function AccountTab() {
   }
 
   async function logout() {
-    try {
-      await api.logout();
-    } catch {
-      // 服务端不可达也要能退出
-    }
-    await clearSession();
+    await logoutCurrent();
     await navigate({ to: "/login" });
   }
 
