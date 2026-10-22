@@ -3,13 +3,11 @@ import { Activity, ArrowUpRight, Boxes, Clock3, HardDrive, Pin, WifiOff } from "
 import { toolCatalog } from "@toolbox/contracts";
 import { useDashboardQuery } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth-session";
-import { useDataSource } from "@/lib/data-source";
-import { DATA_SOURCES } from "@/lib/source";
 import { relativeTime } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SourceSwitch } from "@/components/source-switch";
+import { useDataSource } from "@/lib/data-source";
 
 export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
@@ -17,7 +15,6 @@ export const Route = createFileRoute("/_app/dashboard")({
 
 function DashboardPage() {
   const user = useAuth((state) => state.auth?.user);
-  const source = useDataSource((state) => state.source);
   const dashboard = useDashboardQuery();
 
   const hour = new Date().getHours();
@@ -34,9 +31,6 @@ function DashboardPage() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">仪表盘</h1>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant={source === "local" ? "success" : "default"}>
-            {DATA_SOURCES[source].label}
-          </Badge>
           <SourceSwitch />
         </div>
       </header>
@@ -72,9 +66,9 @@ function DashboardPage() {
         />
         <StatCard
           label="数据源"
-          value={source === "local" ? "本地" : "云端"}
+          value={<SourceBadgeText />}
           icon={<HardDrive className="h-4 w-4" />}
-          hint={DATA_SOURCES[source].description}
+          hint="可在设置中切换"
           loading={false}
         />
       </section>
@@ -139,7 +133,7 @@ function DashboardPage() {
                 dashboard.data?.lastActiveAt ? relativeTime(dashboard.data.lastActiveAt) : "暂无"
               }
             />
-            <Row label="数据源" value={DATA_SOURCES[source].label} />
+            <Row label="数据源" value={<SourceBadgeText />} />
           </CardContent>
         </Card>
       </section>
@@ -155,7 +149,7 @@ function StatCard({
   loading,
 }: {
   label: string;
-  value?: number | string;
+  value?: React.ReactNode;
   icon: React.ReactNode;
   hint?: string;
   loading: boolean;
@@ -176,7 +170,12 @@ function StatCard({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function SourceBadgeText() {
+  const label = useDataSource((state) => state.label);
+  return <>{label}</>;
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-muted-foreground">{label}</span>

@@ -1,7 +1,5 @@
 import * as React from "react";
 import { Eye, EyeOff, Loader2, UserPlus } from "lucide-react";
-import type { DataSource } from "@/lib/platform";
-import { DATA_SOURCES } from "@/lib/source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
@@ -13,13 +11,11 @@ export interface LoginFormValues {
 }
 
 export function LoginForm({
-  source,
   initialized,
   disabled = false,
   onSubmit,
   extra,
 }: {
-  source: DataSource;
   /** false 表示库里还没有用户 —— 显示「创建管理员」表单 */
   initialized: boolean;
   /** 服务器不可达时禁用提交，避免用户对着按钮反复点 */
@@ -161,9 +157,6 @@ export function LoginForm({
         {pending ? "请稍候…" : isSetup ? "创建账号并登录" : "登录"}
       </Button>
 
-      <p className="text-center text-xs text-muted-foreground">
-        {DATA_SOURCES[source].description}
-      </p>
     </form>
   );
 }

@@ -1,28 +1,21 @@
+import { useDataSource } from "./data-source";
 import { isDesktop } from "./platform";
 
 /**
- * 数据源描述：UI 徽标、设置页与登录页文案共用。
+ * 数据源相关的小工具。
  *
- * 本地与云端是两套**完全独立**的数据（各自有库、各自有账号），
- * 只在设置里切换「使用哪一套」，不做任何同步或覆盖。
+ * 注意：页面本身不区分本地 / 云端，这里只用于「切换数据源」的 UI 与文案。
  */
-export const DATA_SOURCES = {
-  local: {
-    id: "local" as const,
-    label: "本地数据",
-    short: "本地",
-    description: "数据只保存在这台电脑上，断网也能用。与云端数据完全独立。",
-    requiresNetwork: false,
-  },
-  cloud: {
-    id: "cloud" as const,
-    label: "云端数据",
-    short: "云端",
-    description: "数据保存在你的服务器上，网页端与其它设备共享同一份数据。",
-    requiresNetwork: true,
-  },
-};
-
 export function canSwitchSource(): boolean {
   return isDesktop();
 }
+
+/** 当前数据源是否免登录（仅桌面端本地）。 */
+export function isLocalSource(): boolean {
+  return isDesktop() && useDataSource.getState().type === "local";
+}
+
+export const SOURCE_NOTES = {
+  local: "数据只保存在这台电脑上，无需登录，断网也能用。",
+  cloud: "数据保存在该服务器上，需要账号密码登录。",
+} as const;

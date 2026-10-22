@@ -2,11 +2,9 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getApi, invalidateApiCache } from "@/lib/api-context";
-import { useAuth } from "@/lib/auth-session";
+import { getApi } from "@/lib/api-context";
 import { useDataSource } from "@/lib/data-source";
-import { applySession, switchDataSource } from "@/lib/session";
-import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
+import { applySession } from "@/lib/session";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { LoginForm } from "@/components/auth/login-form";
 import { SourceSwitch } from "@/components/source-switch";
@@ -17,28 +15,25 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { source, cloudBaseUrl, setCloudBaseUrl } = useDataSource();
-  const [serverUrl, setServerUrl] = useState(cloudBaseUrl);
-  const [savingServer, setSavingServer] = useState(false);
+  const { activeId, cloudBaseUrl } = useDataSource();
   const [entering, setEntering] = useState(false);
   const attempted = useRef(false);
 
   const bootstrap = useQuery({
-    queryKey: ["bootstrap", source, cloudBaseUrl],
+    queryKey: ["bootstrap", activeId, cloudBaseUrl],
     queryFn: () => getApi().getBootstrap(),
     retry: false,
     staleTime: 0,
   });
 
   /**
-   * 登录方式由服务端决定：
-   * - `none`：桌面端本地数据源 —— 不需要账号密码，直接以「（本地）」身份进入。
-   * - `password`：网页端与云端 —— 必须账号 + 密码。
+   * 登录方式由数据源决定：
+   * - `none`：本地数据源 —— 不需要账号密码，直接以「（本地）」身份进入。
+   * - `password`：云端数据源与网页端 —— 必须账号 + 密码。
    */
   const authMode = bootstrap.data?.authMode ?? "password";
   const initialized = bootstrap.data?.initialized ?? true;
   const passwordless = authMode === "none";
-  const sourceInfo = DATA_SOURCES[source];
   const offline = bootstrap.isError;
 
   useEffect(() => {
@@ -59,26 +54,6 @@ function LoginPage() {
     })();
   }, [passwordless, offline, navigate]);
 
-  async function updateServer() {
-    const next = serverUrl.trim().replace(/\/$/, "");
-    if (!next) {
-      toast.error("请填写服务器地址");
-      return;
-    }
-    setSavingServer(true);
-    try {
-      setCloudBaseUrl(next);
-      setServerUrl(next);
-      invalidateApiCache();
-      useAuth.getState().setAuth(null);
-      attempted.current = false;
-      await bootstrap.refetch();
-      toast.success("服务器地址已更新");
-    } finally {
-      setSavingServer(false);
-    }
-  }
-
   if (entering) {
     return (
       <AuthLayout title="正在进入" description="本地数据源无需登录">
@@ -92,15 +67,13 @@ function LoginPage() {
       title={initialized ? "欢迎回来" : "创建管理员"}
       description={
         offline
-          ? `无法连接${sourceInfo.label}，请检查服务器地址或网络`
+          ? "无法连接服务器，请检查地址或网络"
           : initialized
-            ? `登录以继续使用${sourceInfo.label}`
+            ? "登录以继续"
             : "系统尚未初始化，创建唯一的账号即可开始"
       }
-      badge={<SourceSwitch compact />}
     >
       <LoginForm
-        source={source}
         initialized={initialized}
         disabled={offline}
         onSubmit={async ({ username, password }) => {
@@ -118,57 +91,12 @@ function LoginPage() {
           toast.success(initialized ? "登录成功" : "账号已创建，已自动登录");
           await navigate({ to: "/dashboard" });
         }}
-        extra={
-          canSwitchSource() && source === "cloud" ? (
-            <div className="rounded-lg border border-border bg-muted/40 p-3">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="server-url">
-                服务器地址
-              </label>
-              <div className="mt-1.5 flex gap-2">
-                <input
-                  id="server-url"
-                  value={serverUrl}
-                  onChange={(event) => setServerUrl(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void updateServer();
-                    }
-                  }}
-                  placeholder="http://127.0.0.1:3000"
-                  className="h-9 flex-1 rounded-md border border-input bg-card px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => void updateServer()}
-                  disabled={savingServer || serverUrl.trim() === cloudBaseUrl}
-                  className="h-9 rounded-md border border-border px-3 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
-                >
-                  保存
-                </button>
-              </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">切换后需要重新登录。</p>
-            </div>
-          ) : null
-        }
       />
 
-      {canSwitchSource() ? (
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          当前使用 <span className="font-medium text-foreground">{sourceInfo.label}</span>
-          {" · "}
-          <button
-            type="button"
-            className="font-medium text-primary underline-offset-2 hover:underline"
-            onClick={() => {
-              attempted.current = false;
-              void switchDataSource(source === "local" ? "cloud" : "local");
-            }}
-          >
-            切换到{DATA_SOURCES[source === "local" ? "cloud" : "local"].label}
-          </button>
-        </p>
-      ) : null}
+      <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+        <span>数据源</span>
+        <SourceSwitch />
+      </div>
     </AuthLayout>
   );
 }

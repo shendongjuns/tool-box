@@ -16,6 +16,8 @@ import {
 import { toolCatalog } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { SourceBadge } from "./source-badge";
+import { UserAvatar } from "@/components/user-avatar";
+import { useDataSource } from "@/lib/data-source";
 import { useAuth } from "@/lib/auth-session";
 
 const icons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -40,6 +42,7 @@ const categoryLabels: Record<string, string> = {
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const user = useAuth((state) => state.auth?.user);
+  const sourceLabel = useDataSource((state) => state.label);
 
   const groups = React.useMemo(() => {
     const map = new Map<string, (typeof toolCatalog)[number][]>();
@@ -134,10 +137,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </div>
 
       {!collapsed && (
-        <div className="flex items-center justify-between gap-2 border-t border-sidebar-border px-3 py-2.5">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium">{user?.displayName ?? user?.username ?? "未登录"}</p>
-            <p className="truncate text-[11px] text-muted-foreground">@{user?.username ?? "-"}</p>
+        <div className="flex items-center gap-2 border-t border-sidebar-border px-3 py-2.5">
+          <UserAvatar size={28} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">
+              {user?.displayName ?? user?.username ?? "未登录"}
+            </p>
+            <p className="truncate text-[11px] text-muted-foreground">{sourceLabel}</p>
           </div>
           <SourceBadge />
         </div>

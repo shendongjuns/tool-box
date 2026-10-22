@@ -2,13 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { DashboardResponse, GetSettingsResponse } from "@toolbox/contracts";
 import { useApi } from "./api-context";
 import { useAuth } from "./auth-session";
-import { sourceKey, useDataSource } from "./data-source";
+import { currentSourceKey, useDataSource } from "./data-source";
 
 /**
  * 查询键必须带数据源前缀。
  *
- * 本地与云端是两套完全独立的数据，切换后若沿用同一个缓存键，
- * 会把云端的数据显示在本地模式下（反之亦然）。
+ * 不同数据源是完全独立的数据集，切换后若沿用同一个缓存键，
+ * 会把上一个数据源的内容显示在新数据源里。
  */
 export const queryKeys = {
   settings: (key: string) => ["settings", key] as const,
@@ -19,9 +19,9 @@ export const queryKeys = {
 };
 
 export function useCurrentSourceKey(): string {
-  const source = useDataSource((state) => state.source);
+  const activeId = useDataSource((state) => state.activeId);
   const cloudBaseUrl = useDataSource((state) => state.cloudBaseUrl);
-  return sourceKey(source, cloudBaseUrl);
+  return currentSourceKey({ activeId, cloudBaseUrl });
 }
 
 export function useSettingsQuery() {

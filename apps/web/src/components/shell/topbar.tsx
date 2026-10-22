@@ -5,6 +5,7 @@ import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
 import { clearSession } from "@/lib/session";
 import { useTheme } from "@/lib/theme";
+import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -74,10 +75,10 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="app-no-drag grid h-8 w-8 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+            className="app-no-drag rounded-full transition-opacity hover:opacity-80"
             title={user?.username}
           >
-            {(user?.displayName ?? user?.username ?? "U").slice(0, 1).toUpperCase()}
+            <UserAvatar size={32} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">

@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Plus, Sun } from "lucide-react";
 import { toast } from "sonner";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -10,7 +10,6 @@ import { useAuth } from "@/lib/auth-session";
 import { queryKeys, useCurrentSourceKey, useSettingsQuery } from "@/lib/hooks";
 import { clearSession, switchDataSource } from "@/lib/session";
 import { useDataSource } from "@/lib/data-source";
-import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -46,27 +45,15 @@ const accents: { id: Accent; label: string; color: string }[] = [
 function SettingsPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
-  const source = useDataSource((state) => state.source);
-  const user = useAuth((state) => state.auth?.user);
-
-  /**
-   * 本地数据源是免登录的固定身份（username = "local"），
-   * 没有账号可改、也没有会话可管，因此隐藏「账户」标签页。
-   */
-  const isLocalIdentity = source === "local" || user?.username === "local";
-  const activeTab = isLocalIdentity && tab === "account" ? "general" : tab;
-
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {isLocalIdentity ? "外观与数据源" : "外观、数据源、账户与安全"}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">外观、数据源与账户</p>
       </header>
 
       <Tabs
-        value={activeTab}
+        value={tab}
         onValueChange={(value) =>
           void navigate({ to: "/settings", search: { tab: value as SettingsTab } })
         }
@@ -74,7 +61,7 @@ function SettingsPage() {
         <TabsList>
           <TabsTrigger value="general">通用</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
-          {isLocalIdentity ? null : <TabsTrigger value="account">账户</TabsTrigger>}
+          <TabsTrigger value="account">账户</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
 
@@ -84,11 +71,9 @@ function SettingsPage() {
         <TabsContent value="appearance">
           <AppearanceTab />
         </TabsContent>
-        {isLocalIdentity ? null : (
-          <TabsContent value="account">
-            <AccountTab />
-          </TabsContent>
-        )}
+        <TabsContent value="account">
+          <AccountTab />
+        </TabsContent>
         <TabsContent value="about">
           <AboutTab />
         </TabsContent>
@@ -98,11 +83,9 @@ function SettingsPage() {
 }
 
 function GeneralTab() {
-  const source = useDataSource((state) => state.source);
   const api = useApi();
   const queryClient = useQueryClient();
   const sourceKey = useCurrentSourceKey();
-  const navigate = useNavigate();
   const settings = useSettingsQuery();
 
   const saveSetting = useMutation({
@@ -116,63 +99,7 @@ function GeneralTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-primary" />
-            数据源
-          </CardTitle>
-          <CardDescription>
-            两套数据彼此独立、互不覆盖。切换后需要重新登录对应数据源。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {(["local", "cloud"] as const).map((id) => {
-            const info = DATA_SOURCES[id];
-            const active = source === id;
-            const Icon = id === "local" ? Database : Cloud;
-            return (
-              <button
-                key={id}
-                type="button"
-                disabled={!canSwitchSource() || active}
-                onClick={async () => {
-                  await switchDataSource(id);
-                  toast.success(`已切换到${info.label}，请重新登录`);
-                  await navigate({ to: "/login" });
-                }}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors",
-                  active
-                    ? "border-primary/40 bg-primary/5"
-                    : "border-border hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
-                )}
-              >
-                <div
-                  className={cn(
-                    "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
-                    active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{info.label}</p>
-                    {active ? <Badge variant="success">使用中</Badge> : null}
-                    {!canSwitchSource() && id === "local" ? (
-                      <Badge variant="outline">仅桌面端</Badge>
-                    ) : null}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{info.description}</p>
-                </div>
-                {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
-              </button>
-            );
-          })}
-        </CardContent>
-      </Card>
-
+      <DataSourceCard />
       {isDesktop() ? (
         <Card>
           <CardHeader>
@@ -301,8 +228,7 @@ function AppearanceTab() {
 function AccountTab() {
   const api = useApi();
   const user = useAuth((state) => state.auth?.user);
-  const source = useDataSource((state) => state.source);
-  const session = useAuth((state) => state.auth?.session);
+    const session = useAuth((state) => state.auth?.session);
   const sourceKey = useCurrentSourceKey();
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -349,9 +275,6 @@ function AccountTab() {
     await clearSession();
     await navigate({ to: "/login" });
   }
-
-  // 本地身份没有账号体系，直接不渲染（路由层已隐藏该标签）
-  if (source === "local" || user?.username === "local") return null;
 
   return (
     <div className="space-y-4">
@@ -463,6 +386,192 @@ function AccountTab() {
           </Button>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * 数据源管理：本地 + 用户自建的多个云端地址。
+ *
+ * 页面本身不区分数据源；这里只管理「连到哪儿」，切换后统一退回登录页。
+ */
+function DataSourceCard() {
+  const { cloudSources, activeId, label } = useDataSource();
+  const navigate = useNavigate();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftUrl, setDraftUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const addCloud = useDataSource((state) => state.addCloud);
+  const removeCloud = useDataSource((state) => state.removeCloud);
+
+  async function pick(id: string, name: string) {
+    if (id === activeId) return;
+    setPendingId(id);
+    await switchDataSource(id);
+    toast.success(`已切换到 ${name}，请重新登录`);
+    await navigate({ to: "/login" });
+  }
+
+  function submit() {
+    const name = draftName.trim();
+    const url = draftUrl.trim();
+    if (name.length === 0) return setError("请填写名称");
+    if (!/^https?:\/\/.+/i.test(url)) return setError("地址需要以 http:// 或 https:// 开头");
+    const source = addCloud({ name, url });
+    setAdding(false);
+    setDraftName("");
+    setDraftUrl("");
+    setError(null);
+    void pick(source.id, source.name);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Database className="h-4 w-4 text-primary" />
+          数据源
+        </CardTitle>
+        <CardDescription>
+          当前：{label}。不同数据源之间数据完全独立，切换后需要重新登录。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+            {activeId === "local" ? (
+              <Database className="h-4 w-4" />
+            ) : (
+              <Cloud className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{label}</p>
+            <p className="text-xs text-muted-foreground">正在使用</p>
+          </div>
+          <Badge variant="success">当前</Badge>
+        </div>
+
+        <div className="space-y-2 pt-2">
+          <p className="text-xs font-medium text-muted-foreground">可切换</p>
+
+          {activeId !== "local" ? (
+            <SwitchRow
+              icon={<Database className="h-4 w-4" />}
+              name="本地数据"
+              note="这台电脑 · 无需登录"
+              busy={pendingId === "local"}
+              onClick={() => void pick("local", "本地数据")}
+            />
+          ) : null}
+
+          {cloudSources
+            .filter((source) => source.id !== activeId)
+            .map((source) => (
+              <SwitchRow
+                key={source.id}
+                icon={<Cloud className="h-4 w-4" />}
+                name={source.name}
+                note={source.url}
+                busy={pendingId === source.id}
+                onClick={() => void pick(source.id, source.name)}
+                onRemove={
+                  cloudSources.length > 0
+                    ? () => {
+                        removeCloud(source.id);
+                        toast.success(`已删除 ${source.name}`);
+                      }
+                    : undefined
+                }
+              />
+            ))}
+
+          {adding ? (
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <Field>
+                <FieldLabel htmlFor="new-name">名称</FieldLabel>
+                <Input
+                  id="new-name"
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  placeholder="例如：公司服务器"
+                  autoFocus
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="new-url">服务器地址</FieldLabel>
+                <Input
+                  id="new-url"
+                  value={draftUrl}
+                  onChange={(event) => setDraftUrl(event.target.value)}
+                  placeholder="http://192.168.1.10:3000"
+                  className="font-mono"
+                />
+                {error ? (
+                  <p className="text-xs text-destructive">{error}</p>
+                ) : (
+                  <FieldHint>需要包含协议与端口，例如 http://192.168.1.10:3000。</FieldHint>
+                )}
+              </Field>
+              <div className="flex gap-2">
+                <Button onClick={submit}>保存并切换</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAdding(false);
+                    setError(null);
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+              <Plus className="h-4 w-4" />
+              添加云端服务器
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SwitchRow({
+  icon,
+  name,
+  note,
+  busy,
+  onClick,
+  onRemove,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  note: string;
+  busy: boolean;
+  onClick: () => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">{note}</p>
+      </div>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={onClick}>
+        切换
+      </Button>
+      {onRemove ? (
+        <Button variant="ghost" size="sm" onClick={onRemove} className="text-destructive">
+          删除
+        </Button>
+      ) : null}
     </div>
   );
 }
