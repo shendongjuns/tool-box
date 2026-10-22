@@ -278,8 +278,12 @@ fn handle(state: &AppState, mut request: Request) {
             let password = body["password"].as_str().unwrap_or_default().to_string();
             let now = now_ms();
 
-            if username.len() < 3 {
-                respond_json(request, 400, &error_body("VALIDATION_FAILED", "用户名至少 3 个字符"));
+            if username.trim().is_empty() {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "用户名不能为空"));
+                return;
+            }
+            if username.chars().count() > 32 {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "用户名最多 32 个字符"));
                 return;
             }
             if password.is_empty() {

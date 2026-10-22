@@ -493,3 +493,49 @@ describe("服务端永远要求密码（无密码模式仅限桌面端本地）"
     expect(response.json()).toMatchObject({ initialized: false, authMode: "password" });
   });
 });
+describe("用户名不限制字符集", () => {
+  it("中文用户名可以注册并登录", async () => {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "张三", password: "1" },
+    });
+    expect(register.statusCode).toBe(201);
+    expect(register.json().user.username).toBe("张三");
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "张三", password: "1" },
+    });
+    expect(login.statusCode).toBe(200);
+  });
+
+  it("带空格/符号的用户名被 trim 后保存", async () => {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "  a.b c  ", password: "x" },
+    });
+    expect(register.statusCode).toBe(201);
+    expect(register.json().user.username).toBe("a.b c");
+  });
+
+  it("纯空白用户名仍被拒绝", async () => {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "   ", password: "x" },
+    });
+    expect(register.statusCode).toBe(400);
+  });
+
+  it("超过 32 字符的用户名被拒绝", async () => {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "a".repeat(33), password: "x" },
+    });
+    expect(register.statusCode).toBe(400);
+  });
+});

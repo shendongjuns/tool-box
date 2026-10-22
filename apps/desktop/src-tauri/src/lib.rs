@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    Manager, WindowEvent,
 };
 
 /// 本地数据源端口，前端通过 invoke("local_api_port") 获取。
@@ -153,9 +153,15 @@ pub fn run() {
                 if ALLOW_EXIT.load(Ordering::SeqCst) {
                     return;
                 }
-                // 先拦下来，把决定权交给前端：弹框询问「最小化到托盘 / 直接退出」
+                /*
+                 * 关闭 = 隐藏到托盘。
+                 *
+                 * 这里必须由 Rust 直接执行，不能只发事件让前端处理：
+                 * 登录页没有壳层组件，一旦前端没挂监听器，点 × 就完全没反应。
+                 * 在 Rust 侧 hide 可以保证任何页面下行为一致。
+                 */
                 api.prevent_close();
-                let _ = window.emit("app://close-requested", ());
+                let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())

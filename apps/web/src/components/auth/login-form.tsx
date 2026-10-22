@@ -45,7 +45,7 @@ export function LoginForm({
     setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
 
   const isSetup = !initialized;
-  const usernameTooShort = touched.username && username.trim().length < 3;
+  const usernameEmpty = touched.username && username.trim().length === 0;
   const passwordEmpty = touched.password && password.length === 0;
   const mismatch =
     isSetup && touched.confirm && confirmPassword.length > 0 && password !== confirmPassword;
@@ -58,12 +58,12 @@ export function LoginForm({
     setTouched({ username: true, password: true, confirm: true });
 
     const name = username.trim();
-    if (name.length < 3) {
-      setError("用户名至少 3 个字符");
+    if (name.length === 0) {
+      setError("用户名不能为空");
       return;
     }
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-      setError("用户名只能包含字母、数字、下划线与连字符");
+    if (name.length > 32) {
+      setError("用户名最多 32 个字符");
       return;
     }
     if (password.length === 0) {
@@ -118,10 +118,8 @@ export function LoginForm({
           placeholder={isSetup ? "给自己起一个用户名" : "输入用户名"}
           required
         />
-        {isSetup ? (
-          <FieldHint>3–32 位，可用字母、数字、下划线与连字符。</FieldHint>
-        ) : null}
-        {usernameTooShort ? <FieldError>至少 3 个字符。</FieldError> : null}
+        {isSetup ? <FieldHint>1–32 个字符，中英文均可。</FieldHint> : null}
+        {usernameEmpty ? <FieldError>用户名不能为空。</FieldError> : null}
       </Field>
 
       <Field>
