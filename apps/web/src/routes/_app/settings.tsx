@@ -13,7 +13,6 @@ import { useDataSource } from "@/lib/data-source";
 import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
-import { readCloseBehavior, writeCloseBehavior, type CloseBehavior } from "@/lib/desktop-close";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,7 +113,6 @@ function GeneralTab() {
     },
   });
 
-  const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>(() => readCloseBehavior());
 
   return (
     <div className="space-y-4">
@@ -185,22 +183,11 @@ function GeneralTab() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">关闭窗口时</p>
-                <p className="text-xs text-muted-foreground">决定点击关闭按钮后的行为</p>
+                <p className="text-xs text-muted-foreground">
+                  始终隐藏到系统托盘；彻底退出请使用托盘右键菜单。
+                </p>
               </div>
-              <select
-                value={closeBehavior}
-                onChange={(event) => {
-                  const next = event.target.value as CloseBehavior;
-                  setCloseBehavior(next);
-                  writeCloseBehavior(next);
-                  toast.success("关闭行为已保存");
-                }}
-                className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-              >
-                <option value="ask">每次询问</option>
-                <option value="tray">最小化到托盘</option>
-                <option value="quit">直接退出</option>
-              </select>
+              <Badge variant="secondary">托盘</Badge>
             </div>
             <Separator />
             <div className="flex items-center justify-between gap-4">

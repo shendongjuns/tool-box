@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ToolBox 1.5.0 → 2.0.0 功能对比</title>
+<style>
+  :root {
+    --bg:#fff; --fg:#16181d; --muted:#5f6673; --card:#f7f8fa; --border:#e3e6eb;
+    --primary:#5b5bd6; --soft:#eeeffc; --ok:#148f5b; --warn:#b7791f; --bad:#c0392b;
+  }
+  html[data-theme="dark"] {
+    --bg:#0f1115; --fg:#e8eaee; --muted:#9aa1ad; --card:#171a20; --border:#262b34;
+    --primary:#8b8bf5; --soft:#1d2033; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.7 "Inter","Microsoft YaHei UI","PingFang SC",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  main { max-width:1080px; margin:0 auto; padding:48px 32px 96px; }
+  h1 { font-size:30px; margin:0 0 8px; letter-spacing:-.02em; }
+  .lede { color:var(--muted); font-size:15.5px; margin:0 0 8px; }
+  .meta { color:var(--muted); font-size:12.5px; margin-bottom:32px; }
+  h2 { font-size:21px; margin:44px 0 12px; padding-top:16px; border-top:1px solid var(--border); }
+  h3 { font-size:16px; margin:26px 0 8px; }
+  table { width:100%; border-collapse:collapse; margin:14px 0; font-size:14px; }
+  th, td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12.5px; }
+  tbody tr:hover { background:var(--card); }
+  code { font:12.8px/1.5 "JetBrains Mono",Consolas,monospace; background:var(--card);
+    padding:1.5px 5px; border-radius:5px; border:1px solid var(--border); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11.5px;
+    border:1px solid var(--border); color:var(--muted); white-space:nowrap; }
+  .pill.ok { color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,transparent); }
+  .pill.new { color:var(--primary); border-color:color-mix(in srgb,var(--primary) 40%,transparent); }
+  .pill.drop { color:var(--bad); border-color:color-mix(in srgb,var(--bad) 40%,transparent); }
+  .pill.chg { color:var(--warn); border-color:color-mix(in srgb,var(--warn) 40%,transparent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin:18px 0; }
+  .card { border:1px solid var(--border); border-radius:12px; padding:16px 18px; background:var(--card); }
+  .card h3 { margin-top:0; }
+  .card p { margin:6px 0 0; color:var(--muted); font-size:13.5px; }
+  .callout { border-left:3px solid var(--primary); background:var(--soft); border-radius:0 10px 10px 0;
+    padding:12px 16px; margin:18px 0; font-size:14px; }
+  .toolbar { position:fixed; top:16px; right:20px; }
+  .toolbar button { font:inherit; font-size:12px; cursor:pointer; padding:6px 11px; border-radius:7px;
+    border:1px solid var(--border); background:var(--bg); color:var(--muted); }
+  .toolbar button:hover { color:var(--fg); border-color:var(--primary); }
+  ul { padding-left:20px; }
+  li { margin:4px 0; }
+  .num { font-variant-numeric:tabular-nums; }
+  @media print { .toolbar { display:none; } h2 { page-break-after:avoid; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button type="button" id="theme">切换深浅色</button></div>
+<main>
+
+<h1>ToolBox 1.5.0 → 2.0.0 功能对比</h1>
+<p class="lede">一次彻底的重写：从 Windows 单机 Flutter 应用，变成「网页端 + 桌面端」的双形态、
+可自托管的服务化产品。</p>
+<p class="meta">整理时间：2026-10-22 · 对比基准：tag <code>v1.5.0</code> 与当前 <code>main</code></p>
+
+<div class="callout">
+<strong>一句话总结：</strong>1.5.0 是「一台电脑上的工具集」，2.0.0 是「自己的工具平台」。
+前者功能多而深（SSH / SFTP / 仓库 / 监控），后者基础能力与体验强（账号、云端、双端、设计系统），
+但专业工具尚未迁移。两者不是升级，而是重写，<strong>无数据迁移</strong>。
+</div>
+
+<h2>1 · 技术形态</h2>
+<table>
+  <thead><tr><th style="width:130px">维度</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>应用形态</td><td>仅 Windows 桌面应用</td><td>网页端 + 桌面端（同一份 React 代码）</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>技术栈</td><td>Flutter 3.47 + Dart 3.13 + ForUI</td><td>React 19 + Vite 7 + TypeScript 5.9 + Tauri 2</td><td><span class="pill chg">重写</span></td></tr>
+    <tr><td>UI 框架</td><td>ForUI 0.26（Material 系）</td><td>shadcn/ui 风格 + Radix + Tailwind v4</td><td><span class="pill chg">更换</span></td></tr>
+    <tr><td>桌面外壳</td><td>Flutter Windows runner</td><td>Tauri 2（Rust + 系统 WebView2）</td><td><span class="pill chg">更换</span></td></tr>
+    <tr><td>安装包体积</td><td>约 30–45 MB</td><td>约 5 MB（依赖系统 WebView2）</td><td><span class="pill ok">更小</span></td></tr>
+    <tr><td>后端</td><td><strong>无</strong>（纯本地，无网络服务）</td><td>Fastify 5 服务端（自带网页端托管）</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>数据存储</td><td>多个 JSON 文件 + 原子替换</td><td>SQLite（Drizzle ORM + 迁移）</td><td><span class="pill chg">更换</span></td></tr>
+    <tr><td>状态管理</td><td>Riverpod 3</td><td>TanStack Query + Zustand</td><td><span class="pill chg">更换</span></td></tr>
+    <tr><td>部署方式</td><td>Inno Setup 安装包 / 便携 zip</td><td>Docker Compose + 桌面 NSIS 安装包</td><td><span class="pill new">新增</span></td></tr>
+  </tbody>
+</table>
+
+<h2>2 · 账号与访问控制</h2>
+<table>
+  <thead><tr><th style="width:130px">能力</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>账号体系</td><td>无（打开即用）</td><td>单用户，首次打开引导创建</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>登录态</td><td>无</td><td>30 天会话，滑动续期</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>密码存储</td><td>无</td><td>Argon2id（本地使用固定身份，无密码）</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>本地数据访问</td><td>直接打开</td><td>桌面端选中本地数据源即进入（身份「（本地）」），无需登录</td><td><span class="pill ok">保持简单</span></td></tr>
+    <tr><td>云端数据访问</td><td>—</td><td>需账号密码</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>网页端访问</td><td>—</td><td>需账号密码</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>会话管理</td><td>无</td><td>设备列表、单个下线、全部下线、改密踢出其它设备</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>CSRF / 限流</td><td>无（无网络）</td><td>Origin 同源校验、登录 10 次/分钟/IP</td><td><span class="pill new">新增</span></td></tr>
+  </tbody>
+</table>
+
+<h2>3 · 数据与多端</h2>
+<table>
+  <thead><tr><th style="width:130px">能力</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>本地数据</td><td><code>user/*.json</code>（程序目录旁）</td><td><code>%APPDATA%\com.shendongjuns.toolbox\local.db</code></td><td><span class="pill chg">更换</span></td></tr>
+    <tr><td>云端数据</td><td>无</td><td>服务器 SQLite，网页端与桌面端共享</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>双数据源切换</td><td>无</td><td>桌面端可在本地 / 云端间切换，两套数据完全独立</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>离线使用</td><td>天然支持（纯本地）</td><td>本地数据源支持；云端数据源需联网</td><td><span class="pill ok">保持</span></td></tr>
+    <tr><td>多设备共享</td><td><strong>不支持</strong></td><td>支持（同一账号，云端数据）</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>备份 / 恢复</td><td>zip 导出导入、格式化前强制备份、清单校验</td><td><strong>暂无</strong>（可直接备份 .db 文件）</td><td><span class="pill drop">回退</span></td></tr>
+    <tr><td>数据迁移</td><td>—</td><td><strong>不提供</strong> 1.x 数据迁移</td><td><span class="pill drop">不支持</span></td></tr>
+  </tbody>
+</table>
+
+<h2>4 · 工具集</h2>
+<p>1.5.0 的四个专业工具（SSH / SFTP / 仓库 / 监控）在 2.0.0 中<strong>尚未迁移</strong>，
+2.0.0 改为提供 6 个通用小工具。这是两个版本最大的功能差异。</p>
+
+<h3>1.5.0 独有（2.0.0 暂无）</h3>
+<table>
+  <thead><tr><th style="width:150px">工具</th><th>能力</th><th style="width:90px">2.0.0</th></tr></thead>
+  <tbody>
+    <tr><td>远程管理 · SSH</td><td>保存连接（密码/私钥）、一键测试、多会话终端、中文输入法、窗口缩放重排</td><td><span class="pill drop">未迁移</span></td></tr>
+    <tr><td>远程管理 · SFTP</td><td>目录浏览、上传下载（流式/并发/进度/取消）、新建删除、任务持久化、系统程序打开</td><td><span class="pill drop">未迁移</span></td></tr>
+    <tr><td>远程管理 · 监控</td><td>每秒采集 CPU/内存/磁盘/负载/网络/TOP 进程、昇腾 NPU 支持、后台自动暂停</td><td><span class="pill drop">未迁移</span></td></tr>
+    <tr><td>代码仓库管理</td><td>SVN/Git 分组、批量导入、本地拉取、远程拉取（SSH 执行）、认证复用</td><td><span class="pill drop">未迁移</span></td></tr>
+    <tr><td>系统监控</td><td>本地 /proc 采集，无需代理</td><td><span class="pill drop">未迁移</span></td></tr>
+  </tbody>
+</table>
+
+<h3>2.0.0 新增</h3>
+<table>
+  <thead><tr><th style="width:150px">工具</th><th>能力</th><th style="width:90px">1.5.0</th></tr></thead>
+  <tbody>
+    <tr><td>JSON 格式化</td><td>格式化、压缩、合法性校验、缩进选择</td><td><span class="pill drop">无</span></td></tr>
+    <tr><td>Base64 编解码</td><td>文本互转、URL 安全字符集</td><td><span class="pill drop">无</span></td></tr>
+    <tr><td>URL 编解码</td><td>组件级编码解码</td><td><span class="pill drop">无</span></td></tr>
+    <tr><td>时间戳转换</td><td>Unix ⇄ 本地时间、毫秒/秒切换</td><td><span class="pill drop">无</span></td></tr>
+    <tr><td>哈希计算</td><td>MD5 / SHA-1 / SHA-256</td><td><span class="pill drop">无</span></td></tr>
+    <tr><td>UUID 生成器</td><td>批量生成 v4、大写、复制全部</td><td><span class="pill drop">无</span></td></tr>
+  </tbody>
+</table>
+
+<h2>5 · 界面与交互</h2>
+<table>
+  <thead><tr><th style="width:150px">能力</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>导航</td><td>左侧栏按分类展开，可拖拽调宽 180–420px</td><td>左侧栏可折叠 260↔64px</td><td><span class="pill chg">调整</span></td></tr>
+    <tr><td>页面保活</td><td>IndexedStack，切换不丢状态</td><td>路由级切换（重进会重建）</td><td><span class="pill drop">回退</span></td></tr>
+    <tr><td>命令面板</td><td>无</td><td>Ctrl/Cmd+K 搜索工具与页面</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>主题</td><td>跟随系统 / 浅 / 深 三态循环</td><td>三态 + 六套强调色，保存到当前数据源</td><td><span class="pill ok">增强</span></td></tr>
+    <tr><td>仪表盘</td><td>无</td><td>统计卡片、最近使用、服务状态</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>设置页</td><td>单一对话框</td><td>四标签：通用 / 外观 / 账户 / 关于</td><td><span class="pill ok">增强</span></td></tr>
+    <tr><td>响应式</td><td>仅桌面</td><td>≥1024 完整布局，窄屏侧栏转 Sheet</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>快捷键</td><td>Ctrl+N / Ctrl+W / Ctrl+Tab / Esc</td><td>Ctrl+K 命令面板</td><td><span class="pill chg">更换</span></td></tr>
+  </tbody>
+</table>
+
+<h2>6 · 桌面端行为</h2>
+<table>
+  <thead><tr><th style="width:150px">能力</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>系统托盘</td><td>有（单击显示、右键菜单）</td><td>有（单击显示、右键菜单）</td><td><span class="pill ok">一致</span></td></tr>
+    <tr><td>关闭按钮</td><td>默认弹框询问，可记住选择</td><td><strong>默认隐藏到托盘</strong>，不询问；退出走托盘菜单</td><td><span class="pill chg">简化</span></td></tr>
+    <tr><td>窗口尺寸</td><td>记住尺寸与最大化，不记位置</td><td>同（window-state 插件）</td><td><span class="pill ok">一致</span></td></tr>
+    <tr><td>单实例</td><td>有（弹窗提醒，不强制）</td><td>有（聚焦已有窗口）</td><td><span class="pill ok">增强</span></td></tr>
+    <tr><td>日志</td><td>落盘 1MB × 3 轮转</td><td>Tauri log 插件写用户目录</td><td><span class="pill ok">一致</span></td></tr>
+    <tr><td>自动更新</td><td>无（靠安装包覆盖）</td><td>预留 updater 配置（需签名私钥启用）</td><td><span class="pill chg">预留</span></td></tr>
+  </tbody>
+</table>
+
+<h2>7 · 部署与运维</h2>
+<table>
+  <thead><tr><th style="width:150px">能力</th><th>1.5.0</th><th>2.0.0</th><th style="width:80px">变化</th></tr></thead>
+  <tbody>
+    <tr><td>服务端部署</td><td>无</td><td>Docker Compose（单容器 + SQLite 卷）</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>对外暴露</td><td>—</td><td>只监听本机 HTTP，由部署者决定反向代理</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>健康检查</td><td>无</td><td><code>GET /api/health</code> + 容器 HEALTHCHECK</td><td><span class="pill new">新增</span></td></tr>
+    <tr><td>CI</td><td>Flutter build + Inno Setup</td><td>lint / typecheck / test / build + Tauri 打包</td><td><span class="pill ok">增强</span></td></tr>
+    <tr><td>配置项</td><td>无（纯本地）</td><td>PORT / DATABASE_PATH / SESSION_TTL_DAYS 等</td><td><span class="pill new">新增</span></td></tr>
+  </tbody>
+</table>
+
+<h2>8 · 能力清单速查</h2>
+<div class="grid">
+  <div class="card">
+    <h3>1.5.0 有、2.0.0 无</h3>
+    <ul style="margin:0;padding-left:18px;color:var(--muted);font-size:13.5px">
+      <li>SSH 终端（多会话）</li>
+      <li>SFTP 文件传输</li>
+      <li>远程主机监控（含 NPU）</li>
+      <li>代码仓库管理（Git/SVN）</li>
+      <li>本地系统监控</li>
+      <li>数据备份 / 恢复 / 格式化</li>
+      <li>页面保活（IndexedStack）</li>
+      <li>窗口位置记忆</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>2.0.0 有、1.5.0 无</h3>
+    <ul style="margin:0;padding-left:18px;color:var(--muted);font-size:13.5px">
+      <li>网页端（浏览器访问）</li>
+      <li>账号体系 + 30 天会话</li>
+      <li>云端数据 + 多设备共享</li>
+      <li>本地 / 云端双数据源</li>
+      <li>6 个通用小工具</li>
+      <li>命令面板（Ctrl+K）</li>
+      <li>仪表盘</li>
+      <li>六套强调色 + 深浅色</li>
+      <li>Docker 部署 + 健康检查</li>
+      <li>会话设备管理</li>
+    </ul>
+  </div>
+</div>
+
+<h2>9 · 结论</h2>
+<table>
+  <thead><tr><th style="width:130px">看什么</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td>功能数量</td><td><strong>1.5.0 更多</strong>：4 个重型专业工具 + 备份体系</td></tr>
+    <tr><td>架构能力</td><td><strong>2.0.0 更强</strong>：多端、账号、云端、可部署</td></tr>
+    <tr><td>使用门槛</td><td><strong>1.5.0 更低</strong>：打开即用；2.0.0 需部署服务端（若用云端）</td></tr>
+    <tr><td>可维护性</td><td><strong>2.0.0 更好</strong>：TypeScript 全栈、共享契约、类型安全</td></tr>
+    <tr><td>数据安全</td><td><strong>2.0.0 更好</strong>：Argon2id、令牌哈希、CSRF、限流</td></tr>
+    <tr><td>迁移成本</td><td><strong>无迁移路径</strong>：1.x 数据不能导入 2.0</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+<strong>建议：</strong>如果日常依赖 SSH / SFTP / 仓库管理，继续用 1.5.0；
+如果需要多设备、远程访问、或想要一个可持续扩展的平台底座，迁到 2.0.0 并把上述工具列入 Roadmap。
+两者的数据与配置互不相通，可以并行安装。
+</div>
+
+</main>
+<script>
+(() => {
+  const root = document.documentElement;
+  const saved = localStorage.getItem("cmp-theme");
+  if (saved) root.setAttribute("data-theme", saved);
+  document.getElementById("theme").addEventListener("click", () => {
+    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    localStorage.setItem("cmp-theme", next);
+  });
+})();
+</script>
+</body>
+</html>
