@@ -78,9 +78,20 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
         });
 
-    // 没有窗口图标时退化为不设置图标，避免托盘初始化直接失败
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
+    // 托盘图标：显式加载 32x32 PNG。
+    //
+    // 不用 default_window_icon()：它来自 bundle.icon 的第一项，
+    // 尺寸与托盘期望的不一定匹配；而且没有图标时会静默退化成空白托盘。
+    match tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")) {
+        Ok(icon) => {
+            builder = builder.icon(icon);
+        }
+        Err(error) => {
+            log::warn!("托盘图标加载失败，回退到窗口图标: {error}");
+            if let Some(icon) = app.default_window_icon() {
+                builder = builder.icon(icon.clone());
+            }
+        }
     }
 
     builder.build(app)?;
