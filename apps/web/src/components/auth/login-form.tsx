@@ -30,14 +30,32 @@ export function LoginForm({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  /**
+   * 字段是否被用户碰过。
+   *
+   * 报错必须等用户操作过之后才显示 —— 否则页面一打开，
+   * 空的密码框会立刻标红「密码不能为空」，看起来像出错了。
+   */
+  const [touched, setTouched] = React.useState({
+    username: false,
+    password: false,
+    confirm: false,
+  });
+  const touch = (field: keyof typeof touched) =>
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+
   const isSetup = !initialized;
-  const usernameTooShort = username.length > 0 && username.trim().length < 3;
-  const passwordEmpty = password.length === 0;
-  const mismatch = isSetup && confirmPassword.length > 0 && password !== confirmPassword;
+  const usernameTooShort = touched.username && username.trim().length < 3;
+  const passwordEmpty = touched.password && password.length === 0;
+  const mismatch =
+    isSetup && touched.confirm && confirmPassword.length > 0 && password !== confirmPassword;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+
+    // 直接点提交时也要把字段标成「已触碰」，否则用户看不到具体哪一项不合法
+    setTouched({ username: true, password: true, confirm: true });
 
     const name = username.trim();
     if (name.length < 3) {
@@ -92,7 +110,11 @@ export function LoginForm({
           autoFocus
           autoComplete="username"
           value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          onChange={(event) => {
+            setUsername(event.target.value);
+            touch("username");
+          }}
+          onBlur={() => touch("username")}
           placeholder={isSetup ? "给自己起一个用户名" : "输入用户名"}
           required
         />
@@ -110,7 +132,11 @@ export function LoginForm({
             type={showPassword ? "text" : "password"}
             autoComplete={isSetup ? "new-password" : "current-password"}
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              touch("password");
+            }}
+            onBlur={() => touch("password")}
             placeholder={isSetup ? "设置一个密码" : "输入密码"}
             required
             className="pr-10"
@@ -136,7 +162,11 @@ export function LoginForm({
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
             value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
+            onChange={(event) => {
+              setConfirmPassword(event.target.value);
+              touch("confirm");
+            }}
+            onBlur={() => touch("confirm")}
             placeholder="再输入一次"
             required
           />
