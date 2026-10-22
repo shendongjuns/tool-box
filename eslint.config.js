@@ -18,6 +18,7 @@ export default tseslint.config(
       ".tmp-v2/**",
       ".tmp-fresh/**",
       ".tmp-doc/**",
+      ".tmp-*/**",
       ".tmp-auto/**",
       ".tmp-web/**",
       "apps/desktop/src-tauri/target/**",

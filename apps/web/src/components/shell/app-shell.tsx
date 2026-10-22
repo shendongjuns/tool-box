@@ -2,6 +2,7 @@ import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { CommandPalette } from "./command-palette";
+import { CloseGuard } from "./close-guard";
 import { useSettingsQuery } from "@/lib/hooks";
 import { useThemeSync } from "@/lib/theme-sync";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      <CloseGuard />
     </div>
   );
 }

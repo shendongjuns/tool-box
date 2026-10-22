@@ -13,6 +13,7 @@ import { useDataSource } from "@/lib/data-source";
 import { canSwitchSource, DATA_SOURCES } from "@/lib/source";
 import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
+import { readCloseBehavior, writeCloseBehavior, type CloseBehavior } from "@/lib/desktop-close";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,16 +47,27 @@ const accents: { id: Accent; label: string; color: string }[] = [
 function SettingsPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
+  const source = useDataSource((state) => state.source);
+  const user = useAuth((state) => state.auth?.user);
+
+  /**
+   * 本地数据源是免登录的固定身份（username = "local"），
+   * 没有账号可改、也没有会话可管，因此隐藏「账户」标签页。
+   */
+  const isLocalIdentity = source === "local" || user?.username === "local";
+  const activeTab = isLocalIdentity && tab === "account" ? "general" : tab;
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
-        <p className="mt-1 text-sm text-muted-foreground">外观、数据源、账户与安全</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {isLocalIdentity ? "外观与数据源" : "外观、数据源、账户与安全"}
+        </p>
       </header>
 
       <Tabs
-        value={tab}
+        value={activeTab}
         onValueChange={(value) =>
           void navigate({ to: "/settings", search: { tab: value as SettingsTab } })
         }
@@ -63,7 +75,7 @@ function SettingsPage() {
         <TabsList>
           <TabsTrigger value="general">通用</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
-          <TabsTrigger value="account">账户</TabsTrigger>
+          {isLocalIdentity ? null : <TabsTrigger value="account">账户</TabsTrigger>}
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
 
@@ -73,9 +85,11 @@ function SettingsPage() {
         <TabsContent value="appearance">
           <AppearanceTab />
         </TabsContent>
-        <TabsContent value="account">
-          <AccountTab />
-        </TabsContent>
+        {isLocalIdentity ? null : (
+          <TabsContent value="account">
+            <AccountTab />
+          </TabsContent>
+        )}
         <TabsContent value="about">
           <AboutTab />
         </TabsContent>
@@ -100,7 +114,7 @@ function GeneralTab() {
     },
   });
 
-  const closeBehavior = String(settings.data?.values["ui.closeBehavior"] ?? "ask");
+  const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>(() => readCloseBehavior());
 
   return (
     <div className="space-y-4">
@@ -175,7 +189,12 @@ function GeneralTab() {
               </div>
               <select
                 value={closeBehavior}
-                onChange={(event) => saveSetting.mutate({ "ui.closeBehavior": event.target.value })}
+                onChange={(event) => {
+                  const next = event.target.value as CloseBehavior;
+                  setCloseBehavior(next);
+                  writeCloseBehavior(next);
+                  toast.success("关闭行为已保存");
+                }}
                 className="h-9 rounded-md border border-border bg-card px-2 text-sm"
               >
                 <option value="ask">每次询问</option>
@@ -295,6 +314,7 @@ function AppearanceTab() {
 function AccountTab() {
   const api = useApi();
   const user = useAuth((state) => state.auth?.user);
+  const source = useDataSource((state) => state.source);
   const session = useAuth((state) => state.auth?.session);
   const sourceKey = useCurrentSourceKey();
   const navigate = useNavigate();
@@ -342,6 +362,9 @@ function AccountTab() {
     await clearSession();
     await navigate({ to: "/login" });
   }
+
+  // 本地身份没有账号体系，直接不渲染（路由层已隐藏该标签）
+  if (source === "local" || user?.username === "local") return null;
 
   return (
     <div className="space-y-4">
