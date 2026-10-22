@@ -282,8 +282,8 @@ fn handle(state: &AppState, mut request: Request) {
                 respond_json(request, 400, &error_body("VALIDATION_FAILED", "用户名至少 3 个字符"));
                 return;
             }
-            if password.len() < 10 {
-                respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码至少 10 个字符"));
+            if password.is_empty() {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码不能为空"));
                 return;
             }
 

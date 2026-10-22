@@ -174,7 +174,7 @@ tool-box/
 
 ## 安全
 
-- 密码使用 **Argon2id**（19456 KiB / t=2 / p=1）存储
+- 密码使用 **Argon2id**（19456 KiB / t=2 / p=1）存储；**不限制长度与字符**，只要求非空
 - 会话令牌为 32 字节随机数，数据库只存 `sha256` 摘要
 - Cookie：`HttpOnly` + `SameSite=Lax`，HTTPS 下自动加 `Secure`
 - CSRF：非安全方法校验 `Origin` 与请求 Host 同源

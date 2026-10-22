@@ -451,13 +451,27 @@ describe("服务端永远要求密码（无密码模式仅限桌面端本地）"
     expect(response.statusCode).toBe(400);
   });
 
-  it("短密码注册被拒绝", async () => {
+  it("短密码注册被接受（密码不限制长度）", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/bootstrap",
-      payload: { username: "nobody", password: "short" },
+      payload: { username: "nobody", password: "1" },
     });
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(201);
+  });
+
+  it("一位数字密码也能正常登录", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "tiny", password: "x" },
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "tiny", password: "x" },
+    });
+    expect(response.statusCode).toBe(200);
   });
 
   it("不存在免密登录接口", async () => {

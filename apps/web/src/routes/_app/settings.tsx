@@ -243,8 +243,8 @@ function AccountTab() {
   });
 
   async function changePassword() {
-    if (newPassword.length < 10) {
-      toast.error("新密码至少 10 个字符");
+    if (newPassword.length === 0) {
+      toast.error("新密码不能为空");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -315,7 +315,7 @@ function AccountTab() {
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
             />
-            <FieldHint>至少 10 个字符</FieldHint>
+            <FieldHint>长度与字符不限</FieldHint>
           </Field>
           <Field>
             <FieldLabel htmlFor="confirm-new">确认新密码</FieldLabel>

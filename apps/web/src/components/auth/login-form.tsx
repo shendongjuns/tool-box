@@ -32,7 +32,7 @@ export function LoginForm({
 
   const isSetup = !initialized;
   const usernameTooShort = username.length > 0 && username.trim().length < 3;
-  const passwordTooShort = password.length > 0 && password.length < 10;
+  const passwordEmpty = password.length === 0;
   const mismatch = isSetup && confirmPassword.length > 0 && password !== confirmPassword;
 
   async function handleSubmit(event: React.FormEvent) {
@@ -48,8 +48,8 @@ export function LoginForm({
       setError("用户名只能包含字母、数字、下划线与连字符");
       return;
     }
-    if (password.length < 10) {
-      setError("密码至少需要 10 个字符");
+    if (password.length === 0) {
+      setError("密码不能为空");
       return;
     }
     if (isSetup && password !== confirmPassword) {
@@ -111,7 +111,7 @@ export function LoginForm({
             autoComplete={isSetup ? "new-password" : "current-password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder={isSetup ? "至少 10 个字符" : "输入密码"}
+            placeholder={isSetup ? "设置一个密码" : "输入密码"}
             required
             className="pr-10"
           />
@@ -124,8 +124,8 @@ export function LoginForm({
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
-        {isSetup ? <FieldHint>建议使用大小写字母、数字与符号的组合。</FieldHint> : null}
-        {passwordTooShort ? <FieldError>还差 {10 - password.length} 个字符。</FieldError> : null}
+        {isSetup ? <FieldHint>长度与字符不限，留好记的即可。</FieldHint> : null}
+        {passwordEmpty ? <FieldError>密码不能为空。</FieldError> : null}
       </Field>
 
       {isSetup ? (

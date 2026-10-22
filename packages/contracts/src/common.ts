@@ -22,10 +22,12 @@ export const usernameSchema = z
   .max(32, "用户名最多 32 个字符")
   .regex(/^[a-zA-Z0-9_-]+$/, "仅允许字母、数字、下划线与连字符");
 
-/** 密码规则：10-128 位 */
-export const passwordSchema = z
-  .string()
-  .min(10, "密码至少 10 个字符")
-  .max(128, "密码最多 128 个字符");
+/**
+ * 密码规则：**不做任何强度/长度限制**。
+ *
+ * 只要求非空 —— 空密码会让「密码校验」退化为「只验用户名」，
+ * 那才是真正的风险。除此之外，一位数字、一句话都可以。
+ */
+export const passwordSchema = z.string().min(1, "密码不能为空");
 
 export const displayNameSchema = z.string().trim().min(1).max(48).optional();
