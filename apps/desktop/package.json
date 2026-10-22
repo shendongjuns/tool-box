@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
+    "package:portable": "node scripts/make-portable.mjs",
     "tauri": "tauri",
     "typecheck": "cargo check --manifest-path src-tauri/Cargo.toml"
   },

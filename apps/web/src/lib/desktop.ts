@@ -17,14 +17,15 @@ let localPort = 0;
 /** 并发调用时共享同一个 Promise，避免重复 invoke。 */
 let localPortPromise: Promise<number> | null = null;
 
-interface TokenStore {
-  get<T>(key: string): Promise<T | undefined>;
-  set(key: string, value: unknown): Promise<void>;
-  delete(key: string): Promise<boolean>;
-  save(): Promise<void>;
+/**
+ * 令牌存取走本地 API 的 /api/app/tokens —— 数据落在 <exe>/data/local.db 的
+ * settings 表里，因此不会写 AppData，整个安装目录拷走即可迁移。
+ */
+interface StoredTokens {
+  cloudToken: string | null;
+  localToken: string | null;
 }
 
-let storeRef: TokenStore | null = null;
 
 async function resolveLocalPort(): Promise<number> {
   if (localPort > 0) return localPort;
@@ -56,14 +57,30 @@ export async function initDesktopBridge(): Promise<void> {
   await resolveLocalPort();
 
   try {
-    const { LazyStore } = await import("@tauri-apps/plugin-store");
-    const store = new LazyStore("auth.json");
-    storeRef = store as unknown as TokenStore;
-    cloudToken = (await store.get<string>("cloudToken")) ?? null;
-    localToken = (await store.get<string>("localToken")) ?? null;
+    const stored = await fetchTokens();
+    cloudToken = stored.cloudToken;
+    localToken = stored.localToken;
   } catch (error) {
     console.warn("读取桌面端令牌失败", error);
   }
+}
+
+async function fetchTokens(): Promise<StoredTokens> {
+  const base = getLocalBaseUrl();
+  if (!base) return { cloudToken: null, localToken: null };
+  const response = await fetch(`${base}/api/app/tokens`);
+  if (!response.ok) throw new Error(`读取令牌失败（HTTP ${response.status}）`);
+  return (await response.json()) as StoredTokens;
+}
+
+async function saveTokens(patch: Partial<StoredTokens>): Promise<void> {
+  const base = getLocalBaseUrl();
+  if (!base) return;
+  await fetch(`${base}/api/app/tokens`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
 }
 
 /**
@@ -94,22 +111,15 @@ export function getLocalToken(): string | null {
   return localToken;
 }
 
-async function persist(key: string, value: string | null): Promise<void> {
-  if (!storeRef) return;
-  if (value) await storeRef.set(key, value);
-  else await storeRef.delete(key);
-  await storeRef.save();
-}
-
 export async function setCloudToken(token: string | null): Promise<void> {
   cloudToken = token;
-  await persist("cloudToken", token);
+  await saveTokens({ cloudToken: token });
 }
 
 /** 本地数据源的会话令牌：与云端分开存，切数据源不会互相顶掉。 */
 export async function setLocalSessionToken(token: string | null): Promise<void> {
   localToken = token;
-  await persist("localToken", token);
+  await saveTokens({ localToken: token });
 }
 
 /** 当前数据源应带的 Authorization 头。 */

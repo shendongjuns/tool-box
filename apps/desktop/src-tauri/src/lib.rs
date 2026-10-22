@@ -1,6 +1,6 @@
 mod local_api;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -10,6 +10,73 @@ use tauri::{
 
 /// 本地数据源端口，前端通过 invoke("local_api_port") 获取。
 struct LocalApiPort(u16);
+
+/// 应用根目录（exe 所在目录）。
+///
+/// 便携版与安装版都把**全部数据**放在这里，不写 AppData / 文档目录，
+/// 卸载或整目录拷走即可，不污染系统其它位置。
+fn app_root() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// 数据目录：<exe 目录>/data
+fn data_dir() -> PathBuf {
+    app_root().join("data")
+}
+
+/// 日志目录：<exe 目录>/data/logs
+fn log_dir() -> PathBuf {
+    data_dir().join("logs")
+}
+
+/// 窗口状态文件：<exe 目录>/data/window-state.json
+fn window_state_path() -> PathBuf {
+    data_dir().join("window-state.json")
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WindowState {
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+/// 启动时恢复窗口尺寸（只恢复尺寸，不恢复位置 —— 换显示器时旧坐标可能落到屏幕外）。
+fn restore_window_state(window: &tauri::WebviewWindow) {
+    let Ok(raw) = std::fs::read_to_string(window_state_path()) else {
+        return;
+    };
+    let Ok(state) = serde_json::from_str::<WindowState>(&raw) else {
+        return;
+    };
+
+    let _ = window.set_size(tauri::PhysicalSize::new(
+        state.width.max(960),
+        state.height.max(640),
+    ));
+    if state.maximized {
+        let _ = window.maximize();
+    }
+}
+
+/// 退出前保存窗口尺寸。
+fn save_window_state(window: &tauri::WebviewWindow) {
+    let (Ok(size), Ok(maximized)) = (window.inner_size(), window.is_maximized()) else {
+        return;
+    };
+    let state = WindowState {
+        width: size.width,
+        height: size.height,
+        maximized,
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&state) {
+        let _ = std::fs::create_dir_all(data_dir());
+        let _ = std::fs::write(window_state_path(), json);
+    }
+}
 
 /// 是否已通过「直接退出」放行关闭事件。
 static ALLOW_EXIT: AtomicBool = AtomicBool::new(false);
@@ -107,21 +174,22 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // 日志也放在 <exe>/data/logs，与数据库同处一个可整体带走的目录
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Folder {
+                        path: log_dir(),
+                        file_name: Some("app".into()),
+                    },
+                ))
                 .build(),
         )
-        .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // 本地数据源：SQLite 放在用户的 AppData 下，
+            // 本地数据源：SQLite 放在 <exe>/data/local.db，
             // 与云端库（服务器上的 toolbox.db）完全独立。
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let db_path = data_dir.join("local.db");
+            let db_path = data_dir().join("local.db");
             match local_api::start(db_path) {
                 Ok(port) => {
                     log::info!("本地数据源已启动，端口 {port}");
@@ -131,6 +199,10 @@ pub fn run() {
                     log::error!("本地数据源启动失败: {error}");
                     app.manage(LocalApiPort(0));
                 }
+            }
+
+            if let Some(window) = app.get_webview_window("main") {
+                restore_window_state(&window);
             }
 
             // 托盘失败不应该阻止应用启动：退化为「关闭即退出」
@@ -160,6 +232,9 @@ pub fn run() {
                  * 登录页没有壳层组件，一旦前端没挂监听器，点 × 就完全没反应。
                  * 在 Rust 侧 hide 可以保证任何页面下行为一致。
                  */
+                if let Some(webview) = window.get_webview_window(window.label()) {
+                    save_window_state(&webview);
+                }
                 api.prevent_close();
                 let _ = window.hide();
             }

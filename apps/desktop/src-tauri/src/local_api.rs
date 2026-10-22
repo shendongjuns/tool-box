@@ -65,6 +65,28 @@ fn verify_password(stored: &str, password: &str) -> bool {
     sha256_hex(&format!("{salt}{password}")) == expected
 }
 
+/// 从 settings 表读一个字符串值（存的是 JSON 编码）。
+fn read_setting(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .and_then(|raw| serde_json::from_str::<String>(&raw).ok())
+}
+
+fn write_setting(conn: &Connection, key: &str, value: &str, now: i64) {
+    let encoded = serde_json::to_string(value).unwrap_or_default();
+    let _ = conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, encoded, now],
+    );
+}
+
 fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
@@ -242,6 +264,49 @@ fn handle(state: &AppState, mut request: Request) {
                 200,
                 &serde_json::json!({ "status": "ok", "db": "ok", "source": "local" }),
             );
+        }
+
+        // 桌面端令牌存取：存在本地库的 settings 表里，数据随 exe 目录走。
+        // 不需要单独的 store 插件，也不写 AppData。
+        (Method::Get, "/api/app/tokens") => {
+            let values = match state.conn.lock() {
+                Ok(conn) => {
+                    let read = |key: &str| read_setting(&conn, key);
+                    serde_json::json!({
+                        "cloudToken": read("app.cloudToken"),
+                        "localToken": read("app.localToken"),
+                    })
+                }
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+            respond_json(request, 200, &values);
+        }
+
+        (Method::Put, "/api/app/tokens") => {
+            let body = read_body(&mut request);
+            let now = now_ms();
+            let conn = match state.conn.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+            for key in ["cloudToken", "localToken"] {
+                if let Some(value) = body[key].as_str() {
+                    write_setting(&conn, &format!("app.{key}"), value, now);
+                } else if body[key].is_null() {
+                    let _ = conn.execute(
+                        "DELETE FROM settings WHERE key = ?1",
+                        params![format!("app.{key}")],
+                    );
+                }
+            }
+            drop(conn);
+            respond_empty(request, 204);
         }
 
         // 初始化状态：本地与云端行为一致 —— 没有账号时要求注册。

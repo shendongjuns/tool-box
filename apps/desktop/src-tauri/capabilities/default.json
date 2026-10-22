@@ -16,10 +16,8 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "log:default",
-    "store:default",
     "dialog:default",
     "opener:default",
-    "process:default",
-    "window-state:default"
+    "process:default"
   ]
 }
