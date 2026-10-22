@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getApi } from "@/lib/api-context";
 import { useDataSource } from "@/lib/data-source";
@@ -16,8 +15,6 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const { activeId, cloudBaseUrl } = useDataSource();
-  const [entering, setEntering] = useState(false);
-  const attempted = useRef(false);
 
   const bootstrap = useQuery({
     queryKey: ["bootstrap", activeId, cloudBaseUrl],
@@ -26,41 +23,9 @@ function LoginPage() {
     staleTime: 0,
   });
 
-  /**
-   * 登录方式由数据源决定：
-   * - `none`：本地数据源 —— 不需要账号密码，直接以「（本地）」身份进入。
-   * - `password`：云端数据源与网页端 —— 必须账号 + 密码。
-   */
-  const authMode = bootstrap.data?.authMode ?? "password";
+  // 所有数据源（本地 / 云端 / 网页端）登录方式完全一致：账号 + 密码。
   const initialized = bootstrap.data?.initialized ?? true;
-  const passwordless = authMode === "none";
   const offline = bootstrap.isError;
-
-  useEffect(() => {
-    if (!passwordless || offline || attempted.current) return;
-    attempted.current = true;
-
-    // 放进异步回调，避免 effect 内同步 setState 触发级联渲染
-    void (async () => {
-      await Promise.resolve();
-      setEntering(true);
-      try {
-        const result = await getApi().localSession();
-        await applySession({ token: result.token, user: result.user, session: result.session });
-        await navigate({ to: "/dashboard" });
-      } catch {
-        setEntering(false);
-      }
-    })();
-  }, [passwordless, offline, navigate]);
-
-  if (entering) {
-    return (
-      <AuthLayout title="正在进入" description="本地数据源无需登录">
-        <p className="text-sm text-muted-foreground">正在打开你的本地数据…</p>
-      </AuthLayout>
-    );
-  }
 
   return (
     <AuthLayout

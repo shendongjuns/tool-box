@@ -46,29 +46,23 @@ fn sha256_hex(value: &str) -> String {
     hex_encode(&hasher.finalize())
 }
 
-/// 本地数据源的固定身份。
+/// 本地密码哈希：sha256(salt + password)，salt 存在哈希串里。
 ///
-/// 本地模式**不做登录**：桌面端只监听 127.0.0.1，数据也只在本机，
-/// 因此统一以「（本地）」这个虚拟账号进入，界面上显示为本地身份。
-/// 需要多用户 / 远程访问时请使用云端数据源，那里有完整的账号密码体系。
-const LOCAL_USERNAME: &str = "local";
-const LOCAL_DISPLAY_NAME: &str = "（本地）";
+/// 本地库只对当前 Windows 用户开放（服务绑定 127.0.0.1），
+/// 因此不需要 Argon2 那种级别的成本，但仍然避免明文落盘。
+fn hash_password(password: &str) -> String {
+    let salt: [u8; 16] = rand::random();
+    let salt_hex = hex_encode(&salt);
+    let digest = sha256_hex(&format!("{salt_hex}{password}"));
+    format!("{salt_hex}:{digest}")
+}
 
-/// 确保本地库中存在唯一的本地账号，返回其 id。
-fn ensure_local_user(conn: &Connection, now: i64) -> rusqlite::Result<String> {
-    if let Some(id) = conn
-        .query_row("SELECT id FROM users LIMIT 1", [], |row| row.get::<_, String>(0))
-        .optional()?
-    {
-        return Ok(id);
-    }
-    let id = format!("local-{now}");
-    conn.execute(
-        "INSERT INTO users (id, username, password_hash, display_name, created_at, updated_at, password_changed_at, last_login_at)
-         VALUES (?1, ?2, '!local', ?3, ?4, ?4, ?4, ?4)",
-        params![id, LOCAL_USERNAME, LOCAL_DISPLAY_NAME, now],
-    )?;
-    Ok(id)
+fn verify_password(stored: &str, password: &str) -> bool {
+    let mut parts = stored.splitn(2, ':');
+    let (Some(salt), Some(expected)) = (parts.next(), parts.next()) else {
+        return false;
+    };
+    sha256_hex(&format!("{salt}{password}")) == expected
 }
 
 fn header(name: &str, value: &str) -> Header {
@@ -250,126 +244,168 @@ fn handle(state: &AppState, mut request: Request) {
             );
         }
 
-        // 本地模式不做登录：始终返回已初始化 + authMode=none + 本地身份。
+        // 初始化状态：本地与云端行为一致 —— 没有账号时要求注册。
         (Method::Get, "/api/auth/bootstrap") => {
-            let now = now_ms();
-            let user = match state.conn.lock() {
-                Ok(conn) => match ensure_local_user(&conn, now) {
-                    Ok(id) => conn
-                        .query_row(
-                            "SELECT id, username, display_name, created_at, last_login_at FROM users WHERE id = ?1",
-                            params![id],
-                            |row| {
-                                Ok(serde_json::json!({
-                                    "id": row.get::<_, String>(0)?,
-                                    "username": row.get::<_, String>(1)?,
-                                    "displayName": row.get::<_, Option<String>>(2)?,
-                                    "createdAt": row.get::<_, i64>(3)?,
-                                    "lastLoginAt": row.get::<_, Option<i64>>(4)?
-                                }))
-                            },
-                        )
-                        .ok(),
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            };
-
-            if user.is_none() {
-                respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
-                return;
-            }
-
-            respond_json(
-                request,
-                200,
-                &serde_json::json!({
-                    "initialized": true,
-                    "username": LOCAL_USERNAME,
-                    "authMode": "none"
-                }),
-            );
-        }
-
-        // 本地模式的一键进入：不校验任何凭据，直接为本地身份签发会话。
-        (Method::Post, "/api/auth/local-session") => {
-            let now = now_ms();
-            let user_id = match state.conn.lock() {
-                Ok(conn) => match ensure_local_user(&conn, now) {
-                    Ok(id) => id,
-                    Err(_) => {
-                        respond_json(
-                            request,
-                            500,
-                            &error_body("INTERNAL_ERROR", "初始化本地账号失败"),
-                        );
-                        return;
-                    }
-                },
+            let payload = match state.conn.lock() {
+                Ok(conn) => {
+                    let count: i64 = conn
+                        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+                        .unwrap_or(0);
+                    let username: Option<String> = conn
+                        .query_row("SELECT username FROM users LIMIT 1", [], |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()
+                        .unwrap_or(None);
+                    serde_json::json!({
+                        "initialized": count > 0,
+                        "username": username,
+                        "authMode": "password"
+                    })
+                }
                 Err(_) => {
                     respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
                     return;
                 }
             };
+            respond_json(request, 200, &payload);
+        }
 
-            let Some((token, expires_at)) = issue_session(state, &user_id) else {
+        // 首次注册：仅当本地库里没有用户时成功（单用户系统）。
+        (Method::Post, "/api/auth/bootstrap") => {
+            let body = read_body(&mut request);
+            let username = body["username"].as_str().unwrap_or_default().trim().to_string();
+            let password = body["password"].as_str().unwrap_or_default().to_string();
+            let now = now_ms();
+
+            if username.len() < 3 {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "用户名至少 3 个字符"));
+                return;
+            }
+            if password.len() < 10 {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "密码至少 10 个字符"));
+                return;
+            }
+
+            let conn = match state.conn.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+                .unwrap_or(0);
+            if count > 0 {
+                drop(conn);
+                respond_json(
+                    request,
+                    409,
+                    &error_body("ALREADY_INITIALIZED", "账号已创建，请直接登录"),
+                );
+                return;
+            }
+
+            let id = format!("user-{now}");
+            let inserted = conn.execute(
+                "INSERT INTO users (id, username, password_hash, display_name, created_at, updated_at, password_changed_at, last_login_at)
+                 VALUES (?1, ?2, ?3, ?2, ?4, ?4, ?4, ?4)",
+                params![id, username, hash_password(&password), now],
+            );
+            drop(conn);
+
+            if inserted.is_err() {
+                respond_json(request, 500, &error_body("INTERNAL_ERROR", "创建本地账号失败"));
+                return;
+            }
+            let Some((token, expires_at)) = issue_session(state, &id) else {
                 respond_json(request, 500, &error_body("INTERNAL_ERROR", "创建会话失败"));
                 return;
             };
 
-            let user = {
-                let conn = match state.conn.lock() {
-                    Ok(conn) => conn,
-                    Err(_) => {
-                        respond_json(
-                            request,
-                            500,
-                            &error_body("INTERNAL_ERROR", "本地数据库不可用"),
-                        );
-                        return;
-                    }
-                };
-                conn.query_row(
-                    "SELECT id, username, display_name, created_at, last_login_at FROM users WHERE id = ?1",
-                    params![user_id],
-                    |row| {
-                        Ok(serde_json::json!({
-                            "id": row.get::<_, String>(0)?,
-                            "username": row.get::<_, String>(1)?,
-                            "displayName": row.get::<_, Option<String>>(2)?,
-                            "createdAt": row.get::<_, i64>(3)?,
-                            "lastLoginAt": row.get::<_, Option<i64>>(4)?
-                        }))
-                    },
-                )
-                .ok()
-            };
-
-            let Some(user) = user else {
-                respond_json(request, 500, &error_body("INTERNAL_ERROR", "读取本地账号失败"));
-                return;
-            };
-
             respond_json(
                 request,
-                200,
+                201,
                 &serde_json::json!({
                     "token": token,
                     "session": session_json(now, expires_at),
-                    "user": user
+                    "user": {
+                        "id": id, "username": username, "displayName": username,
+                        "createdAt": now, "lastLoginAt": now
+                    }
                 }),
             );
         }
 
-        // 本地模式没有密码登录：直接用 /api/auth/local-session 进入。
         (Method::Post, "/api/auth/login") | (Method::Post, "/api/auth/desktop-login") => {
-            respond_json(
-                request,
-                400,
-                &error_body("LOCAL_NO_LOGIN", "本地数据源无需登录，请直接进入"),
-            );
-            return;
+            let body = read_body(&mut request);
+            let username = body["username"].as_str().unwrap_or_default().trim().to_string();
+            let password = body["password"].as_str().unwrap_or_default().to_string();
+            let now = now_ms();
+
+            let found: Option<(String, String, Option<String>, i64)> = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                conn.query_row(
+                    "SELECT id, password_hash, display_name, created_at FROM users WHERE username = ?1",
+                    params![username],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .unwrap_or(None)
+            };
+
+            let Some((id, hash, display_name, created_at)) = found else {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
+                return;
+            };
+            if !verify_password(&hash, &password) {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
+                return;
+            }
+
+            if let Ok(conn) = state.conn.lock() {
+                let _ = conn.execute(
+                    "UPDATE users SET last_login_at = ?1, updated_at = ?1 WHERE id = ?2",
+                    params![now, id],
+                );
+            }
+
+            let Some((token, expires_at)) = issue_session(state, &id) else {
+                respond_json(request, 500, &error_body("INTERNAL_ERROR", "创建会话失败"));
+                return;
+            };
+
+            let user = serde_json::json!({
+                "id": id, "username": username, "displayName": display_name,
+                "createdAt": created_at, "lastLoginAt": now
+            });
+
+            if path == "/api/auth/desktop-login" {
+                respond_json(
+                    request,
+                    200,
+                    &serde_json::json!({ "token": token, "expiresAt": expires_at, "user": user }),
+                );
+            } else {
+                respond_json(
+                    request,
+                    200,
+                    &serde_json::json!({
+                        "token": token,
+                        "session": session_json(now, expires_at),
+                        "user": user
+                    }),
+                );
+            }
         }
+
 
         (Method::Get, "/api/auth/me") => match current_user(state, &request) {
             Some(user) => {

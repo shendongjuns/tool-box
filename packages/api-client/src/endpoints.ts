@@ -60,9 +60,6 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
     desktopLogin: (body: LoginRequest) =>
       send<DesktopLoginResponse>("/api/auth/desktop-login", "POST", body),
 
-    /** 仅桌面端本地数据源：免登录直接进入，身份固定为「（本地）」。 */
-    localSession: () => send<LoginResponse>("/api/auth/local-session", "POST"),
-
     logout: () => send<void>("/api/auth/logout", "POST"),
 
     me: () => get<MeResponse>("/api/auth/me"),
