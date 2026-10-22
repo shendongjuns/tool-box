@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 const highlights = [
   { icon: ShieldCheck, title: "单用户私有部署", desc: "账号只属于你，数据放在自己的服务器或本机。" },
@@ -33,14 +34,11 @@ export function AuthLayout({
           style={{ background: "radial-gradient(circle, #22d3ee, transparent 70%)" }}
         />
 
-        <div className="relative flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg">
-            <span className="text-sm font-bold">T</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">ToolBox</span>
-          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-            v2.0
-          </span>
+        <div className="relative">
+          <BrandLogo size="lg" showVersion />
+          <p className="mt-1.5 text-[10.5px] font-medium tracking-[0.2em] text-muted-foreground">
+            YOUR PRIVATE TOOLKIT
+          </p>
         </div>
 
         <div className="relative max-w-md">
@@ -77,12 +75,7 @@ export function AuthLayout({
       <main className="flex items-center justify-center px-5 py-10 sm:px-10">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center justify-between lg:hidden">
-            <div className="flex items-center gap-2">
-              <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-                <span className="text-xs font-bold">T</span>
-              </div>
-              <span className="font-semibold">ToolBox</span>
-            </div>
+            <BrandLogo size="md" />
           </div>
 
           {badge ? <div className="mb-6">{badge}</div> : null}

@@ -16,6 +16,7 @@ import {
 import { toolCatalog } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { SourceBadge } from "./source-badge";
+import { BrandLogo } from "@/components/brand-logo";
 import { UserAvatar } from "@/components/user-avatar";
 import { useDataSource } from "@/lib/data-source";
 import { useAuth } from "@/lib/auth-session";
@@ -61,14 +62,23 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         collapsed ? "w-16" : "w-60",
       )}
     >
-      <div className="flex h-14 items-center gap-2 px-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-          <span className="text-xs font-bold">T</span>
-        </div>
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-tight">ToolBox</p>
-            <p className="truncate text-[11px] text-muted-foreground">v2.0.0</p>
+      <div
+        className={cn(
+          "flex h-14 items-center px-3",
+          collapsed ? "justify-center" : "justify-start",
+        )}
+      >
+        {collapsed ? (
+          // 收起时只剩一个极简的 "TB" 字标，保持品牌识别
+          <span className="brand-wordmark select-none text-lg font-extrabold italic leading-none">
+            TB
+          </span>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2">
+            <BrandLogo size="md" />
+            <span className="rounded-full border border-border/70 px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+              2.0
+            </span>
           </div>
         )}
       </div>

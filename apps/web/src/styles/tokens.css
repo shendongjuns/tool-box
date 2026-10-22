@@ -153,3 +153,44 @@
     -webkit-app-region: no-drag;
   }
 }
+
+/* ===== 品牌字标 ===== */
+@layer components {
+  .brand-wordmark {
+    /*
+     * 渐变填充：同色系内做明度与轻微色相偏移，
+     * 避免引入与主题冲突的第三种颜色。
+     */
+    background-image: linear-gradient(
+      105deg,
+      color-mix(in oklch, var(--primary) 88%, white) 0%,
+      var(--primary) 38%,
+      color-mix(in oklch, var(--primary) 72%, transparent) 100%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* 轻微倾斜，做出手写标记的感觉 */
+    font-style: italic;
+    filter: saturate(1.1);
+  }
+
+  .dark .brand-wordmark {
+    filter: saturate(1.25) brightness(1.12);
+  }
+
+  /* 后半段 "Box"：描边字，与实心的 "Tool" 形成对比 */
+  .brand-box {
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    -webkit-text-stroke: 1.1px var(--primary);
+    font-style: normal;
+    letter-spacing: -0.01em;
+    opacity: 0.9;
+  }
+
+  .dark .brand-box {
+    -webkit-text-stroke-color: color-mix(in oklch, var(--primary) 85%, white);
+  }
+}
