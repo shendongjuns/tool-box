@@ -8,6 +8,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "**/public/assets/**",
+      "apps/server/public/**",
       "**/node_modules/**",
       "apps/desktop/src-tauri/target/**",
       "docs/**",

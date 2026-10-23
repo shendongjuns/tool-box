@@ -28,6 +28,11 @@ function LoginPage() {
     gcTime: 0,
   });
 
+  /*
+   * 传输层对每个请求都有 3 秒硬超时（fetch: AbortController，Tauri: Promise.race），
+   * 所以 bootstrap 查询一定会在 3 秒内 settle —— 不需要额外的 UI 兜底计时器。
+   * isFetching 只会在这 3 秒内为 true。
+   */
   const probeFailed = bootstrap.isError;
   const connecting = bootstrap.isFetching;
   // 探测失败时无法判断服务器是否已初始化：按「已初始化」处理（显示登录表单），

@@ -54,10 +54,14 @@ export async function logoutCurrent(): Promise<void> {
 /**
  * 切换数据源。
  *
- * 顺序很重要：
- * 1. 已登录时先用「当前」数据源连接注销会话（否则旧令牌会一直留在服务端）
- * 2. 再切换数据源
- * 3. 最后清缓存并退回登录页
+ * 关键：**切换必须立刻生效**，不能等旧服务器的注销请求。
+ *
+ * 之前的实现是 `await logoutCurrent()` 再切换，如果旧云端不可达，
+ * 用户点「使用」后要干等 3 秒超时才有反应 —— 看起来就像卡死，
+ * 而且这期间再点别的数据源也是排队等待。
+ *
+ * 现在改为：先把注销请求发出去（不 await），立刻切换。
+ * 注销请求即使失败也不影响本地状态（令牌已从本地清除）。
  *
  * 注意：这里**不清**其它数据源的本地令牌 —— 两套数据完全独立。
  */
@@ -65,15 +69,20 @@ export async function switchDataSource(id: string): Promise<boolean> {
   const state = useDataSource.getState();
   if (id === state.activeId) return false;
 
-  // 只有已登录时才需要注销
-  if (useAuth.getState().auth) {
-    await logoutCurrent();
-  } else {
-    invalidateApiCache();
-    useAuth.getState().setAuth(null);
+  const wasLoggedIn = Boolean(useAuth.getState().auth);
+
+  // 先把旧数据源的注销请求发出去（fire-and-forget，不阻塞切换）
+  if (wasLoggedIn) {
+    void logoutCurrent().catch(() => {
+      /* 旧服务器不可达也无所谓：本地状态已经清了 */
+    });
   }
 
-  // 切到本地前，先确保本地服务端口已知，否则首个请求会打到占位地址上
+  // 立刻清本地状态与 API 缓存，让新数据源的请求用全新的连接
+  invalidateApiCache();
+  useAuth.getState().setAuth(null);
+
+  // 切到本地前，确保本地服务端口已知（这一步是本地 invoke，很快）
   const target = state.cloudSources.find((item) => item.id === id);
   if (!target) {
     await ensureLocalApi();

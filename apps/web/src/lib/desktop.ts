@@ -32,9 +32,12 @@ async function resolveLocalPort(): Promise<number> {
   localPortPromise = (async () => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
+      // 5 秒内拿不到端口就放弃，避免切换数据源时卡在 await 上
+      const portPromise = invoke<number>("local_api_port");
+      const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(0), 5000));
       // 缓存 invoke 供云端请求的 Rust 转发使用（api-context 的 createTauriTransport）
       void import("./api-context.js").then(({ setTauriInvoke }) => setTauriInvoke(invoke));
-      const port = await invoke<number>("local_api_port");
+      const port = await Promise.race([portPromise, timeout]);
       if (typeof port === "number" && port > 0) {
         localPort = port;
         localBaseUrl = `http://127.0.0.1:${port}`;
@@ -49,14 +52,42 @@ async function resolveLocalPort(): Promise<number> {
   return localPortPromise;
 }
 
-/** 启动时调用一次：拿本地端口、恢复令牌表。 */
+/**
+ * 带超时的 fetch：本地服务理论上一定在，但不能假设。
+ *
+ * 没有超时的话，一旦本地 HTTP 服务没起来，启动流程会永久挂起 ——
+ * main.tsx 在 await initDesktopBridge()，整个应用白屏，
+ * 表现就是「本地无法登录」。
+ */
+async function fetchWithTimeout(url: string, timeoutMs = 2000, init?: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 启动时调用一次：拿本地端口、恢复令牌表。
+ *
+ * **任何一步失败都不能阻塞启动** —— 最坏情况下应用以「无令牌」状态启动，
+ * 用户重新登录即可，但绝不能白屏。
+ */
 export async function initDesktopBridge(): Promise<void> {
   if (!isTauriRuntime()) return;
 
-  await resolveLocalPort();
+  try {
+    await resolveLocalPort();
+  } catch {
+    /* 端口拿不到就继续：后续 getApi() 会给出可读错误 */
+  }
+
+  if (!localBaseUrl) return;
 
   try {
-    const response = await fetch(`${localBaseUrl}/api/app/tokens`);
+    const response = await fetchWithTimeout(`${localBaseUrl}/api/app/tokens`);
     if (response.ok) {
       const data = (await response.json()) as { tokens?: Record<string, string> };
       tokens.clear();
@@ -65,7 +96,7 @@ export async function initDesktopBridge(): Promise<void> {
       }
     }
   } catch (error) {
-    console.warn("读取桌面端令牌失败", error);
+    console.warn("读取桌面端令牌失败（不影响启动）", error);
   }
 }
 
