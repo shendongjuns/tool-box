@@ -29,7 +29,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "JSON 格式化",
     description: "格式化、压缩与校验 JSON，支持路径提取。",
     group: "encode",
-    category: "format",
+    category: "default",
     icon: "Braces",
     defaultSortOrder: 10,
   },
@@ -38,7 +38,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "Base64 编解码",
     description: "文本与 Base64 互转，支持 URL 安全字符集。",
     group: "encode",
-    category: "convert",
+    category: "default",
     icon: "Binary",
     defaultSortOrder: 20,
   },
@@ -47,7 +47,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "URL 编解码",
     description: "URL 编码 / 解码，支持组件与完整地址两种模式。",
     group: "encode",
-    category: "convert",
+    category: "default",
     icon: "Link",
     defaultSortOrder: 30,
   },
@@ -56,7 +56,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "时间戳转换",
     description: "Unix 时间戳与本地时间互转，支持毫秒与秒。",
     group: "encode",
-    category: "format",
+    category: "default",
     icon: "Clock",
     defaultSortOrder: 40,
   },
@@ -65,7 +65,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "哈希计算",
     description: "MD5 / SHA-1 / SHA-256 摘要，纯前端计算。",
     group: "encode",
-    category: "crypto",
+    category: "default",
     icon: "Hash",
     defaultSortOrder: 50,
   },
@@ -83,7 +83,7 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     name: "UUID 生成器",
     description: "批量生成 UUID v4，支持大写与连字符开关。",
     group: "encode",
-    category: "generate",
+    category: "default",
     icon: "Fingerprint",
     defaultSortOrder: 60,
   },
@@ -101,14 +101,15 @@ export const toolGroupMeta: Record<ToolGroup, { label: string; order: number }> 
   system: { label: "系统", order: 40 },
 };
 
-/** 二级分类的显示名与排序。 */
+/**
+ * 二级分类的显示名与排序。
+ *
+ * 目前只有两个有意义的值：`default` 表示「直接挂在分组下」，
+ * `servers` 用于远程分组的服务器入口。侧栏会把 default 分类下的工具
+ * 直接铺在分组标题下，不再渲染分类层级。
+ */
 export const toolCategoryMeta: Record<ToolCategory, { label: string; order: number }> = {
-  format: { label: "格式化", order: 10 },
-  convert: { label: "编解码", order: 20 },
-  generate: { label: "生成器", order: 30 },
-  crypto: { label: "加密哈希", order: 40 },
-  network: { label: "网络", order: 50 },
-  database: { label: "数据库", order: 60 },
-  servers: { label: "服务器", order: 70 },
+  default: { label: "", order: 10 },
+  servers: { label: "服务器", order: 20 },
   other: { label: "其他", order: 90 },
 };

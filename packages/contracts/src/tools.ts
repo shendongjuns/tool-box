@@ -13,15 +13,11 @@ export type ToolGroup = z.infer<typeof toolGroupSchema>;
 /**
  * 二级分类（分组下的细分目录）。
  *
- * 例如「编码」分组下有 数据 / 文本 / 生成 三个子类。
+ * 编码分组不再细分子类，所有工具直接挂在分组下（category 统一为 default）；
+ * 远程分组下的服务器也直接挂在分组下。
  */
 export const toolCategorySchema = z.enum([
-  "format",
-  "convert",
-  "generate",
-  "crypto",
-  "network",
-  "database",
+  "default",
   "servers",
   "other",
 ]);

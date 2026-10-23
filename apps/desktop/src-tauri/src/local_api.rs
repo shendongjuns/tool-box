@@ -98,6 +98,129 @@ fn write_setting(conn: &Connection, key: &str, value: &str, now: i64) {
     );
 }
 
+/// 本地凭据混淆。
+///
+/// 本地库只对本机当前用户开放（服务绑定 127.0.0.1），
+/// 这里做一层可逆混淆，避免明文直接躺在 SQLite 里被随手看见。
+/// 真正的安全边界是文件系统权限，不是这层编码。
+pub fn obfuscate(plain: &str) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(plain.as_bytes())
+}
+
+fn deobfuscate(encoded: &str) -> Option<String> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded.as_bytes())
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+}
+
+/// 服务器列表（不含凭据）。
+fn list_servers_json(conn: &Connection) -> rusqlite::Result<Vec<serde_json::Value>> {
+    let mut statement = conn.prepare(
+        "SELECT id, name, host, port, username, auth_type,
+                password_cipher, private_key_cipher, created_at, updated_at, last_connected_at
+         FROM servers ORDER BY name",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(server_row_json(
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get::<_, Option<String>>(6)?.is_some(),
+            row.get::<_, Option<String>>(7)?.is_some(),
+            row.get(8)?,
+            row.get(9)?,
+            row.get(10)?,
+        ))
+    })?;
+    Ok(rows.flatten().collect())
+}
+
+fn get_server_json(conn: &Connection, id: &str) -> Option<serde_json::Value> {
+    conn.query_row(
+        "SELECT id, name, host, port, username, auth_type,
+                password_cipher, private_key_cipher, created_at, updated_at, last_connected_at
+         FROM servers WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(server_row_json(
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get::<_, Option<String>>(6)?.is_some(),
+                row.get::<_, Option<String>>(7)?.is_some(),
+                row.get(8)?,
+                row.get(9)?,
+                row.get(10)?,
+            ))
+        },
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn server_row_json(
+    id: String,
+    name: String,
+    host: String,
+    port: i64,
+    username: String,
+    auth_type: String,
+    has_password: bool,
+    has_key: bool,
+    created_at: i64,
+    updated_at: i64,
+    last_connected_at: Option<i64>,
+) -> serde_json::Value {
+    let has_credential = if auth_type == "password" { has_password } else { has_key };
+    serde_json::json!({
+        "id": id,
+        "name": name,
+        "host": host,
+        "port": port,
+        "username": username,
+        "authType": auth_type,
+        "hasCredential": has_credential,
+        "createdAt": created_at,
+        "updatedAt": updated_at,
+        "lastConnectedAt": last_connected_at
+    })
+}
+
+/// 一次性凭据（明文，仅供建立连接）。
+fn server_credential_json(conn: &Connection, id: &str) -> Option<serde_json::Value> {
+    conn.query_row(
+        "SELECT id, host, port, username, auth_type, password_cipher, private_key_cipher
+         FROM servers WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "host": row.get::<_, String>(1)?,
+                "port": row.get::<_, i64>(2)?,
+                "username": row.get::<_, String>(3)?,
+                "authType": row.get::<_, String>(4)?,
+                "password": row.get::<_, Option<String>>(5)?.and_then(|v| deobfuscate(&v)),
+                "privateKey": row.get::<_, Option<String>>(6)?.and_then(|v| deobfuscate(&v)),
+                "passphrase": serde_json::Value::Null
+            }))
+        },
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
 fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
@@ -220,6 +343,30 @@ fn init_db(path: &PathBuf) -> rusqlite::Result<Connection> {
     conn.pragma_update(None, "busy_timeout", 5000)?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.execute_batch(include_str!("../migrations/0000_init.sql"))?;
+
+    /*
+     * 已有数据库的增量升级。
+     *
+     * 0000_init.sql 里的建表都带 IF NOT EXISTS，但老版本创建的库不会自动
+     * 补上后来新增的表。这里用一条幂等语句兜底，保证升级后能直接用。
+     */
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS servers (
+           id text PRIMARY KEY NOT NULL,
+           name text NOT NULL,
+           host text NOT NULL,
+           port integer DEFAULT 22 NOT NULL,
+           username text NOT NULL,
+           auth_type text NOT NULL,
+           password_cipher text,
+           private_key_cipher text,
+           passphrase_cipher text,
+           created_at integer NOT NULL,
+           updated_at integer NOT NULL,
+           last_connected_at integer
+         );",
+    )?;
+
     Ok(conn)
 }
 
@@ -613,6 +760,217 @@ fn handle(state: &AppState, mut request: Request) {
                 &serde_json::json!({ "values": map, "updatedAt": now }),
             );
         }
+
+        // ---- 服务器（远程管理） ----
+        (Method::Get, "/api/servers") if path == "/api/servers" => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let items = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                list_servers_json(&conn).unwrap_or_default()
+            };
+            respond_json(request, 200, &serde_json::json!({ "items": items }));
+        }
+
+        (Method::Post, path) if path.starts_with("/api/servers/") && path.ends_with("/credential") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let id = path
+                .trim_start_matches("/api/servers/")
+                .trim_end_matches("/credential")
+                .to_string();
+
+            let payload = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                let _ = conn.execute(
+                    "UPDATE servers SET last_connected_at = ?1 WHERE id = ?2",
+                    params![now_ms(), id],
+                );
+                server_credential_json(&conn, &id)
+            };
+
+            match payload {
+                Some(value) => respond_json(request, 200, &value),
+                None => respond_json(request, 404, &error_body("NOT_FOUND", "服务器不存在")),
+            }
+        }
+
+        (Method::Post, "/api/servers") if path == "/api/servers" => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let body = read_body(&mut request);
+            let now = now_ms();
+            let id = format!("srv-{now}-{}", rand::random::<u16>());
+
+            let name = body["name"].as_str().unwrap_or_default().trim().to_string();
+            let host = body["host"].as_str().unwrap_or_default().trim().to_string();
+            let username = body["username"].as_str().unwrap_or_default().trim().to_string();
+            let port = body["port"].as_i64().unwrap_or(22);
+            let auth_type = body["authType"].as_str().unwrap_or("password").to_string();
+
+            if name.is_empty() || host.is_empty() || username.is_empty() {
+                respond_json(request, 400, &error_body("VALIDATION_FAILED", "名称、主机与用户名不能为空"));
+                return;
+            }
+
+            let result = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                conn.execute(
+                    "INSERT INTO servers (id, name, host, port, username, auth_type,
+                     password_cipher, private_key_cipher, passphrase_cipher,
+                     created_at, updated_at, last_connected_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?9, NULL)",
+                    params![
+                        id,
+                        name,
+                        host,
+                        port,
+                        username,
+                        auth_type,
+                        body["password"].as_str().map(crate::local_api::obfuscate),
+                        body["privateKey"].as_str().map(crate::local_api::obfuscate),
+                        now
+                    ],
+                )
+            };
+
+            match result {
+                Ok(_) => {
+                    let payload = {
+                        let conn = match state.conn.lock() {
+                            Ok(conn) => conn,
+                            Err(_) => {
+                                respond_json(request, 500, &error_body("INTERNAL_ERROR", "读取失败"));
+                                return;
+                            }
+                        };
+                        get_server_json(&conn, &id).unwrap_or(serde_json::json!({}))
+                    };
+                    respond_json(request, 201, &payload);
+                }
+                Err(error) => {
+                    respond_json(
+                        request,
+                        500,
+                        &error_body("INTERNAL_ERROR", &format!("创建失败：{error}")),
+                    );
+                }
+            }
+        }
+
+
+        (Method::Put, path) if path.starts_with("/api/servers/") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let id = path.trim_start_matches("/api/servers/").to_string();
+            let body = read_body(&mut request);
+            let now = now_ms();
+
+            let ok = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                let affected = conn.execute(
+                    "UPDATE servers SET
+                       name = COALESCE(?1, name),
+                       host = COALESCE(?2, host),
+                       port = COALESCE(?3, port),
+                       username = COALESCE(?4, username),
+                       auth_type = COALESCE(?5, auth_type),
+                       password_cipher = CASE WHEN ?6 THEN ?7 ELSE password_cipher END,
+                       private_key_cipher = CASE WHEN ?8 THEN ?9 ELSE private_key_cipher END,
+                       updated_at = ?10
+                     WHERE id = ?11",
+                    params![
+                        body["name"].as_str(),
+                        body["host"].as_str(),
+                        body["port"].as_i64(),
+                        body["username"].as_str(),
+                        body["authType"].as_str(),
+                        body.get("password").is_some(),
+                        body["password"].as_str().map(obfuscate),
+                        body.get("privateKey").is_some(),
+                        body["privateKey"].as_str().map(obfuscate),
+                        now,
+                        id
+                    ],
+                );
+                affected.unwrap_or(0) > 0
+            };
+
+            if !ok {
+                respond_json(request, 404, &error_body("NOT_FOUND", "服务器不存在"));
+                return;
+            }
+
+            let payload = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "读取失败"));
+                        return;
+                    }
+                };
+                get_server_json(&conn, &id).unwrap_or(serde_json::json!({}))
+            };
+            respond_json(request, 200, &payload);
+        }
+
+        (Method::Delete, path) if path.starts_with("/api/servers/") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let id = path.trim_start_matches("/api/servers/").to_string();
+            let ok = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                conn.execute("DELETE FROM servers WHERE id = ?1", params![id])
+                    .unwrap_or(0)
+                    > 0
+            };
+            if ok {
+                respond_empty(request, 204);
+            } else {
+                respond_json(request, 404, &error_body("NOT_FOUND", "服务器不存在"));
+            }
+        }
+
 
         (Method::Get, "/api/tools") => {
             if current_user(state, &request).is_none() {

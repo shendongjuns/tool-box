@@ -15,7 +15,7 @@ import {
   Server,
   Settings,
 } from "lucide-react";
-import { toolCatalog, toolCategoryMeta, toolGroupMeta, type ToolGroup } from "@toolbox/contracts";
+import { toolCatalog, toolGroupMeta, type ToolGroup } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { SourceBadge } from "./source-badge";
 import { BrandLogo } from "@/components/brand-logo";
@@ -33,38 +33,22 @@ const icons: Record<string, React.ComponentType<{ className?: string }>> = {
   Server,
 };
 
-/** 按「分组 → 分类 → 工具」三层整理目录。 */
+/** 按「分组 → 工具」两层整理目录（不再有分类层级）。 */
 function buildTree() {
-  const groupMap = new Map<
-    ToolGroup,
-    Map<string, (typeof toolCatalog)[number][]>
-  >();
+  const groupMap = new Map<ToolGroup, (typeof toolCatalog)[number][]>();
 
   for (const tool of toolCatalog) {
-    const categories = groupMap.get(tool.group) ?? new Map();
-    const bucket = categories.get(tool.category) ?? [];
+    const bucket = groupMap.get(tool.group) ?? [];
     bucket.push(tool);
-    categories.set(tool.category, bucket);
-    groupMap.set(tool.group, categories);
+    groupMap.set(tool.group, bucket);
   }
 
   return [...groupMap.entries()]
     .sort((a, b) => toolGroupMeta[a[0]].order - toolGroupMeta[b[0]].order)
-    .map(([group, categories]) => ({
+    .map(([group, tools]) => ({
       group,
       label: toolGroupMeta[group].label,
-      categories: [...categories.entries()]
-        .sort((a, b) => {
-          const ka = toolCategoryMeta[a[0] as keyof typeof toolCategoryMeta]?.order ?? 99;
-          const kb = toolCategoryMeta[b[0] as keyof typeof toolCategoryMeta]?.order ?? 99;
-          return ka - kb;
-        })
-        .map(([category, tools]) => ({
-          category,
-          label:
-            toolCategoryMeta[category as keyof typeof toolCategoryMeta]?.label ?? category,
-          tools: [...tools].sort((a, b) => a.defaultSortOrder - b.defaultSortOrder),
-        })),
+      tools: [...tools].sort((a, b) => a.defaultSortOrder - b.defaultSortOrder),
     }));
 }
 
@@ -97,26 +81,15 @@ export function Sidebar({
   const current = currentToolId ? toolCatalog.find((tool) => tool.id === currentToolId) : null;
 
   const [closedGroups, setClosedGroups] = React.useState<Set<string>>(() => new Set());
-  const [closedCategories, setClosedCategories] = React.useState<Set<string>>(() => new Set());
 
   const isGroupOpen = (group: string) =>
     !closedGroups.has(group) || current?.group === group;
-  const isCategoryOpen = (category: string) =>
-    !closedCategories.has(category) || current?.category === category;
 
   const toggleGroup = (group: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(group)) next.delete(group);
       else next.add(group);
-      return next;
-    });
-
-  const toggleCategory = (category: string) =>
-    setClosedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
       return next;
     });
 
@@ -167,64 +140,34 @@ export function Sidebar({
           return (
             <div key={group.group} className="pt-2">
               {/* 一级目录：分组 */}
-              {collapsed ? (
-                <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                  {group.label.slice(0, 1)}
-                </p>
-              ) : (
+              {!collapsed ? (
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.group)}
                   className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  {groupOpen ? (
-                    <ChevronRight className="h-3 w-3 rotate-90" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3" />
-                  )}
+                  <ChevronRight
+                    className={cn("h-3 w-3 transition-transform", groupOpen && "rotate-90")}
+                  />
                   {group.label}
                 </button>
-              )}
+              ) : null}
 
               {groupOpen &&
-                group.categories.map((category) => {
-                  const categoryOpen = collapsed || isCategoryOpen(category.category);
+                group.tools.map((tool) => {
+                  const Icon = icons[tool.icon] ?? Braces;
                   return (
-                    <div key={category.category} className="mt-0.5">
-                      {/* 二级目录：分类 */}
-                      {!collapsed && (
-                        <button
-                          type="button"
-                          onClick={() => toggleCategory(category.category)}
-                          className="flex w-full items-center gap-1 rounded-md py-1 pl-6 pr-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                          {categoryOpen ? (
-                            <ChevronRight className="h-3 w-3 rotate-90 opacity-60" />
-                          ) : (
-                            <ChevronRight className="h-3 w-3 opacity-60" />
-                          )}
-                          {category.label}
-                        </button>
-                      )}
-
-                      {categoryOpen &&
-                        category.tools.map((tool) => {
-                          const Icon = icons[tool.icon] ?? Braces;
-                          return (
-                            <SidebarLink
-                              key={tool.id}
-                              to="/tools/$toolId"
-                              params={{ toolId: tool.id }}
-                              active={pathname === `/tools/${tool.id}`}
-                              collapsed={collapsed}
-                              indent={!collapsed}
-                              icon={<Icon className="h-4 w-4" />}
-                              label={tool.name}
-                              title={tool.description}
-                            />
-                          );
-                        })}
-                    </div>
+                    <SidebarLink
+                      key={tool.id}
+                      to="/tools/$toolId"
+                      params={{ toolId: tool.id }}
+                      active={pathname === `/tools/${tool.id}`}
+                      collapsed={collapsed}
+                      indent={!collapsed && group.group === "encode"}
+                      icon={<Icon className="h-4 w-4" />}
+                      label={tool.name}
+                      title={tool.description}
+                    />
                   );
                 })}
             </div>
