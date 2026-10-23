@@ -128,6 +128,21 @@ export function invalidateApiCache(): void {
   cachedApi = null;
 }
 
+/*
+ * 数据源一变就立刻让缓存失效。
+ *
+ * 只依赖调用方手动 invalidateApiCache() 太脆弱 ——
+ * 漏掉一处（例如设置页切换）就会拿到旧数据源的 API 实例，
+ * 表现是「必须重启应用才正常」。
+ * 这里订阅 store，从源头保证缓存与当前数据源一致。
+ */
+useDataSource.subscribe((state, prev) => {
+  if (state.activeId !== prev.activeId || state.cloudBaseUrl !== prev.cloudBaseUrl) {
+    cachedKey = "";
+    cachedApi = null;
+  }
+});
+
 export function ApiProvider({ children }: { children: React.ReactNode }) {
   const activeId = useDataSource((state) => state.activeId);
   const cloudBaseUrl = useDataSource((state) => state.cloudBaseUrl);

@@ -8,7 +8,7 @@ import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
 import { queryKeys, useCurrentSourceKey, useSettingsQuery } from "@/lib/hooks";
-import { logoutCurrent, switchDataSource } from "@/lib/session";
+import { logoutCurrent, reloadsOnSwitch, switchDataSource } from "@/lib/session";
 import { useDataSource } from "@/lib/data-source";
 import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
@@ -395,6 +395,7 @@ function AccountTab() {
 function DataSourceCard() {
   const { cloudSources, activeId, label } = useDataSource();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | null>(null);
   const [draft, setDraft] = useState<{ id: string | null; name: string; url: string } | null>(null);
@@ -409,6 +410,10 @@ function DataSourceCard() {
     if (id === activeId) return;
     setPendingId(id);
     await switchDataSource(id);
+    // 桌面端内部会重载页面，后续代码不会生效
+    if (reloadsOnSwitch()) return;
+    await queryClient.cancelQueries();
+    queryClient.clear();
     toast.success(`已切换到 ${name}，请重新登录`);
     await navigate({ to: "/login", replace: true });
   }

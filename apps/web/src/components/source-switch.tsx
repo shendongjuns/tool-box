@@ -3,7 +3,7 @@ import { Cloud, Database, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useDataSource, type CloudSource } from "@/lib/data-source";
-import { switchDataSource } from "@/lib/session";
+import { reloadsOnSwitch, switchDataSource } from "@/lib/session";
 import { canSwitchSource } from "@/lib/source";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,9 @@ export function SourceSwitch({
     }
     setPendingId(id);
     await switchDataSource(id);
-    // 切到新数据源后，旧源的 bootstrap 探测结果必须丢弃
+    // 桌面端在 switchDataSource 内部会重载页面，后续代码不会生效
+    if (reloadsOnSwitch()) return;
+    // 网页端：清掉旧源的 bootstrap 探测结果
     queryClient.removeQueries({ queryKey: ["bootstrap"] });
     setPendingId(null);
     setOpen(false);

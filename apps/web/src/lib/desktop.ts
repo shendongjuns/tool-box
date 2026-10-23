@@ -39,10 +39,20 @@ async function resolveLocalPort(): Promise<number> {
       if (typeof port === "number" && port > 0) {
         localPort = port;
         localBaseUrl = `http://127.0.0.1:${port}`;
+        return port;
       }
-      return localPort;
+      /*
+       * 失败时清掉缓存的 Promise，允许下次重试。
+       *
+       * 之前这里会永久缓存「已解析为 0」的 Promise，
+       * 导致之后再调用 resolveLocalPort() 永远拿到 0 ——
+       * 本地数据源从此不可用，只有重启应用（模块重新初始化）才能恢复。
+       */
+      localPortPromise = null;
+      return 0;
     } catch (error) {
       console.warn("本地数据源未就绪", error);
+      localPortPromise = null;
       return 0;
     }
   })();

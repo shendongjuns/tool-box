@@ -89,7 +89,42 @@ export async function switchDataSource(id: string): Promise<boolean> {
   }
 
   state.select(id);
+
+  /*
+   * 桌面端：切换后重新加载整个前端。
+   *
+   * 用户反馈「切换后要重启应用才正常」，原因是运行时里有一批模块级单例状态
+   * （API 缓存、令牌表、端口解析结果、查询缓存、主题快照…），
+   * 逐个清理既容易漏，也难以验证。
+   *
+   * 既然「重启后一定正常」，那就直接把重载当作切换的一部分：
+   * 用同一份代码、同一份 localStorage 重新初始化，效果等价于重启，
+   * 但只重载界面，不重启进程（本地 SQLite 服务不受影响）。
+   */
+  if (isTauriRuntime()) {
+    /*
+     * 重载会销毁当前 JS 上下文，调用方不应再执行 navigate ——
+     * 重载后前端从 /login 重新初始化（数据源已切换）。
+     */
+    await reloadWebview();
+  }
+
   return true;
+}
+
+/** 切换数据源后是否由内部完成了页面重载（桌面端）。 */
+export function reloadsOnSwitch(): boolean {
+  return isTauriRuntime();
+}
+
+/** 桌面端重载前端。失败时只记录日志，不阻断切换流程。 */
+async function reloadWebview(): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("reload_webview");
+  } catch (error) {
+    console.warn("重载界面失败，继续使用当前页面", error);
+  }
 }
 
 /** 取当前数据源的令牌（桌面端用）。 */

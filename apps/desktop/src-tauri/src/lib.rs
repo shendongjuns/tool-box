@@ -102,6 +102,16 @@ fn hide_to_tray(window: tauri::WebviewWindow) {
 }
 
 /// 真正退出：先标记放行，再销毁窗口，避免被关闭拦截挡回来。
+/// 重载前端页面。
+///
+/// 切换数据源后调用：把渲染进程完全重新初始化，
+/// 等价于「重启应用」但不动 Rust 侧（本地 SQLite 服务继续运行）。
+/// 这是消除运行时残留状态最可靠的方式。
+#[tauri::command]
+fn reload_webview(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.reload().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     ALLOW_EXIT.store(true, Ordering::SeqCst);
@@ -266,7 +276,8 @@ pub fn run() {
             show_main_window,
             hide_to_tray,
             quit_app,
-            http_request
+            http_request,
+            reload_webview
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
