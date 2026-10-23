@@ -2,15 +2,16 @@
 
 # ToolBox
 
-**一个自托管的现代工具箱 —— 网页端 + 桌面端，数据完全归你所有。**
+**一个自托管的现代工具箱 · 网页端 + 桌面端 · 数据完全归你所有**
 
 React 19 · Tauri 2 · Fastify 5 · SQLite
 
-[![CI](https://github.com/shendongjuns/tool-box/actions/workflows/ci.yml/badge.svg)](https://github.com/shendongjuns/tool-box/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/shendongjuns/tool-box)](https://github.com/shendongjuns/tool-box/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
+[![Tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white)](https://tauri.app)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 
-[特性](#特性) · [快速开始](#快速开始) · [部署](#部署) · [桌面端](#桌面端) · [开发](#开发) · [常见问题](#常见问题)
+[特性](#特性) · [截图](#截图) · [快速开始](#快速开始) · [部署](#部署) · [桌面端](#桌面端) · [开发](#开发)
 
 </div>
 
@@ -18,27 +19,45 @@ React 19 · Tauri 2 · Fastify 5 · SQLite
 
 ## 这是什么
 
-ToolBox 是一个单用户、可自托管的工具箱。它有两种形态，共用同一套 React 代码：
+ToolBox 是一个**单用户**、**可自托管**的工具箱。同一套 React 代码有两种形态：
 
-- **网页端** —— 浏览器打开就能用，数据存在你自己的服务器上。
-- **桌面端** —— Windows 安装包（约 5MB），基于 Tauri 2；默认把数据存在本机，**断网也能用**。
+- **网页端** —— 浏览器打开就能用，数据存在自己的服务器上。
+- **桌面端** —— Windows 安装包（约 3MB），基于 Tauri 2；默认把数据存在本机，**断网也能用**。
 
-桌面端还提供「本地数据 / 云端数据」两种数据源，两套数据彼此完全独立，随时切换、互不覆盖。
+桌面端支持「本地 / 云端」多数据源，两套数据彼此完全独立，随时切换、互不覆盖。
+
+## 截图
+
+<div align="center">
+  <img src="assets/login.png" alt="登录页" width="100%" />
+  <br />
+  <sub>登录页 · 浅色</sub>
+</div>
+
+<details>
+<summary>深色模式</summary>
+
+<div align="center">
+  <img src="assets/login-dark.png" alt="登录页深色" width="100%" />
+</div>
+
+</details>
 
 ## 特性
 
 | | |
 | --- | --- |
-| **漂亮的界面** | shadcn/ui 风格组件 + Tailwind v4，OKLCH 语义色，深浅色主题与六套强调色 |
-| **多数据源** | 桌面端默认本地，可添加多个自建云端地址；页面完全一致，切换后退回登录页 |
-| **单用户** | 首次打开自动引导创建账号，之后不再提供注册入口 |
-| **本地免密** | 桌面端本地数据源无需登录，选中即自动进入，身份为「（本地）」 |
+| **界面** | Tailwind v4 + OKLCH 语义色，深浅色主题与六套强调色 |
+| **多数据源** | 桌面端默认本地，可添加多个云端地址；切换后回到登录页 |
+| **单用户** | 首次打开引导创建账号，之后不再提供注册入口 |
 | **30 天会话** | 使用中自动滑动续期，改密自动下线其它设备 |
 | **一条命令部署** | Docker Compose 启动，SQLite 挂卷持久化 |
-| **轻量桌面端** | Tauri 2 + 系统 WebView2，安装包约 5MB（Electron 通常 100MB+） |
-| **可扩展工具** | 内置 6 个常用工具，新增工具只需改两处 |
+| **轻量桌面端** | Tauri 2 + 系统 WebView2，安装包约 3MB |
+| **可扩展** | 内置 6 个工具，新增只需改两处 |
 
 ### 内置工具
+
+三级目录组织：**编码** → 格式化 / 编解码 / 生成器 / 加密哈希 → 具体工具。
 
 | 工具 | 说明 |
 | --- | --- |
@@ -51,13 +70,13 @@ ToolBox 是一个单用户、可自托管的工具箱。它有两种形态，共
 
 ## 技术栈
 
-<table>
-<tr><td><b>前端</b></td><td>React 19 · Vite 7 · TypeScript 5.9 · TanStack Router / Query · Zustand</td></tr>
-<tr><td><b>UI</b></td><td>Radix 原语 · Tailwind CSS v4 · lucide-react · sonner</td></tr>
-<tr><td><b>服务端</b></td><td>Fastify 5 · Drizzle ORM · better-sqlite3 · Argon2id · Zod</td></tr>
-<tr><td><b>桌面端</b></td><td>Tauri 2 · Rust · rusqlite · WebView2</td></tr>
-<tr><td><b>部署</b></td><td>Docker · SQLite 单文件数据库</td></tr>
-</table>
+| 层 | 技术 |
+| --- | --- |
+| 前端 | React 19 · Vite 7 · TypeScript 5.9 · TanStack Router / Query · Zustand |
+| UI | Radix 原语 · Tailwind CSS v4 · lucide-react |
+| 服务端 | Fastify 5 · Drizzle ORM · better-sqlite3 · Argon2id · Zod |
+| 桌面端 | Tauri 2 · Rust · rusqlite · WebView2 |
+| 部署 | Docker · SQLite 单文件数据库 |
 
 ## 快速开始
 
@@ -70,24 +89,22 @@ pnpm install
 pnpm dev
 ```
 
-打开 <http://localhost:5173>。首次访问会显示「创建账号」表单 —— 填用户名、密码即可开始，
-这个账号是系统里唯一的用户。
+打开 <http://localhost:5173>。首次访问显示「创建账号」，填用户名与密码即可开始 —— 这是系统里唯一的账号。
 
-> 服务端默认监听 `0.0.0.0:3000`，前端开发服务器会把 `/api` 代理过去。
+> 服务端默认监听 `0.0.0.0:3000`，前端开发服务器把 `/api` 代理过去。
 
 ## 部署
 
-应用只负责在本机监听 HTTP，**不关心域名、HTTPS 与证书** —— 这些交给你的反向代理或隧道。
+应用只负责在本机监听 HTTP，**不关心域名、HTTPS 与证书** —— 交给反向代理或隧道。
 
 ```bash
 cd docker
 docker compose up -d --build
 ```
 
-默认映射到 `127.0.0.1:3000`，只允许本机访问。需要局域网直接访问时，把 `compose.yml` 里的
-端口映射改成 `"3000:3000"`。
+默认映射到 `127.0.0.1:3000`，只允许本机访问。需要局域网直接访问时，把 `compose.yml` 里的端口映射改成 `"3000:3000"`。
 
-数据库是单个 SQLite 文件，位于 `docker/data/toolbox.db`，备份直接拷贝该目录即可。
+数据库是单个 SQLite 文件（`docker/data/toolbox.db`），备份直接拷贝该目录即可。
 
 ### 配置
 
@@ -99,44 +116,45 @@ docker compose up -d --build
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `DATABASE_PATH` | `./data/toolbox.db` | SQLite 文件路径 |
 | `SESSION_TTL_DAYS` | `30` | 会话有效期（天） |
-| `SESSION_RENEW_THROTTLE_MIN` | `60` | 滑动续期的写库节流（分钟） |
+| `SESSION_RENEW_THROTTLE_MIN` | `5` | 滑动续期写库节流（分钟） |
 | `TRUST_PROXY` | `true` | 是否信任 `X-Forwarded-*` 头 |
 | `LOG_LEVEL` | `info` | 日志级别 |
 
 ## 桌面端
 
 ```bash
-# 开发（Tauri 会自动拉起 Vite）
-pnpm --filter @toolbox/desktop dev
-
-# 打包（会先构建前端，产物在 target/release/bundle/）
-pnpm --filter @toolbox/desktop build
+pnpm --filter @toolbox/desktop dev      # 开发
+pnpm --filter @toolbox/desktop build    # 打包（含 NSIS 安装包）
+node apps/desktop/scripts/make-portable.mjs   # 免安装 zip
 ```
 
-桌面端启动时会在 `127.0.0.1` 的随机端口起一个本地 SQLite 服务（Rust + rusqlite），
-前端通过 `invoke("local_api_port")` 拿到端口后直接请求，因此页面代码与云端模式完全一致。
+产物：
 
-- 托盘常驻：单击显示窗口，右键「显示主窗口 / 退出 ToolBox」
-  （Windows 11 默认把新托盘图标折叠进「隐藏的图标」，可在任务栏设置里设为常显）
-- **关闭窗口 = 隐藏到托盘**（不弹确认框）；彻底退出请用托盘右键菜单
+| 文件 | 说明 |
+| --- | --- |
+| `bundle/nsis/ToolBox_x64-setup.exe` | 安装包：可选目录、创建快捷方式 |
+| `bundle/portable/ToolBox-portable.zip` | 免安装：解压即用，删除即卸载 |
+
+桌面端启动时在 `127.0.0.1` 的随机端口起一个本地 SQLite 服务（Rust + rusqlite），前端通过 `invoke("local_api_port")` 拿到端口后请求，因此页面代码与云端模式完全一致。
+
+- 托盘常驻：单击显示窗口，右键「显示主窗口 / 退出」
+- **关闭窗口 = 隐藏到托盘**（不弹确认框），彻底退出用托盘菜单
 - 单实例：重复启动只聚焦已有窗口
-- 未签名安装包会触发 Windows SmartScreen 提示，属正常现象
 
-## 版本对比
+### 数据位置
 
-2.0.0 完全重写，与 1.5.0 不兼容（无数据迁移）。完整功能对照见
-[`docs/compare-1.5-vs-2.0.html`](docs/compare-1.5-vs-2.0.html)。
+所有数据都在 exe 同级的 `data/` 目录，不写 AppData：
 
-简要结论：
+```
+ToolBox/
+├─ ToolBox.exe
+└─ data/
+   ├─ local.db          本地 SQLite
+   ├─ window-state.json 窗口尺寸
+   └─ logs/app.log      运行日志
+```
 
-| | 1.5.0 | 2.0.0 |
-| --- | --- | --- |
-| 形态 | Windows 桌面应用 | 网页端 + 桌面端 |
-| 专业工具 | SSH / SFTP / 仓库 / 监控 | 暂无（Roadmap） |
-| 通用工具 | 无 | 6 个（JSON / Base64 / URL / 时间戳 / 哈希 / UUID） |
-| 账号 | 无 | 单用户，30 天会话 |
-| 数据 | 本地 JSON | 本地 SQLite / 云端 SQLite 双数据源 |
-| 部署 | 安装包 | Docker + 安装包 |
+备份 = 复制整个文件夹；迁移 = 拷到新机器；卸载 = 删除文件夹。
 
 ## 开发
 
@@ -144,7 +162,7 @@ pnpm --filter @toolbox/desktop build
 pnpm dev            # 服务端 + 网页端
 pnpm build          # 全量构建
 pnpm test           # 服务端集成测试
-pnpm typecheck      # 全仓类型检查（含 cargo check）
+pnpm typecheck      # 全仓类型检查
 pnpm lint           # ESLint
 pnpm format         # Prettier
 ```
@@ -161,50 +179,41 @@ tool-box/
 │  ├─ contracts/     Zod schema / DTO / 工具目录（前后端唯一真源）
 │  ├─ data/          Drizzle schema + 迁移 + repository
 │  └─ api-client/    传输层与接口封装
-├─ docker/           Dockerfile · compose.yml
-└─ docs/plan-2.0/    设计文档与可点击原型
+└─ docker/           Dockerfile · compose.yml
 ```
 
 ### 新增一个工具
 
-1. 在 `packages/contracts/src/tool-catalog.ts` 登记元信息（id、名称、分类、图标）
+1. 在 `packages/contracts/src/tool-catalog.ts` 登记元信息（id、名称、分组、分类、图标）
 2. 在 `apps/web/src/features/tools/` 写组件，并在 `components/tools/tool-runner.tsx` 注册
 
 侧栏、路由、命令面板会自动出现该工具。
 
 ## 安全
 
-- 密码使用 **Argon2id**（19456 KiB / t=2 / p=1）存储；**不限制长度与字符**，只要求非空
-- 桌面端令牌按数据源分别存放在本地库（`app.tokens`），切换数据源不会互相顶掉
+- 密码使用 **Argon2id**（19456 KiB / t=2 / p=1）存储；不限制长度与字符，只要求非空
 - 会话令牌为 32 字节随机数，数据库只存 `sha256` 摘要
 - Cookie：`HttpOnly` + `SameSite=Lax`，HTTPS 下自动加 `Secure`
 - CSRF：非安全方法校验 `Origin` 与请求 Host 同源
 - 限流：登录 10 次/分钟/IP
 - 本地服务仅绑定 `127.0.0.1`，随机端口，同样校验令牌
+- 桌面端 CSP 禁止渲染层直连外网，云端请求统一经 Rust 转发
 
 ## 常见问题
 
 <details>
 <summary><b>忘记密码怎么办？</b></summary>
 
-单用户系统没有找回入口。停止服务，删除数据库文件（或其中的 `users` / `sessions` 表数据），
-重新打开即可重新创建账号。**注意这会清空账号，业务数据仍在。**
+单用户系统没有找回入口。停止服务后删除数据库文件中的 `users` / `sessions` 表数据，重新打开即可重新创建账号。**注意这会清空账号，业务数据仍在。**
 
-桌面端的数据库在 `%APPDATA%\com.shendongjuns.toolbox\local.db`，
-服务端在 `docker/data/toolbox.db`（或 `DATABASE_PATH` 指定的位置）。
+- 桌面端：`data/local.db`
+- 服务端：`docker/data/toolbox.db`（或 `DATABASE_PATH` 指定的位置）
 </details>
 
 <details>
 <summary><b>能创建第二个用户吗？</b></summary>
 
 不能，这是刻意的设计。系统只有一个账号，注册入口在首次创建后永久关闭。
-</details>
-
-<details>
-<summary><b>桌面端本地数据为什么不要密码？</b></summary>
-
-本地服务只绑定 `127.0.0.1`，数据也只存在本机，默认按「打开即用」设计。
-如果电脑是共用的，可以在设置里开启本地密码保护；网页端则始终需要密码。
 </details>
 
 <details>
@@ -219,10 +228,16 @@ tool-box/
 目标 exe 正在运行，先退出 ToolBox 再打包。
 </details>
 
+<details>
+<summary><b>Windows 11 找不到托盘图标？</b></summary>
+
+系统默认折叠新图标。点任务栏右下角 `^` 展开，或到「设置 → 个性化 → 任务栏 → 其他系统托盘图标」中打开。
+</details>
+
 ## 贡献
 
-欢迎提 Issue 与 PR。提交前请确保 `pnpm lint && pnpm test && pnpm typecheck` 全部通过。
+欢迎 Issue 与 PR。提交前请确保 `pnpm lint && pnpm test && pnpm typecheck` 全部通过。
 
 ## 许可证
 
-[MIT](LICENSE) © shendongjuns
+[MIT](LICENSE)
