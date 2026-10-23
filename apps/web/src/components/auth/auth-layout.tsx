@@ -11,10 +11,8 @@ const highlights = [
 /**
  * 登录/注册页布局。
  *
- * 整屏是一块连续背景（含两团柔和光晕），内容浮在同一层背景上，
- * 不做「左边一块、右边一块」的分区，因此中间没有任何色块接缝。
- *
- * 品牌字标固定在左上角，表单在右侧（窄屏居中）。
+ * 整屏一块连续背景（含两团柔和光晕），内容浮在其上。
+ * 左上角是品牌字标；下方左栏是标语与特性，右栏是表单。
  */
 export function AuthLayout({
   title,
@@ -29,7 +27,7 @@ export function AuthLayout({
 }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--sidebar)]">
-      {/* 全屏光晕：跨越整个页面，不按左右分区 */}
+      {/* 全屏光晕 */}
       <div
         aria-hidden
         className="pointer-events-none absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full opacity-30 blur-3xl"
@@ -41,49 +39,67 @@ export function AuthLayout({
         style={{ background: "radial-gradient(circle, #22d3ee, transparent 70%)" }}
       />
 
-      {/* 品牌字标：固定左上角 */}
+      {/* 左上角品牌字标 */}
       <header className="absolute left-6 top-6 z-10 sm:left-10 sm:top-8">
         <BrandLogo size="lg" showVersion />
       </header>
 
-      {/* 内容层：左侧文案 + 右侧表单，共享同一背景 */}
-      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-[1fr_auto] lg:gap-20 lg:px-10">
-        {/* 品牌区：窄屏隐藏（字标已在左上角，这里只放文案） */}
-        <aside className="hidden lg:flex lg:flex-col lg:justify-center">
-          <h2 className="text-2xl font-semibold leading-snug tracking-tight">
-            你的工具箱，
-            <br />
-            安静地放在自己的地方。
-          </h2>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 sm:px-10">
+        {/*
+          主内容：垂直居中的两栏。
+          左栏用固定宽度承载标语，右栏表单固定 22rem，两者基线对齐。
+        */}
+        <div className="flex flex-1 items-center">
+          <div className="grid w-full items-center gap-16 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            {/* 左栏：标语 + 特性 */}
+            <aside className="hidden lg:block">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                ToolBox
+              </p>
 
-          <ul className="mt-8 space-y-3">
-            {highlights.map(({ icon: Icon, title: itemTitle, desc }) => (
-              <li key={itemTitle} className="flex items-center gap-2.5">
-                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border/70 bg-card/60 backdrop-blur">
-                  <Icon className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <p className="text-sm font-medium">{itemTitle}</p>
-                <p className="text-xs text-muted-foreground">{desc}</p>
-              </li>
-            ))}
-          </ul>
-        </aside>
+              <h1 className="mt-4 text-[2rem] font-semibold leading-[1.25] tracking-tight text-balance">
+                你的工具箱，
+                <br />
+                安静地放在自己的地方。
+              </h1>
 
-        {/* 表单区：窄屏居中，宽屏右对齐 */}
-        <main className="flex w-full justify-center lg:w-[26rem] lg:justify-end">
-          <div className="w-full max-w-sm">
-            {badge ? <div className="mb-6">{badge}</div> : null}
+              <div className="mt-10 space-y-4 border-l border-border/60 pl-5">
+                {highlights.map(({ icon: Icon, title: itemTitle, desc }) => (
+                  <div key={itemTitle} className="flex items-start gap-2.5">
+                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/80" />
+                    <p className="text-sm leading-snug">
+                      <span className="font-medium">{itemTitle}</span>
+                      <span className="text-muted-foreground"> · {desc}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </aside>
 
-            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            {/* 右栏：表单 */}
+            <main className="flex justify-center lg:justify-end">
+              <div className="w-full max-w-sm">
+                {badge ? <div className="mb-6">{badge}</div> : null}
 
-            <div className="mt-6">{children}</div>
+                <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
 
-            <p className="mt-10 text-xs text-muted-foreground lg:hidden">
-              © {new Date().getFullYear()} ToolBox
-            </p>
+                <div className="mt-6">{children}</div>
+
+                <p className="mt-10 text-xs text-muted-foreground lg:hidden">
+                  © {new Date().getFullYear()} ToolBox
+                </p>
+              </div>
+            </main>
           </div>
-        </main>
+        </div>
+
+        {/* 页脚：仅在宽屏显示，与左栏对齐 */}
+        <footer className="hidden pb-8 lg:block">
+          <p className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} ToolBox · 数据始终由你保管
+          </p>
+        </footer>
       </div>
     </div>
   );

@@ -21,10 +21,10 @@ export function BrandLogo({
   className?: string;
 }) {
   const sizeClass = {
-    sm: "text-lg",
-    md: "text-2xl",
-    lg: "text-4xl",
-    xl: "text-5xl",
+    sm: "text-base",
+    md: "text-lg",
+    lg: "text-2xl",
+    xl: "text-4xl",
   }[size];
 
   return (
