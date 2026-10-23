@@ -64,7 +64,8 @@ export function AuthLayout({
       </aside>
 
       {/* 右侧表单区 */}
-      <main className="flex items-center justify-center px-5 py-10 sm:px-10">
+      {/* 右侧表单区：背景与左侧品牌区保持一致，避免中间出现色块分界 */}
+      <main className="flex items-center justify-center bg-[var(--sidebar)] px-5 py-10 sm:px-10">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center justify-between lg:hidden">
             <BrandLogo size="md" />

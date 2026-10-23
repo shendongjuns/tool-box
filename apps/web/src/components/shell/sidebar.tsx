@@ -8,7 +8,6 @@ import {
   Fingerprint,
   Hash,
   LayoutDashboard,
-  LayoutGrid,
   Link2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -101,13 +100,6 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
-        <SidebarLink
-          to="/tools"
-          active={pathname === "/tools" || pathname.startsWith("/tools/")}
-          collapsed={collapsed}
-          icon={<LayoutGrid className="h-4 w-4" />}
-          label="全部工具"
-        />
         <SidebarLink
           to="/dashboard"
           active={pathname === "/dashboard"}
