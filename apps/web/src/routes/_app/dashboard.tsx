@@ -1,7 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Activity, ArrowUpRight, Boxes, Clock3, HardDrive, Pin, WifiOff } from "lucide-react";
+import { Activity, ArrowUpRight, Boxes, Clock3, HardDrive, Pin, PinOff, WifiOff } from "lucide-react";
 import { toolCatalog } from "@toolbox/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDashboardQuery } from "@/lib/hooks";
+import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
+import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
 import { relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +76,8 @@ function DashboardPage() {
         />
       </section>
 
+      <PinnedTools />
+
       <section className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
@@ -138,6 +143,74 @@ function DashboardPage() {
         </Card>
       </section>
     </div>
+  );
+}
+
+/** 置顶工具：只展示已置顶的项，没有则提示去工具页置顶。 */
+function PinnedTools() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  const sourceKey = useCurrentSourceKey();
+
+  const tools = useQuery({
+    queryKey: queryKeys.tools(sourceKey),
+    queryFn: () => api.listTools(),
+    staleTime: 30_000,
+  });
+
+  const unpin = useMutation({
+    mutationFn: (id: string) => api.patchTool(id, { pinned: false }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tools(sourceKey) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(sourceKey) });
+    },
+  });
+
+  const pinned = (tools.data?.items ?? []).filter((tool) => tool.pinned);
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Pin className="h-3 w-3" />
+          置顶工具
+        </h2>
+        <Link to="/tools" className="text-xs text-primary hover:underline">
+          管理
+        </Link>
+      </div>
+
+      {pinned.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+          还没有置顶工具。<Link to="/tools" className="text-primary hover:underline">去工具页</Link> 点图钉即可置顶。
+        </p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {pinned.map((tool) => (
+            <div
+              key={tool.id}
+              className="group flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
+            >
+              <Link
+                to="/tools/$toolId"
+                params={{ toolId: tool.id }}
+                className="min-w-0 flex-1 truncate text-sm font-medium"
+              >
+                {tool.name}
+              </Link>
+              <button
+                type="button"
+                onClick={() => unpin.mutate(tool.id)}
+                title="取消置顶"
+                className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              >
+                <PinOff className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

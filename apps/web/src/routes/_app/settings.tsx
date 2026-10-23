@@ -1,26 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Plus, Sun } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Pencil, Plus, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { useAuth } from "@/lib/auth-session";
-import { queryKeys, useCurrentSourceKey, useSettingsQuery } from "@/lib/hooks";
+import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
 import { logoutCurrent, reloadsOnSwitch, switchDataSource } from "@/lib/session";
 import { useDataSource } from "@/lib/data-source";
-import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { LatencyBadge } from "@/components/latency-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabSchema = z.enum(["general", "appearance", "account", "about"]).catch("general");
@@ -50,7 +47,6 @@ function SettingsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
-        <p className="mt-1 text-sm text-muted-foreground">外观、数据源与账户</p>
       </header>
 
       <Tabs
@@ -85,53 +81,9 @@ function SettingsPage() {
 }
 
 function GeneralTab() {
-  const api = useApi();
-  const queryClient = useQueryClient();
-  const sourceKey = useCurrentSourceKey();
-  const settings = useSettingsQuery();
-
-  const saveSetting = useMutation({
-    mutationFn: (values: Record<string, string | number | boolean>) => api.putSettings({ values }),
-    onSuccess: () => {
-      toast.success("设置已保存");
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings(sourceKey) });
-    },
-  });
-
-
   return (
     <div className="space-y-4">
       <DataSourceCard />
-      {isDesktop() ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>桌面行为</CardTitle>
-            <CardDescription>仅在桌面端生效</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">关闭窗口时</p>
-                <p className="text-xs text-muted-foreground">
-                  始终隐藏到系统托盘；彻底退出请使用托盘右键菜单。
-                </p>
-              </div>
-              <Badge variant="secondary">托盘</Badge>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">紧凑侧栏</p>
-                <p className="text-xs text-muted-foreground">只显示图标，为内容留出更多空间</p>
-              </div>
-              <Switch
-                checked={Boolean(settings.data?.values["ui.sidebarCollapsed"])}
-                onCheckedChange={(checked) => saveSetting.mutate({ "ui.sidebarCollapsed": checked })}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }
@@ -194,7 +146,6 @@ function AppearanceTab() {
       <Card>
         <CardHeader>
           <CardTitle>强调色</CardTitle>
-          <CardDescription>影响按钮、链接与选中态的颜色</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
@@ -290,7 +241,6 @@ function AccountTab() {
       <Card>
         <CardHeader>
           <CardTitle>修改密码</CardTitle>
-          <CardDescription>修改后，其他设备上的登录会立即失效</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Field>
@@ -333,7 +283,6 @@ function AccountTab() {
       <Card>
         <CardHeader>
           <CardTitle>登录设备</CardTitle>
-          <CardDescription>会话有效期 30 天，使用中会自动续期</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {sessions.data?.items.length ? (
@@ -393,11 +342,10 @@ function AccountTab() {
  * 页面本身不区分数据源；这里只管理「连到哪儿」，切换后统一退回登录页。
  */
 function DataSourceCard() {
-  const { cloudSources, activeId, label } = useDataSource();
+  const { cloudSources, activeId } = useDataSource();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | null>(null);
   const [draft, setDraft] = useState<{ id: string | null; name: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -405,45 +353,39 @@ function DataSourceCard() {
   const updateCloud = useDataSource((state) => state.updateCloud);
   const removeCloud = useDataSource((state) => state.removeCloud);
 
-  /** 切换数据源：这是唯一会退出登录的操作。 */
   async function pick(id: string, name: string) {
     if (id === activeId) return;
     setPendingId(id);
     await switchDataSource(id);
-    // 桌面端内部会重载页面，后续代码不会生效
     if (reloadsOnSwitch()) return;
     await queryClient.cancelQueries();
     queryClient.clear();
-    toast.success(`已切换到 ${name}，请重新登录`);
+    toast.success(`已切换到 ${name}`);
     await navigate({ to: "/login", replace: true });
   }
 
-  /** 保存：只写列表，不切换、不退出登录。 */
   function save() {
     if (!draft) return;
     const name = draft.name.trim();
     const url = draft.url.trim();
-    if (name.length === 0) return setError("请填写名称");
+    if (!name) return setError("请填写名称");
 
-    let parsed: URL;
     try {
-      parsed = new URL(url);
+      const parsed = new URL(url);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("bad");
     } catch {
-      return setError("地址格式不正确，例如 http://192.168.1.10:3000");
+      return setError("地址格式不正确");
     }
-    void parsed;
 
     if (draft.id) {
       updateCloud(draft.id, { name, url });
       toast.success("已保存");
     } else {
-      const normalized = url.replace(/\/$/, "");
-      if (cloudSources.some((item) => item.url === normalized)) {
-        return setError("这个地址已经在列表里了");
+      if (cloudSources.some((item) => item.url === url.replace(/\/$/, ""))) {
+        return setError("该地址已存在");
       }
       addCloud({ name, url });
-      toast.success("已添加，点「使用」即可切换");
+      toast.success("已添加");
     }
     setDraft(null);
     setError(null);
@@ -451,246 +393,189 @@ function DataSourceCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-primary" />
-          数据源
-        </CardTitle>
-        <CardDescription>
-          当前：{label}。不同数据源之间数据完全独立。
-          <strong className="font-medium text-foreground">保存不会切换</strong>
-          ，点「使用」才会切走并重新登录。
-        </CardDescription>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">数据源</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-            {activeId === "local" ? (
-              <Database className="h-4 w-4" />
-            ) : (
-              <Cloud className="h-4 w-4" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{label}</p>
-            <p className="text-xs text-muted-foreground">正在使用</p>
-          </div>
-          <Badge variant="success">当前</Badge>
-        </div>
 
-        <div className="space-y-2 pt-2">
-          <p className="text-xs font-medium text-muted-foreground">全部数据源</p>
-
-          {activeId !== "local" ? (
-            <SwitchRow
-              icon={<Database className="h-4 w-4" />}
-              name="本地数据"
-              note="这台电脑"
-              busy={pendingId === "local"}
-              onClick={() => void pick("local", "本地数据")}
-            />
-          ) : null}
-
+      <CardContent className="p-0">
+        <div className="divide-y divide-border border-y border-border">
+          <SourceLine
+            active={activeId === "local"}
+            icon={Database}
+            name="本地数据"
+            note="这台电脑"
+            busy={pendingId === "local"}
+            onPick={() => void pick("local", "本地数据")}
+          />
           {cloudSources.map((source) => (
-            <SwitchRow
+            <SourceLine
               key={source.id}
-              icon={<Cloud className="h-4 w-4" />}
+              active={source.id === activeId}
+              icon={Cloud}
               name={source.name}
               note={source.url}
               latencyUrl={source.url}
               busy={pendingId === source.id}
-              active={source.id === activeId}
-              onClick={() => void pick(source.id, source.name)}
+              onPick={() => void pick(source.id, source.name)}
               onEdit={() => {
                 setDraft({ id: source.id, name: source.name, url: source.url });
                 setError(null);
               }}
-              onRemove={source.id === activeId ? undefined : () => setPendingRemove(source)}
+              onRemove={
+                source.id === activeId
+                  ? undefined
+                  : () => {
+                      removeCloud(source.id);
+                      toast.success("已移除");
+                    }
+              }
             />
           ))}
+        </div>
 
-          {draft ? (
-            <div className="space-y-2 rounded-lg border border-border p-3">
+        {draft ? (
+          <div className="space-y-3 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor="new-name">名称</FieldLabel>
+                <FieldLabel htmlFor="ds-name">名称</FieldLabel>
                 <Input
-                  id="new-name"
+                  id="ds-name"
                   value={draft.name}
                   onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  placeholder="例如：公司服务器"
+                  placeholder="公司服务器"
                   autoFocus
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="new-url">服务器地址</FieldLabel>
+                <FieldLabel htmlFor="ds-url">地址</FieldLabel>
                 <Input
-                  id="new-url"
+                  id="ds-url"
                   value={draft.url}
                   onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                  placeholder="http://192.168.1.10:3000"
-                  className="font-mono"
+                  placeholder="http://10.0.0.2:3000"
+                  className="font-mono text-xs"
                 />
-                {error ? (
-                  <p className="text-xs text-destructive">{error}</p>
-                ) : (
-                  <FieldHint>保存后不会自动切换，需要点「使用」。</FieldHint>
-                )}
               </Field>
-              <div className="flex gap-2">
-                <Button onClick={save}>保存</Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setDraft(null);
-                    setError(null);
-                  }}
-                >
-                  取消
-                </Button>
-              </div>
             </div>
-          ) : (
+            {error ? <FieldError>{error}</FieldError> : null}
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDraft(null);
+                  setError(null);
+                }}
+              >
+                取消
+              </Button>
+              <Button size="sm" onClick={save}>
+                保存
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-2">
             <Button
-              variant="outline"
               size="sm"
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground"
               onClick={() => {
                 setDraft({ id: null, name: "", url: "" });
                 setError(null);
               }}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               添加云端服务器
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
-
-      <ConfirmDialog
-        open={pendingRemove !== null}
-        title="移除这个数据源？"
-        description={
-          <>
-            只是从本机列表移除 <strong>{pendingRemove?.name}</strong>，不会删除服务器上的数据。
-            之后可以重新添加。
-          </>
-        }
-        confirmText="移除"
-        destructive
-        onConfirm={() => {
-          if (pendingRemove) {
-            removeCloud(pendingRemove.id);
-            toast.success(`已移除 ${pendingRemove.name}`);
-            setPendingRemove(null);
-          }
-        }}
-        onCancel={() => setPendingRemove(null)}
-      />
     </Card>
   );
 }
 
-/** 轻量确认弹框（带「记住选择」不适用，用于破坏性操作二次确认）。 */
-function ConfirmDialog({
-  open,
-  title,
-  description,
-  confirmText,
-  destructive = false,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  description: React.ReactNode;
-  confirmText: string;
-  destructive?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
-        <h3 className="text-base font-semibold">{title}</h3>
-        <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>
-            取消
-          </Button>
-          <Button
-            size="sm"
-            variant={destructive ? "destructive" : "default"}
-            onClick={onConfirm}
-          >
-            {confirmText}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SwitchRow({
-  icon,
+/** 数据源行：与登录页保持同一套视觉。 */
+function SourceLine({
+  active,
+  icon: Icon,
   name,
   note,
   latencyUrl,
   busy,
-  active = false,
-  onClick,
+  onPick,
   onEdit,
   onRemove,
 }: {
-  icon: React.ReactNode;
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
   name: string;
   note: string;
   latencyUrl?: string;
-  busy: boolean;
-  active?: boolean;
-  onClick: () => void;
+  busy?: boolean;
+  onPick: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-lg border px-3 py-2",
-        active ? "border-primary/30 bg-primary/[0.03]" : "border-border",
-      )}
-    >
-      <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground">
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium">{name}</p>
-          {latencyUrl ? <LatencyBadge url={latencyUrl} /> : null}
-        </div>
-        <p className="truncate text-xs text-muted-foreground">{note}</p>
-      </div>
+    <div className={cn("group flex items-center gap-3 px-4 py-2.5", active && "bg-primary/[0.04]")}>
+      <span
+        className={cn(
+          "grid h-8 w-8 shrink-0 place-items-center rounded-md",
+          active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
 
-      {onEdit ? (
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          编辑
-        </Button>
-      ) : null}
+      <button
+        type="button"
+        onClick={onPick}
+        disabled={active || busy}
+        className="min-w-0 flex-1 text-left disabled:cursor-default"
+      >
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{name}</span>
+          {latencyUrl ? <LatencyBadge url={latencyUrl} /> : null}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{note}</span>
+      </button>
 
       {active ? (
-        <Badge variant="secondary">使用中</Badge>
+        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
+          <Check className="h-3.5 w-3.5" />
+          当前
+        </span>
+      ) : busy ? (
+        <span className="shrink-0 text-xs text-muted-foreground">切换中…</span>
       ) : (
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onClick}>
-          {busy ? "切换中…" : "使用"}
-        </Button>
+        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              title="编辑"
+              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              title="移除"
+              className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </span>
       )}
-
-      {onRemove ? (
-        <Button variant="ghost" size="sm" onClick={onRemove} className="text-destructive">
-          删除
-        </Button>
-      ) : null}
     </div>
   );
 }
+
 
 function AboutTab() {
   return (
@@ -698,7 +583,6 @@ function AboutTab() {
       <Card>
         <CardHeader>
           <CardTitle>ToolBox 2.0</CardTitle>
-          <CardDescription>React + Tauri + SQLite 的现代工具箱</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <Row label="版本" value="2.0.0" />

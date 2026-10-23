@@ -55,12 +55,12 @@ function LoginPage() {
   const title = probeFailed ? "登录" : initialized ? "欢迎回来" : "创建管理员";
 
   const description = probeFailed
-    ? "无法连接服务器，可直接尝试登录或检查地址"
+    ? "连不上服务器，可直接尝试登录"
     : connecting
       ? "正在连接…"
       : initialized
         ? "登录以继续"
-        : "系统尚未初始化，创建唯一的账号即可开始";
+        : "创建第一个账号";
 
   return (
     <AuthLayout title={title} description={description}>
