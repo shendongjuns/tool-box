@@ -72,6 +72,27 @@ export function getApi(): Api {
    * 这样即使前端被注入脚本也偷不走令牌。
    * 本地模式（127.0.0.1）不受 CSP 限制，继续用 fetch。
    */
+  /*
+   * 桌面端云端必须有 Rust 转发。没有 invoke 说明启动流程异常，
+   * 此时若退回 fetch，请求会被 CSP 拦下且可能永不 settle ——
+   * 界面就会一直「正在连接」。这里直接返回一个必定失败的传输层。
+   */
+  if (tauri && type === "cloud" && !tauriInvoke) {
+    cachedApi = createApi(
+      {
+        credentials: "omit",
+        source: "cloud",
+        request: () =>
+          Promise.reject(
+            new Error("桌面端云端请求未就绪（Tauri 桥接未初始化），请重启应用"),
+          ),
+      },
+      { desktop: true },
+    );
+    cachedKey = key;
+    return cachedApi;
+  }
+
   if (tauri && type === "cloud" && tauriInvoke) {
     // 云端请求经 Rust http_request 转发：渲染进程的 CSP 不允许直连 https:，
     // 统一由 Rust 侧出网后，即使前端被注入脚本也偷不走令牌。

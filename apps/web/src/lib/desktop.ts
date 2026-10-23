@@ -35,8 +35,6 @@ async function resolveLocalPort(): Promise<number> {
       // 5 秒内拿不到端口就放弃，避免切换数据源时卡在 await 上
       const portPromise = invoke<number>("local_api_port");
       const timeout = new Promise<number>((resolve) => setTimeout(() => resolve(0), 5000));
-      // 缓存 invoke 供云端请求的 Rust 转发使用（api-context 的 createTauriTransport）
-      void import("./api-context.js").then(({ setTauriInvoke }) => setTauriInvoke(invoke));
       const port = await Promise.race([portPromise, timeout]);
       if (typeof port === "number" && port > 0) {
         localPort = port;
@@ -77,6 +75,24 @@ async function fetchWithTimeout(url: string, timeoutMs = 2000, init?: RequestIni
  */
 export async function initDesktopBridge(): Promise<void> {
   if (!isTauriRuntime()) return;
+
+  /*
+   * 先无条件注入 invoke。
+   *
+   * 这一步必须在拿本地端口之前完成，且不依赖它是否成功：
+   * 桌面端云端请求走 Rust 的 http_request 转发，如果 tauriInvoke 为 null，
+   * getApi() 会退回 createFetchTransport —— 而 WebView 的 CSP
+   * （connect-src 只允许 127.0.0.1 / localhost）会拦下这个请求，
+   * 浏览器对被 CSP 拦截的 fetch 可能长时间不 settle，
+   * 登录页就会一直显示「正在连接…」。
+   */
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { setTauriInvoke } = await import("./api-context.js");
+    setTauriInvoke(invoke);
+  } catch (error) {
+    console.warn("注入 Tauri invoke 失败", error);
+  }
 
   try {
     await resolveLocalPort();

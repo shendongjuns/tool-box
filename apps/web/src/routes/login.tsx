@@ -20,11 +20,23 @@ function LoginPage() {
 
   const bootstrap = useQuery({
     queryKey: ["bootstrap", activeId, cloudBaseUrl],
-    queryFn: () => getApi().getBootstrap(),
-    // 传输层已有 3 秒超时，这里不再重试，避免「正在连接…」被拉长到 9 秒
+    /*
+     * queryFn 本身设硬上限：4 秒。
+     *
+     * 传输层有 3 秒超时，但如果遇到传输层没能覆盖的情况
+     * （例如请求被 WebView 拦截且永不 settle），
+     * 这里的 Promise.race 保证查询一定会结束 ——
+     * isFetching 不会无限为 true，界面不会永远「正在连接…」。
+     */
+    queryFn: async () => {
+      const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("连接超时，请检查地址与网络")), 4000);
+      });
+      return Promise.race([getApi().getBootstrap(), timeout]);
+    },
+    // 传输层已有超时，这里不再重试，避免「正在连接…」被拉长
     retry: false,
     staleTime: 0,
-    // 超时/失败后不要把 loading 状态一直挂着
     gcTime: 0,
   });
 

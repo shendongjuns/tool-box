@@ -14,6 +14,7 @@ import { isDesktop } from "@/lib/platform";
 import { useTheme } from "@/lib/theme";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { LatencyBadge } from "@/components/latency-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
@@ -491,6 +492,7 @@ function DataSourceCard() {
               icon={<Cloud className="h-4 w-4" />}
               name={source.name}
               note={source.url}
+              latencyUrl={source.url}
               busy={pendingId === source.id}
               active={source.id === activeId}
               onClick={() => void pick(source.id, source.name)}
@@ -627,6 +629,7 @@ function SwitchRow({
   icon,
   name,
   note,
+  latencyUrl,
   busy,
   active = false,
   onClick,
@@ -636,6 +639,7 @@ function SwitchRow({
   icon: React.ReactNode;
   name: string;
   note: string;
+  latencyUrl?: string;
   busy: boolean;
   active?: boolean;
   onClick: () => void;
@@ -653,7 +657,10 @@ function SwitchRow({
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm font-medium">{name}</p>
+          {latencyUrl ? <LatencyBadge url={latencyUrl} /> : null}
+        </div>
         <p className="truncate text-xs text-muted-foreground">{note}</p>
       </div>
 

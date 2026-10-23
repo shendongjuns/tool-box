@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { LatencyBadge } from "@/components/latency-badge";
 
 /** 校验是否是可用的 http/https 地址。 */
 function isValidHttpUrl(value: string): boolean {
@@ -233,6 +234,7 @@ function SourceRow({
   icon,
   name,
   note,
+  latencyUrl,
   busy,
   onClick,
   onEdit,
@@ -242,6 +244,7 @@ function SourceRow({
   icon: React.ReactNode;
   name: string;
   note: string;
+  latencyUrl?: string;
   busy?: boolean;
   onClick: () => void;
   onEdit?: () => void;
@@ -263,7 +266,10 @@ function SourceRow({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{name}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{name}</span>
+          {latencyUrl ? <LatencyBadge url={latencyUrl} /> : null}
+        </span>
         <span className="block truncate text-xs text-muted-foreground">{note}</span>
       </span>
 
