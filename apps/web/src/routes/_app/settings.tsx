@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { LatencyBadge } from "@/components/latency-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -253,30 +253,33 @@ function AccountTab() {
               onChange={(event) => setCurrentPassword(event.target.value)}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="new">新密码</FieldLabel>
-            <Input
-              id="new"
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-            <FieldHint>长度与字符不限</FieldHint>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="confirm-new">确认新密码</FieldLabel>
-            <Input
-              id="confirm-new"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-            />
-          </Field>
-          <Button onClick={() => void changePassword()} disabled={pending}>
-            {pending ? "保存中…" : "更新密码"}
-          </Button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="new">新密码</FieldLabel>
+              <Input
+                id="new"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="confirm-new">确认新密码</FieldLabel>
+              <Input
+                id="confirm-new"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => void changePassword()} disabled={pending}>
+              {pending ? "保存中…" : "更新密码"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

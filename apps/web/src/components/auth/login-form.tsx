@@ -118,7 +118,7 @@ export function LoginForm({
           placeholder={isSetup ? "给自己起一个用户名" : "输入用户名"}
           required
         />
-        {isSetup ? <FieldHint>1–32 个字符，中英文均可。</FieldHint> : null}
+        {isSetup ? <FieldHint>1–32 个字符，中英文均可</FieldHint> : null}
         {usernameEmpty ? <FieldError>用户名不能为空。</FieldError> : null}
       </Field>
 
@@ -148,7 +148,7 @@ export function LoginForm({
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
-        {isSetup ? <FieldHint>长度与字符不限，留好记的即可。</FieldHint> : null}
+
         {passwordEmpty ? <FieldError>密码不能为空。</FieldError> : null}
       </Field>
 

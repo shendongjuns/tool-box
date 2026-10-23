@@ -3,9 +3,9 @@ import { ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 
 const highlights = [
-  { icon: ShieldCheck, title: "单用户私有部署", desc: "账号只属于你，数据放在自己的服务器或本机。" },
-  { icon: Zap, title: "30 天免登录", desc: "会话自动续期，常用设备无需反复输入密码。" },
-  { icon: Sparkles, title: "本地 / 云端双数据源", desc: "两套数据彼此独立，随时切换互不覆盖。" },
+  { icon: ShieldCheck, title: "私有部署", desc: "数据放在自己的机器上" },
+  { icon: Zap, title: "30 天免登录", desc: "会话自动续期" },
+  { icon: Sparkles, title: "本地 / 云端", desc: "两套数据互不覆盖" },
 ];
 
 export function AuthLayout({
@@ -36,38 +36,30 @@ export function AuthLayout({
 
         <div className="relative">
           <BrandLogo size="lg" showVersion />
-          <p className="mt-1.5 text-[10.5px] font-medium tracking-[0.2em] text-muted-foreground">
-            YOUR PRIVATE TOOLKIT
-          </p>
         </div>
 
-        <div className="relative max-w-md">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
+        <div className="relative max-w-sm">
+          <h2 className="text-2xl font-semibold leading-snug tracking-tight">
             你的工具箱，
             <br />
             安静地放在自己的地方。
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            网页端与桌面端共享同一套体验：登录即用，离线也能开工，数据始终由你保管。
-          </p>
 
-          <ul className="mt-8 space-y-4">
+          <ul className="mt-7 space-y-3">
             {highlights.map(({ icon: Icon, title: itemTitle, desc }) => (
-              <li key={itemTitle} className="flex gap-3">
-                <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border bg-card">
-                  <Icon className="h-4 w-4 text-primary" />
+              <li key={itemTitle} className="flex items-center gap-2.5">
+                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-card">
+                  <Icon className="h-3.5 w-3.5 text-primary" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium">{itemTitle}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
+                <p className="text-sm font-medium">{itemTitle}</p>
+                <p className="text-xs text-muted-foreground">{desc}</p>
               </li>
             ))}
           </ul>
         </div>
 
         <p className="relative text-xs text-muted-foreground">
-          © {new Date().getFullYear()} ToolBox · React + Tauri + SQLite
+          © {new Date().getFullYear()} ToolBox
         </p>
       </aside>
 
@@ -80,10 +72,10 @@ export function AuthLayout({
 
           {badge ? <div className="mb-6">{badge}</div> : null}
 
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
 
-          <div className="mt-7">{children}</div>
+          <div className="mt-6">{children}</div>
         </div>
       </main>
     </div>

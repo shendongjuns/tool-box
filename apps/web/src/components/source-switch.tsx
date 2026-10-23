@@ -89,11 +89,11 @@ export function SourceSwitch({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent",
+          "inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium transition-colors hover:bg-accent",
           type === "local"
             ? "text-emerald-600 dark:text-emerald-400"
             : "text-sky-600 dark:text-sky-400",
-          compact && "px-2.5",
+          compact && "h-8 px-2.5",
         )}
         title="数据源"
       >
