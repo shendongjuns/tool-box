@@ -1,7 +1,7 @@
 //! 本地数据源：在 127.0.0.1 的随机端口上提供一个极小的 HTTP API。
 //!
 //! 前端在「本地数据」模式下请求本地服务，页面代码与云端模式完全一致。
-//! 数据落在 %APPDATA%\com.shendongjuns.toolbox\local.db，与云端库**完全独立**。
+//! 数据落在 <exe 目录>/data/local.db，与云端库**完全独立**。
 //!
 //! 注意：WebView 的 origin 是 tauri://localhost（或 http://tauri.localhost），
 //! 请求 127.0.0.1 属于跨源，因此每个响应都必须带 CORS 头，并处理 OPTIONS 预检。

@@ -20,11 +20,8 @@
     "@node-rs/argon2": "^2.2.2",
     "@toolbox/contracts": "workspace:*",
     "@toolbox/data": "workspace:*",
-    "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
-    "fastify-type-provider-zod": "^7.0.0",
-    "pino": "^10.4.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

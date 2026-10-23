@@ -234,9 +234,6 @@ pub fn run() {
                 ))
                 .build(),
         )
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 本地数据源：SQLite 放在 <exe>/data/local.db，
             // 与云端库（服务器上的 toolbox.db）完全独立。

@@ -8,9 +8,6 @@ export const apiErrorSchema = z.object({
 });
 export type ApiError = z.infer<typeof apiErrorSchema>;
 
-/** 统一成功包装（列表类接口用） */
-export const okSchema = z.object({ ok: z.literal(true) });
-
 /** ISO 时间戳（毫秒） */
 export const epochMs = z.number().int().nonnegative();
 

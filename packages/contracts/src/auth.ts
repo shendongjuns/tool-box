@@ -100,7 +100,3 @@ export const sessionListResponseSchema = z.object({
   items: z.array(sessionDeviceSchema),
 });
 export type SessionListResponse = z.infer<typeof sessionListResponseSchema>;
-
-/** 本地数据源的固定身份显示名。 */
-export const LOCAL_USERNAME = "local";
-export const LOCAL_DISPLAY_NAME = "（本地）";
