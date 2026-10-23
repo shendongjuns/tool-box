@@ -15,6 +15,7 @@ export const queryKeys = {
   dashboard: (key: string) => ["dashboard", key] as const,
   tools: (key: string) => ["tools", key] as const,
   sessions: (key: string) => ["sessions", key] as const,
+  servers: (key: string) => ["servers", key] as const,
   bootstrap: (key: string) => ["bootstrap", key] as const,
 };
 

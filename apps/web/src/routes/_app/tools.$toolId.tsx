@@ -18,8 +18,12 @@ export const Route = createFileRoute("/_app/tools/$toolId")({
   component: ToolPage,
 });
 
+/** 自带完整布局的工具，不渲染默认标题区。 */
+const SELF_LAYOUT = new Set(["servers"]);
+
 function ToolPage() {
   const { tool } = Route.useLoaderData();
+  const selfLayout = SELF_LAYOUT.has(tool.id);
   const api = useApi();
   const queryClient = useQueryClient();
   const sourceKey = useCurrentSourceKey();
@@ -46,6 +50,10 @@ function ToolPage() {
       cancelled = true;
     };
   }, [api, tool.id, queryClient, sourceKey]);
+
+  if (selfLayout) {
+    return <ToolRunner toolId={tool.id} />;
+  }
 
   return (
     <div className="space-y-6">

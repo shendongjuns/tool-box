@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "ToolBox 2.0 desktop shell"
 authors = ["shendongjuns"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.89"
 
 [lib]
 name = "toolbox_desktop_lib"
@@ -27,7 +27,16 @@ rand = "0.8"
 log = "0.4"
 url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+# SSH / SFTP：纯 Rust 实现，无 OpenSSL 依赖
+# 用 ring 而不是 aws-lc-rs：后者在 Windows 上需要 NASM，打包会失败
+russh = { version = "0.54", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "2"
+aes-gcm = "0.10"
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [profile.release]
 codegen-units = 1

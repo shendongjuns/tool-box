@@ -7,7 +7,7 @@ import { epochMs } from "./common.js";
  * 目前所有内置工具都属于「编码」，后续接入 SSH / 数据库等能力时
  * 再增加新的分组，侧栏会按分组渲染。
  */
-export const toolGroupSchema = z.enum(["encode", "devops", "system"]);
+export const toolGroupSchema = z.enum(["encode", "remote", "devops", "system"]);
 export type ToolGroup = z.infer<typeof toolGroupSchema>;
 
 /**
@@ -22,6 +22,7 @@ export const toolCategorySchema = z.enum([
   "crypto",
   "network",
   "database",
+  "servers",
   "other",
 ]);
 export type ToolCategory = z.infer<typeof toolCategorySchema>;

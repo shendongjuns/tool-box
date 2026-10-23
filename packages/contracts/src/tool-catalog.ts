@@ -70,6 +70,15 @@ export const toolCatalog: readonly ToolCatalogEntry[] = [
     defaultSortOrder: 50,
   },
   {
+    id: "servers",
+    name: "服务器",
+    description: "SSH 终端、SFTP 文件管理与系统监控。",
+    group: "remote",
+    category: "servers",
+    icon: "Server",
+    defaultSortOrder: 10,
+  },
+  {
     id: "uuid",
     name: "UUID 生成器",
     description: "批量生成 UUID v4，支持大写与连字符开关。",
@@ -87,8 +96,9 @@ export function findTool(id: string): ToolCatalogEntry | undefined {
 /** 一级分组的显示名与排序。 */
 export const toolGroupMeta: Record<ToolGroup, { label: string; order: number }> = {
   encode: { label: "编码", order: 10 },
-  devops: { label: "运维", order: 20 },
-  system: { label: "系统", order: 30 },
+  remote: { label: "远程", order: 20 },
+  devops: { label: "运维", order: 30 },
+  system: { label: "系统", order: 40 },
 };
 
 /** 二级分类的显示名与排序。 */
@@ -99,5 +109,6 @@ export const toolCategoryMeta: Record<ToolCategory, { label: string; order: numb
   crypto: { label: "加密哈希", order: 40 },
   network: { label: "网络", order: 50 },
   database: { label: "数据库", order: 60 },
+  servers: { label: "服务器", order: 70 },
   other: { label: "其他", order: 90 },
 };

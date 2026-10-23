@@ -1,4 +1,6 @@
 mod local_api;
+mod sftp;
+mod ssh;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -271,13 +273,25 @@ pub fn run() {
 
             Ok(())
         })
+        .manage(ssh::SshState::new())
         .invoke_handler(tauri::generate_handler![
             local_api_port,
             show_main_window,
             hide_to_tray,
             quit_app,
             http_request,
-            reload_webview
+            reload_webview,
+            ssh::ssh_connect,
+            ssh::ssh_write,
+            ssh::ssh_resize,
+            ssh::ssh_disconnect,
+            ssh::ssh_exec,
+            sftp::sftp_list,
+            sftp::sftp_read,
+            sftp::sftp_write,
+            sftp::sftp_remove,
+            sftp::sftp_mkdir,
+            sftp::sftp_rename
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

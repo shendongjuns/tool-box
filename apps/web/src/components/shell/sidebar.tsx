@@ -12,6 +12,7 @@ import {
   Link2,
   PanelLeftClose,
   PanelLeftOpen,
+  Server,
   Settings,
 } from "lucide-react";
 import { toolCatalog, toolCategoryMeta, toolGroupMeta, type ToolGroup } from "@toolbox/contracts";
@@ -29,6 +30,7 @@ const icons: Record<string, React.ComponentType<{ className?: string }>> = {
   Clock,
   Hash,
   Fingerprint,
+  Server,
 };
 
 /** 按「分组 → 分类 → 工具」三层整理目录。 */

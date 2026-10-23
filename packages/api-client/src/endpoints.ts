@@ -1,4 +1,7 @@
 import type {
+  CreateServerRequest,
+  Server,
+  ServerListResponse,
   BootstrapStatus,
   ChangePasswordRequest,
   DashboardResponse,
@@ -8,6 +11,7 @@ import type {
   MeResponse,
   PatchToolRequest,
   PutSettingsRequest,
+  UpdateServerRequest,
   SessionListResponse,
   ToolListResponse,
 } from "@toolbox/contracts";
@@ -95,6 +99,28 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
       send<{ ok: true }>(`/api/tools/${encodeURIComponent(id)}/touch`, "POST"),
 
     dashboard: () => get<DashboardResponse>("/api/dashboard"),
+
+    listServers: () => get<ServerListResponse>("/api/servers"),
+
+    createServer: (body: CreateServerRequest) => send<Server>("/api/servers", "POST", body),
+
+    updateServer: (id: string, body: UpdateServerRequest) =>
+      send<Server>(`/api/servers/${encodeURIComponent(id)}`, "PUT", body),
+
+    deleteServer: (id: string) =>
+      send<void>(`/api/servers/${encodeURIComponent(id)}`, "DELETE"),
+
+    getServerCredential: (id: string) =>
+      send<{
+        id: string;
+        host: string;
+        port: number;
+        username: string;
+        authType: "password" | "key";
+        password: string | null;
+        privateKey: string | null;
+        passphrase: string | null;
+      }>(`/api/servers/${encodeURIComponent(id)}/credential`, "POST"),
 
     /** 供 transport 注入的客户端标识头 */
     clientHeaders: clientHeader,

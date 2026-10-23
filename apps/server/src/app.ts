@@ -15,6 +15,7 @@ import { registerErrorHandler, unauthorized } from "./plugins/errors.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerServerRoutes } from "./routes/servers.js";
 import { registerSettingsRoutes } from "./routes/settings.js";
 import { registerToolsRoutes } from "./routes/tools.js";
 import "./types.js";
@@ -104,6 +105,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
     await registerAuthRoutes(scope);
   });
 
+  await registerServerRoutes(app);
   await registerSettingsRoutes(app);
   await registerToolsRoutes(app);
   await registerDashboardRoutes(app);
