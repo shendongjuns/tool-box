@@ -53,11 +53,7 @@ export function AuthLayout({
           <div className="grid w-full items-center gap-16 lg:grid-cols-[minmax(0,1fr)_22rem]">
             {/* 左栏：标语 + 特性 */}
             <aside className="hidden lg:block">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                ToolBox
-              </p>
-
-              <h1 className="mt-4 text-[2rem] font-semibold leading-[1.25] tracking-tight text-balance">
+              <h1 className="text-[2rem] font-semibold leading-[1.25] tracking-tight text-balance">
                 你的工具箱，
                 <br />
                 安静地放在自己的地方。
@@ -97,7 +93,7 @@ export function AuthLayout({
         {/* 页脚：仅在宽屏显示，与左栏对齐 */}
         <footer className="hidden pb-8 lg:block">
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} ToolBox · 数据始终由你保管
+            © {new Date().getFullYear()} ToolBox
           </p>
         </footer>
       </div>
