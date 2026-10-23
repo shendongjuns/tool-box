@@ -1,10 +1,27 @@
 import * as React from "react";
-import { createApi, createFetchTransport, type Api } from "@toolbox/api-client";
+import { createApi, createFetchTransport, createTauriTransport, type Api } from "@toolbox/api-client";
 import { useDataSource } from "./data-source";
 import { authHeaderFor, getLocalBaseUrl } from "./desktop";
 import { isTauriRuntime } from "./platform";
 
 const ApiContext = React.createContext<Api | null>(null);
+
+/**
+ * Tauri 的 invoke 引用。
+ *
+ * 在 initDesktopBridge() 里一次性拿到（await import 后赋值），
+ * 之后 getApi() 同步可用。网页端为 null，走 fetch 分支。
+ */
+let tauriInvoke:
+  | ((command: string, args?: Record<string, unknown>) => Promise<unknown>)
+  | null = null;
+
+/** 供 desktop.ts 在启动时注入 invoke。 */
+export function setTauriInvoke(
+  fn: ((command: string, args?: Record<string, unknown>) => Promise<unknown>) | null,
+): void {
+  tauriInvoke = fn;
+}
 
 /**
  * API 实例按「数据源 + 地址 + 令牌」缓存。
@@ -19,7 +36,7 @@ let cachedApi: Api | null = null;
 export function getApi(): Api {
   const { type, cloudBaseUrl } = useDataSource.getState();
   const tauri = isTauriRuntime();
-  const key = [type, cloudBaseUrl, authHeaderFor(type).authorization ?? ""].join("|");
+  const key = [type, cloudBaseUrl, authHeaderFor(type, cloudBaseUrl).authorization ?? ""].join("|");
   if (cachedApi && cachedKey === key) return cachedApi;
 
   /*
@@ -30,13 +47,34 @@ export function getApi(): Api {
   const baseUrl =
     type === "cloud" ? (tauri ? cloudBaseUrl : "") : getLocalBaseUrl() || "http://127.0.0.1:1";
 
+  /*
+   * 桌面端云端模式：走 Rust http_request 转发（见 M7）。
+   * 渲染进程的 CSP 不允许直连 https:，由 Rust 侧统一出网，
+   * 这样即使前端被注入脚本也偷不走令牌。
+   * 本地模式（127.0.0.1）不受 CSP 限制，继续用 fetch。
+   */
+  if (tauri && type === "cloud" && tauriInvoke) {
+    // 云端请求经 Rust http_request 转发：渲染进程的 CSP 不允许直连 https:，
+    // 统一由 Rust 侧出网后，即使前端被注入脚本也偷不走令牌。
+    cachedApi = createApi(
+      createTauriTransport({
+        baseUrl,
+        invoke: tauriInvoke,
+        headers: () => authHeaderFor(type, cloudBaseUrl),
+      }),
+      { desktop: true },
+    );
+    cachedKey = key;
+    return cachedApi;
+  }
+
   cachedApi = createApi(
     createFetchTransport({
       baseUrl,
       source: type,
-      // 网页端同源用 Cookie；桌面端一律 Bearer，不需要 Cookie
+      // 网页端同源用 Cookie；桌面端本地模式带 Bearer，不需要 Cookie
       credentials: tauri ? "omit" : "include",
-      headers: () => (tauri ? authHeaderFor(type) : {}),
+      headers: () => (tauri ? authHeaderFor(type, cloudBaseUrl) : {}),
     }),
     { desktop: tauri },
   );

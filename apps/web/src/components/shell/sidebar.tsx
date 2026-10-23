@@ -40,10 +40,26 @@ const categoryLabels: Record<string, string> = {
   other: "其他",
 };
 
-export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export function Sidebar({
+  collapsed,
+  onToggle,
+  onTogglePersist,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  /** 把折叠状态写回服务端设置；未提供时只切换本地状态 */
+  onTogglePersist?: (next: boolean) => void;
+}) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const user = useAuth((state) => state.auth?.user);
   const sourceLabel = useDataSource((state) => state.label);
+  const sourceType = useDataSource((state) => state.type);
+
+  const toggle = React.useCallback(() => {
+    const next = !collapsed;
+    onToggle();
+    onTogglePersist?.(next);
+  }, [collapsed, onToggle, onTogglePersist]);
 
   const groups = React.useMemo(() => {
     const map = new Map<string, (typeof toolCatalog)[number][]>();
@@ -64,13 +80,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     >
       <div
         className={cn(
-          "flex h-14 items-center px-3",
+          "flex h-12 items-center px-3",
           collapsed ? "justify-center" : "justify-start",
         )}
       >
         {collapsed ? (
           // 收起时只剩一个极简的 "TB" 字标，保持品牌识别
-          <span className="brand-wordmark select-none text-lg font-extrabold italic leading-none">
+          <span className="brand-wordmark select-none text-base font-extrabold italic leading-none">
             TB
           </span>
         ) : (
@@ -128,7 +144,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         />
         <button
           type="button"
-          onClick={onToggle}
+          onClick={toggle}
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
             collapsed && "justify-center",
@@ -156,6 +172,21 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             <p className="truncate text-[11px] text-muted-foreground">{sourceLabel}</p>
           </div>
           <SourceBadge />
+        </div>
+      )}
+
+      {/* 收起态：用颜色点提示当前数据源类型（悬停显示完整名称） */}
+      {collapsed && (
+        <div
+          className="flex justify-center border-t border-sidebar-border py-2.5"
+          title={sourceLabel}
+        >
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              sourceType === "local" ? "bg-emerald-500" : "bg-sky-500",
+            )}
+          />
         </div>
       )}
     </aside>

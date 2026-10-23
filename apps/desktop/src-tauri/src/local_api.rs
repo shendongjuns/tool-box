@@ -65,19 +65,30 @@ fn verify_password(stored: &str, password: &str) -> bool {
     sha256_hex(&format!("{salt}{password}")) == expected
 }
 
-/// 从 settings 表读一个字符串值（存的是 JSON 编码）。
-fn read_setting(conn: &Connection, key: &str) -> Option<String> {
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = ?1",
-        params![key],
-        |row| row.get::<_, String>(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
-    .and_then(|raw| serde_json::from_str::<String>(&raw).ok())
+/// 读取 app.tokens（桌面端按数据源保存的令牌表）。
+fn read_token_map(conn: &Connection) -> serde_json::Map<String, serde_json::Value> {
+    let raw = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params!["app.tokens"],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+
+    let Some(raw) = raw else {
+        return serde_json::Map::new();
+    };
+
+    // settings 表的值是 JSON 编码的字符串（write_setting 多包了一层），
+    // 先解出内层字符串，再解析成 map。
+    let inner = serde_json::from_str::<String>(&raw).unwrap_or(raw);
+    serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&inner)
+        .unwrap_or_default()
 }
 
+/// 写 settings 表（值以 JSON 字符串形式存储，与 settings 路由保持一致）。
 fn write_setting(conn: &Connection, key: &str, value: &str, now: i64) {
     let encoded = serde_json::to_string(value).unwrap_or_default();
     let _ = conn.execute(
@@ -264,49 +275,6 @@ fn handle(state: &AppState, mut request: Request) {
                 200,
                 &serde_json::json!({ "status": "ok", "db": "ok", "source": "local" }),
             );
-        }
-
-        // 桌面端令牌存取：存在本地库的 settings 表里，数据随 exe 目录走。
-        // 不需要单独的 store 插件，也不写 AppData。
-        (Method::Get, "/api/app/tokens") => {
-            let values = match state.conn.lock() {
-                Ok(conn) => {
-                    let read = |key: &str| read_setting(&conn, key);
-                    serde_json::json!({
-                        "cloudToken": read("app.cloudToken"),
-                        "localToken": read("app.localToken"),
-                    })
-                }
-                Err(_) => {
-                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
-                    return;
-                }
-            };
-            respond_json(request, 200, &values);
-        }
-
-        (Method::Put, "/api/app/tokens") => {
-            let body = read_body(&mut request);
-            let now = now_ms();
-            let conn = match state.conn.lock() {
-                Ok(conn) => conn,
-                Err(_) => {
-                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
-                    return;
-                }
-            };
-            for key in ["cloudToken", "localToken"] {
-                if let Some(value) = body[key].as_str() {
-                    write_setting(&conn, &format!("app.{key}"), value, now);
-                } else if body[key].is_null() {
-                    let _ = conn.execute(
-                        "DELETE FROM settings WHERE key = ?1",
-                        params![format!("app.{key}")],
-                    );
-                }
-            }
-            drop(conn);
-            respond_empty(request, 204);
         }
 
         // 初始化状态：本地与云端行为一致 —— 没有账号时要求注册。
@@ -507,6 +475,62 @@ fn handle(state: &AppState, mut request: Request) {
                     );
                 }
             }
+            respond_empty(request, 204);
+        }
+
+        // 桌面端令牌存取：按数据源分别保存，存在本地库 settings 表（app.tokens）里。
+        // 结构：{ "local": "<token>", "cloud:http://1.2.3.4:3000": "<token>" }
+        // 切换数据源只影响当前源的令牌，其它源保留，切回来无需重新登录。
+        // 数据随 exe 目录走，不写 AppData，也不需要 store 插件。
+        (Method::Get, "/api/app/tokens") => {
+            let payload = match state.conn.lock() {
+                Ok(conn) => serde_json::json!({ "tokens": read_token_map(&conn) }),
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+            respond_json(request, 200, &payload);
+        }
+
+        (Method::Put, "/api/app/tokens") => {
+            let body = read_body(&mut request);
+            let now = now_ms();
+            let conn = match state.conn.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                    return;
+                }
+            };
+
+            // 载入现有 map，按 key 增删改
+            let mut map = read_token_map(&conn);
+            if let Some(obj) = body["tokens"].as_object() {
+                for (key, value) in obj {
+                    match value.as_str() {
+                        Some(token) if !token.is_empty() => {
+                            map.insert(key.clone(), serde_json::Value::String(token.to_string()));
+                        }
+                        // null 或空串 = 删除该数据源的令牌
+                        _ => {
+                            map.remove(key);
+                        }
+                    }
+                }
+            }
+
+            if map.is_empty() {
+                let _ = conn.execute("DELETE FROM settings WHERE key = ?1", params!["app.tokens"]);
+            } else {
+                write_setting(
+                    &conn,
+                    "app.tokens",
+                    &serde_json::to_string(&map).unwrap_or_default(),
+                    now,
+                );
+            }
+            drop(conn);
             respond_empty(request, 204);
         }
 

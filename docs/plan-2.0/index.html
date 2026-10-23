@@ -497,6 +497,7 @@ cd docker &amp;&amp; docker compose up -d --build
     <tr><td>12</td><td>构建因空 pubkey 失败</td><td>updater 未配置签名 —— 已移除该插件依赖，避免阻断构建。</td></tr>
     <tr><td>13</td><td>注册入口会永久消失</td><td>原先只在 users 为空时显示注册页，一旦错过就没有入口 —— 改为登录页直接内嵌「创建账号」，库中无用户时永远可见，创建后永久关闭。</td></tr>
     <tr><td>14</td><td>本地数据源需要密码</td><td>桌面端本地数据源改为**无需登录**：选中即自动进入，身份固定为「（本地）」；网页端与云端始终要求账号密码，服务端不提供免密接口。</td></tr>
+    <tr><td>17</td><td>自检修复</td><td>修复 21 项缺陷：settings 不再合并默认值（避免覆盖本地修改）、会话下线校验归属、改密后续期当前会话、令牌按数据源隔离、本地 settings 过滤 app.* 键、登录/退出改用 replace 跳转、bootstrap 失败不禁用表单、侧栏折叠状态持久化、数据源删除二次确认、命令面板键盘导航、CSP 收窄 + Rust http_request 转发、URL 校验、settings 键白名单、sortOrder clamp、重复 URL 检测等。详见提交历史。</td></tr>
     <tr><td>16</td><td>页面区分本地/云端</td><td>统一为单一界面，移除所有本地/云端的页面差异；改为「数据源」概念，支持添加多个自建云端地址并命名；官网/桌面共用同一套页面；账户设置始终可见。</td></tr>
     <tr><td>15</td><td>部署强依赖域名与 HTTPS</td><td>已删除 <code>PUBLIC_ORIGIN</code> / <code>COOKIE_SECURE</code> 配置，改为同源比较 + <code>secure:"auto"</code>。</td></tr>
   </tbody>

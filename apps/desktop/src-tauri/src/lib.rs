@@ -108,6 +108,57 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// 通用 HTTP 转发（桌面端云端模式使用）。
+///
+/// 渲染进程被 CSP 限制为 `connect-src 'none'`，不能自己发网络请求；
+/// 所有出网流量统一走这里，由 Rust 侧发出。这样做的好处：
+/// 1. CSP 可以收得很死，渲染层被注入脚本也偷不走数据；
+/// 2. 出网目标、方法、大小集中可控。
+///
+/// 限制：仅允许 http/https，单次响应上限 16MB。
+#[tauri::command]
+async fn http_request(
+    method: String,
+    url: String,
+    body: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Result<serde_json::Value, String> {
+    let parsed = url::Url::parse(&url).map_err(|_| "URL 不合法".to_string())?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("仅支持 http/https".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = client.request(
+        reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
+            .map_err(|_| "HTTP 方法不合法".to_string())?,
+        url,
+    );
+    for (key, value) in headers.unwrap_or_default() {
+        request = request.header(key, value);
+    }
+    if let Some(payload) = body {
+        request = request.body(payload);
+    }
+
+    let response = request.send().await.map_err(|e| format!("请求失败: {e}"))?;
+    let status = response.status().as_u16();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
+    if text.len() > 16 * 1024 * 1024 {
+        return Err("响应过大".to_string());
+    }
+
+    // 统一返回 { status, body }，前端自行解析
+    Ok(serde_json::json!({ "status": status, "body": text }))
+}
+
 fn focus_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -217,7 +268,8 @@ pub fn run() {
             local_api_port,
             show_main_window,
             hide_to_tray,
-            quit_app
+            quit_app,
+            http_request
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

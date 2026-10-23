@@ -18,7 +18,10 @@ const envSchema = z.object({
   /** 会话有效期（天） */
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
   /** 滑动续期的写库节流（分钟） */
-  SESSION_RENEW_THROTTLE_MIN: z.coerce.number().int().nonnegative().default(60),
+  // 会话续期节流（分钟）：距上次使用超过该值才写库。
+  // 5 分钟是「设备列表里最近使用」准确度与写频率的平衡点；
+  // 30 天会话本身不需要更精确的时间戳。
+  SESSION_RENEW_THROTTLE_MIN: z.coerce.number().int().nonnegative().default(5),
   /**
    * 是否信任 X-Forwarded-* 头。放在反向代理后面时保持默认 true，
    * 这样限流拿到的是真实客户端 IP，Cookie 也能识别出 HTTPS。

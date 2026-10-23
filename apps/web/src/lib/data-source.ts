@@ -163,10 +163,17 @@ export const useDataSource = create<DataSourceState>((set, get) => ({
   },
 
   addCloud: ({ name, url }) => {
+    const normalized = normalizeUrl(url);
+
+    // 同一地址只保留一项：已存在时直接返回已有项（调用方据此选中它），
+    // 避免列表里出现多个指向同一服务器的重复条目。
+    const existing = get().cloudSources.find((item) => item.url === normalized);
+    if (existing) return existing;
+
     const source: CloudSource = {
       id: `cloud-${Date.now().toString(36)}`,
       name: name.trim(),
-      url: normalizeUrl(url),
+      url: normalized,
     };
     const sources = [...get().cloudSources, source];
     persistSources(sources);

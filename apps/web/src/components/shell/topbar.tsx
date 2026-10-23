@@ -33,7 +33,7 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
   async function logout() {
     await logoutCurrent();
     toast.success("已退出登录");
-    await navigate({ to: "/login" });
+    await navigate({ to: "/login", replace: true });
   }
 
   return (

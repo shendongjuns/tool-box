@@ -31,6 +31,7 @@ export type ToolListResponse = z.infer<typeof toolListResponseSchema>;
 
 export const patchToolRequestSchema = z.object({
   pinned: z.boolean().optional(),
-  sortOrder: z.number().int().optional(),
+  // 排序值限制在 [0, 1000]：防止用户写 -99999 / 99999 破坏列表顺序
+  sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 export type PatchToolRequest = z.infer<typeof patchToolRequestSchema>;

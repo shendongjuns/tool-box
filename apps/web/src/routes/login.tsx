@@ -25,17 +25,26 @@ function LoginPage() {
 
   // 所有数据源（本地 / 云端 / 网页端）登录方式完全一致：账号 + 密码。
   const initialized = bootstrap.data?.initialized ?? true;
-  const offline = bootstrap.isError;
+  // bootstrap 只是探测：失败不代表登录不可用，因此不禁用表单，
+  // 只提示「连接状态未知」；查询中才禁用，避免重复提交。
+  const probeFailed = bootstrap.isError;
+  const offline = bootstrap.isLoading;
+
+  // 标题跟随探测结果：还没拿到服务端状态时不预判，
+  // 避免把「已初始化」的服务器误标成「创建管理员」。
+  const title = probeFailed ? "登录" : initialized ? "欢迎回来" : "创建管理员";
 
   return (
     <AuthLayout
-      title={initialized ? "欢迎回来" : "创建管理员"}
+      title={title}
       description={
-        offline
-          ? "无法连接服务器，请检查地址或网络"
-          : initialized
-            ? "登录以继续"
-            : "系统尚未初始化，创建唯一的账号即可开始"
+        probeFailed
+          ? "无法确认服务器状态，可直接尝试登录"
+          : offline
+            ? "正在连接…"
+            : initialized
+              ? "登录以继续"
+              : "系统尚未初始化，创建唯一的账号即可开始"
       }
     >
       <LoginForm
@@ -54,7 +63,8 @@ function LoginPage() {
           });
 
           toast.success(initialized ? "登录成功" : "账号已创建，已自动登录");
-          await navigate({ to: "/dashboard" });
+          // replace：避免 WebView 历史里堆积 /login → /dashboard → /login
+          await navigate({ to: "/dashboard", replace: true });
         }}
       />
 

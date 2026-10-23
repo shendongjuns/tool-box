@@ -7,10 +7,10 @@ import {
   sessionListResponseSchema,
   type SessionKind,
 } from "@toolbox/contracts";
-import { listSessions, revokeSession, revokeUserSessions } from "@toolbox/data";
+import { listSessions, revokeSession, revokeUserSessions, touchSession } from "@toolbox/data";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { toPublicUser } from "../auth/service.js";
-import { ApiError, conflict, unauthorized } from "../plugins/errors.js";
+import { ApiError, conflict, notFound, unauthorized } from "../plugins/errors.js";
 
 const sessionParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -192,6 +192,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     await authService.changePassword(auth.user.id, await hashPassword(body.newPassword), now);
     // 改密后撤销其他设备，保留当前会话
     await revokeUserSessions(app.db, auth.user.id, now, auth.sessionId);
+    // 保留当前会话的同时把它的有效期重新算满 30 天 ——
+    // 否则改密时如果当前会话已接近过期，用户会被立刻踢出，
+    // 与「保留当前会话」的语义矛盾。
+    await touchSession(app.db, auth.sessionId, now, config.sessionTtlMs);
     return reply.status(204).send();
   });
 
@@ -221,6 +225,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const auth = request.auth;
     if (!auth) throw unauthorized();
     const { id } = sessionParamsSchema.parse(request.params);
+    // 只能下线自己的会话：先查归属，不属于当前用户一律当不存在处理
+    const rows = await listSessions(app.db, auth.user.id);
+    const own = rows.find((row) => row.id === id);
+    if (!own) throw notFound();
     await revokeSession(app.db, id, Date.now());
     return reply.status(204).send();
   });

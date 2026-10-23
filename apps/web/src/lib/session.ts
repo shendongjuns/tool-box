@@ -1,31 +1,25 @@
 import { invalidateApiCache } from "./api-context";
 import { useAuth } from "./auth-session";
 import { useDataSource } from "./data-source";
-import { ensureLocalApi, setCloudToken, setLocalSessionToken } from "./desktop";
+import { ensureLocalApi, getToken, setToken } from "./desktop";
 import { isTauriRuntime } from "./platform";
 import type { PublicUser, SessionInfo } from "@toolbox/contracts";
 
 /**
  * 登录成功后的收尾：保存令牌、让 API 缓存重建、写入内存登录态。
  *
- * 桌面端：本地与各云端地址的令牌按数据源分别保存，切换时不会互相顶掉。
- * 网页端：服务端已下发 Cookie，这里只更新内存状态。
+ * 令牌按数据源分别持久化（本地库 app.tokens），因此切换数据源
+ * 不会把另一个数据源的令牌顶掉。
  */
 export async function applySession(input: {
   token?: string;
   user: PublicUser;
   session: SessionInfo;
 }): Promise<void> {
-  const { type } = useDataSource.getState();
+  const { type, cloudBaseUrl } = useDataSource.getState();
 
   if (isTauriRuntime() && input.token) {
-    try {
-      if (type === "local") await setLocalSessionToken(input.token);
-      else await setCloudToken(input.token);
-    } catch (error) {
-      // 令牌持久化失败不应该阻断登录：内存里的令牌仍然有效
-      console.warn("保存登录令牌失败，本次会话仍然有效", error);
-    }
+    await setToken(type, cloudBaseUrl, input.token);
   }
 
   invalidateApiCache();
@@ -46,19 +40,13 @@ export async function logoutCurrent(): Promise<void> {
   } catch {
     // 网络问题 / 令牌已失效：继续清理本地状态
   }
-  await clearSession();
-}
 
-/** 清空本地令牌与内存状态（不请求服务端）。 */
-export async function clearSession(): Promise<void> {
+  const { type, cloudBaseUrl } = useDataSource.getState();
   if (isTauriRuntime()) {
-    try {
-      await setCloudToken(null);
-      await setLocalSessionToken(null);
-    } catch {
-      // 清不掉也不影响内存状态
-    }
+    // 只删当前数据源的令牌；其它数据源的令牌保留，切回去无需重登
+    await setToken(type, cloudBaseUrl, null);
   }
+
   invalidateApiCache();
   useAuth.getState().setAuth(null);
 }
@@ -67,9 +55,11 @@ export async function clearSession(): Promise<void> {
  * 切换数据源。
  *
  * 顺序很重要：
- * 1. 先用「当前」数据源的连接注销会话（否则旧令牌会一直留在服务端）
+ * 1. 已登录时先用「当前」数据源连接注销会话（否则旧令牌会一直留在服务端）
  * 2. 再切换数据源
  * 3. 最后清缓存并退回登录页
+ *
+ * 注意：这里**不清**其它数据源的本地令牌 —— 两套数据完全独立。
  */
 export async function switchDataSource(id: string): Promise<boolean> {
   const state = useDataSource.getState();
@@ -79,7 +69,8 @@ export async function switchDataSource(id: string): Promise<boolean> {
   if (useAuth.getState().auth) {
     await logoutCurrent();
   } else {
-    await clearSession();
+    invalidateApiCache();
+    useAuth.getState().setAuth(null);
   }
 
   // 切到本地前，先确保本地服务端口已知，否则首个请求会打到占位地址上
@@ -90,4 +81,10 @@ export async function switchDataSource(id: string): Promise<boolean> {
 
   state.select(id);
   return true;
+}
+
+/** 取当前数据源的令牌（桌面端用）。 */
+export function currentToken(): string | null {
+  const { type, cloudBaseUrl } = useDataSource.getState();
+  return isTauriRuntime() ? getToken(type, cloudBaseUrl) : null;
 }

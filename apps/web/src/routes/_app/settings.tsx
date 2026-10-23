@@ -58,7 +58,8 @@ function SettingsPage() {
           void navigate({ to: "/settings", search: { tab: value as SettingsTab } })
         }
       >
-        <TabsList>
+        {/* 窄屏允许换行，避免四个标签挤成一行被裁切 */}
+        <TabsList className="flex-wrap">
           <TabsTrigger value="general">通用</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
           <TabsTrigger value="account">账户</TabsTrigger>
@@ -268,7 +269,7 @@ function AccountTab() {
 
   async function logout() {
     await logoutCurrent();
-    await navigate({ to: "/login" });
+    await navigate({ to: "/login", replace: true });
   }
 
   return (
@@ -394,6 +395,7 @@ function DataSourceCard() {
   const { cloudSources, activeId, label } = useDataSource();
   const navigate = useNavigate();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftUrl, setDraftUrl] = useState("");
@@ -472,14 +474,7 @@ function DataSourceCard() {
                 note={source.url}
                 busy={pendingId === source.id}
                 onClick={() => void pick(source.id, source.name)}
-                onRemove={
-                  cloudSources.length > 0
-                    ? () => {
-                        removeCloud(source.id);
-                        toast.success(`已删除 ${source.name}`);
-                      }
-                    : undefined
-                }
+                onRemove={() => setPendingRemove(source)}
               />
             ))}
 
@@ -531,7 +526,69 @@ function DataSourceCard() {
           )}
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        title="移除这个数据源？"
+        description={
+          <>
+            只是从本机列表移除 <strong>{pendingRemove?.name}</strong>，不会删除服务器上的数据。
+            之后可以重新添加。
+          </>
+        }
+        confirmText="移除"
+        destructive
+        onConfirm={() => {
+          if (pendingRemove) {
+            removeCloud(pendingRemove.id);
+            toast.success(`已移除 ${pendingRemove.name}`);
+            setPendingRemove(null);
+          }
+        }}
+        onCancel={() => setPendingRemove(null)}
+      />
     </Card>
+  );
+}
+
+/** 轻量确认弹框（带「记住选择」不适用，用于破坏性操作二次确认）。 */
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmText,
+  destructive = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description: React.ReactNode;
+  confirmText: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            取消
+          </Button>
+          <Button
+            size="sm"
+            variant={destructive ? "destructive" : "default"}
+            onClick={onConfirm}
+          >
+            {confirmText}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

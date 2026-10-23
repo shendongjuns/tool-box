@@ -46,6 +46,15 @@ export default tseslint.config(
     },
   },
   {
+    // 构建/打包脚本是纯 Node 环境
+    files: ["**/scripts/**/*.{mjs,js}"],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
+  },
+  {
     // 路由文件按 TanStack Router 约定导出 Route + 组件，Fast Refresh 规则不适用
     files: ["apps/web/src/routes/**/*.tsx"],
     rules: { "react-refresh/only-export-components": "off" },

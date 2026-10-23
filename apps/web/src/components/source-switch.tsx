@@ -1,5 +1,7 @@
 import * as React from "react";
 import { Cloud, Database, Plus, Settings2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useDataSource } from "@/lib/data-source";
 import { switchDataSource } from "@/lib/session";
 import { canSwitchSource } from "@/lib/source";
@@ -16,6 +18,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 
+/** 校验是否是可用的 http/https 地址。 */
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 数据源切换。
  *
@@ -30,6 +44,7 @@ export function SourceSwitch({
   onChanged?: () => void;
 }) {
   const { activeId, cloudSources, type, label } = useDataSource();
+  const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -41,6 +56,10 @@ export function SourceSwitch({
 
   async function pick(id: string) {
     await switchDataSource(id);
+    // 切到新数据源后，旧源的 bootstrap 探测结果必须丢弃 ——
+    // 否则登录页会先展示上一个数据源的 initialized/错误状态
+    // （切到本地时端口可能刚就绪，占位地址的失败结果也会被缓存）。
+    queryClient.removeQueries({ queryKey: ["bootstrap"] });
     setOpen(false);
     onChanged?.();
   }
@@ -49,13 +68,18 @@ export function SourceSwitch({
     const trimmedName = name.trim();
     const trimmedUrl = url.trim();
     if (trimmedName.length === 0) return setError("请给这个数据源起个名字");
-    if (!/^https?:\/\/.+/i.test(trimmedUrl)) return setError("地址需要以 http:// 或 https:// 开头");
+    // 只接受能解析出 host 的 http/https 地址（拒绝 ftp:、javascript:、相对路径等）
+    if (!isValidHttpUrl(trimmedUrl)) {
+      return setError("地址格式不正确，例如 http://192.168.1.10:3000");
+    }
 
     const source = addCloud({ name: trimmedName, url: trimmedUrl });
+    const existed = cloudSources.some((item) => item.url === source.url);
     setAdding(false);
     setName("");
     setUrl("");
     setError(null);
+    if (existed) toast.info("这个地址已在列表中，已为你选中");
     void pick(source.id);
   }
 

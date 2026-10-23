@@ -200,10 +200,12 @@ describe("设置与工具", () => {
 
   const auth = () => ({ authorization: `Bearer ${token}` });
 
-  it("默认设置包含全部默认值", async () => {
+  it("空库不返回任何默认设置（缺省值由前端兜底）", async () => {
     const response = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
     expect(response.statusCode).toBe(200);
-    expect(response.json().values["ui.themeMode"]).toBe("system");
+    // 不合并 defaultSettings：否则「用户从未设置过 X」与「X 被设为默认值」
+    // 无法区分，前端也会把默认键当成服务器值覆盖本地未保存的修改
+    expect(response.json().values).toEqual({});
   });
 
   it("写入设置后读回一致", async () => {
@@ -358,7 +360,7 @@ describe("设置与工具按数据源隔离（回归）", () => {
     token = login.json().token as string;
   });
 
-  it("PUT 设置后 GET 能读回，且默认值仍在", async () => {
+  it("PUT 设置后 GET 只读回写入的键", async () => {
     await app.inject({
       method: "PUT",
       url: "/api/settings",
@@ -370,11 +372,20 @@ describe("设置与工具按数据源隔离（回归）", () => {
       url: "/api/settings",
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(response.json().values).toMatchObject({
+    expect(response.json().values).toEqual({
       "ui.themeMode": "dark",
       "ui.accent": "violet",
-      "ui.sidebarWidth": 260,
     });
+  });
+
+  it("写入非 ui. 前缀的键被拒绝", async () => {
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { values: { "app.secret": "x" } },
+    });
+    expect(response.statusCode).toBe(400);
   });
 
   it("未认证访问设置返回 401", async () => {
@@ -537,5 +548,81 @@ describe("用户名不限制字符集", () => {
       payload: { username: "a".repeat(33), password: "x" },
     });
     expect(register.statusCode).toBe(400);
+  });
+});
+
+describe("会话安全（越权与续期）", () => {
+  const securityCredentials = { username: "victim", password: "victim-pass-1" };
+
+  /** 桌面端登录：直接拿 Bearer 令牌（网页端 login 只写 Cookie，不返回 token）。 */
+  async function loginAsVictim(): Promise<string> {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/desktop-login",
+      payload: securityCredentials,
+    });
+    expect(response.statusCode).toBe(200);
+    return response.json().token as string;
+  }
+
+  beforeEach(async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: securityCredentials,
+    });
+  });
+
+  it("下线非归属会话返回 404（水平越权防护）", async () => {
+    const token = await loginAsVictim();
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/api/auth/sessions/nonexistent-session-id",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("下线自己的会话成功", async () => {
+    const token = await loginAsVictim();
+    const sessions = await app.inject({
+      method: "GET",
+      url: "/api/auth/sessions",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const target = sessions.json().items[0] as { id: string };
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/auth/sessions/${target.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const after = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(after.statusCode).toBe(401);
+  });
+
+  it("改密后当前会话仍然有效", async () => {
+    const token = await loginAsVictim();
+
+    const changed = await app.inject({
+      method: "POST",
+      url: "/api/auth/password",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: "victim-pass-1", newPassword: "victim-pass-2" },
+    });
+    expect(changed.statusCode).toBe(204);
+
+    // 当前会话必须仍然可用（否则用户改完密码就被踢出）
+    const after = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(after.statusCode).toBe(200);
   });
 });
