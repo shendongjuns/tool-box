@@ -21,10 +21,10 @@ export function BrandLogo({
   className?: string;
 }) {
   const sizeClass = {
-    sm: "text-base",
-    md: "text-lg",
-    lg: "text-2xl",
-    xl: "text-4xl",
+    sm: "text-lg",
+    md: "text-2xl",
+    lg: "text-4xl",
+    xl: "text-5xl",
   }[size];
 
   return (
@@ -40,7 +40,7 @@ export function BrandLogo({
       </span>
       {showVersion ? (
         <span className="rounded-full border border-border px-1.5 py-px text-[10px] font-medium tracking-normal text-muted-foreground">
-          v2.0
+          v2.0.0
         </span>
       ) : null}
     </span>

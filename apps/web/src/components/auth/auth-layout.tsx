@@ -11,8 +11,10 @@ const highlights = [
 /**
  * 登录/注册页布局。
  *
- * 整屏是一块连续背景（含两团柔和光晕），左右内容浮在同一层背景上，
+ * 整屏是一块连续背景（含两团柔和光晕），内容浮在同一层背景上，
  * 不做「左边一块、右边一块」的分区，因此中间没有任何色块接缝。
+ *
+ * 品牌字标固定在左上角，表单在右侧（窄屏居中）。
  */
 export function AuthLayout({
   title,
@@ -39,13 +41,16 @@ export function AuthLayout({
         style={{ background: "radial-gradient(circle, #22d3ee, transparent 70%)" }}
       />
 
-      {/* 内容层：左品牌 + 右表单，共享同一背景 */}
-      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-12 px-6 py-10 lg:grid-cols-[1fr_auto] lg:gap-20 lg:px-10">
-        {/* 品牌区：窄屏隐藏 */}
-        <aside className="hidden lg:flex lg:flex-col lg:justify-center">
-          <BrandLogo size="lg" showVersion />
+      {/* 品牌字标：固定左上角 */}
+      <header className="absolute left-6 top-6 z-10 sm:left-10 sm:top-8">
+        <BrandLogo size="lg" showVersion />
+      </header>
 
-          <h2 className="mt-10 text-2xl font-semibold leading-snug tracking-tight">
+      {/* 内容层：左侧文案 + 右侧表单，共享同一背景 */}
+      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-[1fr_auto] lg:gap-20 lg:px-10">
+        {/* 品牌区：窄屏隐藏（字标已在左上角，这里只放文案） */}
+        <aside className="hidden lg:flex lg:flex-col lg:justify-center">
+          <h2 className="text-2xl font-semibold leading-snug tracking-tight">
             你的工具箱，
             <br />
             安静地放在自己的地方。
@@ -67,10 +72,6 @@ export function AuthLayout({
         {/* 表单区：窄屏居中，宽屏右对齐 */}
         <main className="flex w-full justify-center lg:w-[26rem] lg:justify-end">
           <div className="w-full max-w-sm">
-            <div className="mb-8 lg:hidden">
-              <BrandLogo size="md" />
-            </div>
-
             {badge ? <div className="mb-6">{badge}</div> : null}
 
             <h1 className="text-xl font-semibold tracking-tight">{title}</h1>

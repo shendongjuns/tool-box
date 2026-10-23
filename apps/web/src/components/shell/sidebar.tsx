@@ -93,7 +93,7 @@ export function Sidebar({
           <div className="flex min-w-0 items-center gap-2">
             <BrandLogo size="md" />
             <span className="rounded-full border border-border/70 px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-              2.0
+              2.0.0
             </span>
           </div>
         )}

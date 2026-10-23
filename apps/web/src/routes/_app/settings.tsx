@@ -585,7 +585,7 @@ function AboutTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>ToolBox 2.0</CardTitle>
+          <CardTitle>ToolBox 2.0.0</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <Row label="版本" value="2.0.0" />
