@@ -4,7 +4,11 @@ export interface TauriTransportOptions {
   baseUrl: string;
   /** 每次请求时求值的额外请求头（桌面端注入 Bearer） */
   headers?: () => Record<string, string>;
+  /** 请求超时（毫秒），默认 3000。Rust 侧也设了超时，这里再兜一层。 */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 3000;
 
 /**
  * 桌面端传输层：所有请求经 Rust 的 http_request 命令转发。
@@ -29,6 +33,7 @@ export function createTauriTransport(
 ): ApiTransport {
   const base = options.baseUrl.replace(/\/$/, "");
   const invoke = options.invoke;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return {
     // 桌面端不用 Cookie（Bearer 已足够），统一 omit
@@ -36,19 +41,36 @@ export function createTauriTransport(
     source: "cloud",
     async request<T>(request: RequestOptions): Promise<T> {
       let result: { status: number; body: string };
+      // 与 fetch 传输层一致：3 秒无响应即视为超时，避免登录页无限等待。
+      const timer = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new ApiError(
+              0,
+              "TIMEOUT",
+              `连接超时（超过 ${Math.round(timeoutMs / 1000)} 秒无响应），请检查地址与网络`,
+            ),
+          );
+        }, timeoutMs);
+      });
+
       try {
-        result = (await invoke("http_request", {
-          method: request.method ?? "GET",
-          url: `${base}${request.path}`,
-          ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
-          headers: {
-            ...(request.body === undefined ? {} : { "content-type": "application/json" }),
-            accept: "application/json",
-            "X-Toolbox-Client": "desktop",
-            ...(options.headers?.() ?? {}),
-          },
-        })) as { status: number; body: string };
+        result = (await Promise.race([
+          invoke("http_request", {
+            method: request.method ?? "GET",
+            url: `${base}${request.path}`,
+            ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+            headers: {
+              ...(request.body === undefined ? {} : { "content-type": "application/json" }),
+              accept: "application/json",
+              "X-Toolbox-Client": "desktop",
+              ...(options.headers?.() ?? {}),
+            },
+          }),
+          timer,
+        ])) as { status: number; body: string };
       } catch (error) {
+        if (error instanceof ApiError) throw error;
         throw new ApiError(
           0,
           "NETWORK_ERROR",

@@ -44,8 +44,27 @@ export function getApi(): Api {
    * 这里再兜底一次 —— 如果还没就绪，指向一个必然失败的地址，
    * 由调用方（数据源切换 / 登录页 bootstrap 查询）给出可读错误。
    */
+  /*
+   * 云端数据源：始终使用用户配置的地址。
+   *
+   * 网页端以前写死同源（""），导致在浏览器里改数据源地址完全不生效 ——
+   * 请求永远打到当前页面所在的服务器。现在改成：
+   * - 配置的地址与当前 origin 相同 → 用空串走同源（保留 Cookie 登录）
+   * - 否则 → 用绝对地址（跨源，需要目标服务器开启 CORS）
+   */
+  const sameOrigin =
+    typeof window !== "undefined" &&
+    cloudBaseUrl.length > 0 &&
+    cloudBaseUrl.replace(/\/$/, "") === window.location.origin;
+
   const baseUrl =
-    type === "cloud" ? (tauri ? cloudBaseUrl : "") : getLocalBaseUrl() || "http://127.0.0.1:1";
+    type === "cloud"
+      ? tauri
+        ? cloudBaseUrl
+        : sameOrigin
+          ? ""
+          : cloudBaseUrl
+      : getLocalBaseUrl() || "http://127.0.0.1:1";
 
   /*
    * 桌面端云端模式：走 Rust http_request 转发（见 M7）。

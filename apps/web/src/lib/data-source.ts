@@ -39,6 +39,8 @@ export interface DataSourceState {
   addCloud: (input: { name: string; url: string }) => CloudSource;
   removeCloud: (id: string) => void;
   renameCloud: (id: string, name: string) => void;
+  /** 修改云端数据源的名称与地址（不改当前选中状态）。 */
+  updateCloud: (id: string, patch: { name: string; url: string }) => void;
 }
 
 const SOURCES_KEY = "toolbox.sources";
@@ -197,6 +199,22 @@ export const useDataSource = create<DataSourceState>((set, get) => ({
       item.id === id ? { ...item, name: name.trim() } : item,
     );
     persistSources(sources);
+    const state: Partial<DataSourceState> = { cloudSources: sources };
+    if (get().activeId === id) {
+      Object.assign(state, resolveState(id, sources));
+    }
+    set(state as DataSourceState);
+  },
+
+  updateCloud: (id, patch) => {
+    const sources = get().cloudSources.map((item) =>
+      item.id === id
+        ? { ...item, name: patch.name.trim(), url: normalizeUrl(patch.url) }
+        : item,
+    );
+    persistSources(sources);
+    // 只改列表数据；如果改的正好是当前源，同步刷新 label / cloudBaseUrl，
+    // 但不触发「切换」语义（不退出登录）。
     const state: Partial<DataSourceState> = { cloudSources: sources };
     if (get().activeId === id) {
       Object.assign(state, resolveState(id, sources));

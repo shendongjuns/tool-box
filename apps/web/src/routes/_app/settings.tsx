@@ -396,32 +396,51 @@ function DataSourceCard() {
   const navigate = useNavigate();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [draftName, setDraftName] = useState("");
-  const [draftUrl, setDraftUrl] = useState("");
+  const [draft, setDraft] = useState<{ id: string | null; name: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const addCloud = useDataSource((state) => state.addCloud);
+  const updateCloud = useDataSource((state) => state.updateCloud);
   const removeCloud = useDataSource((state) => state.removeCloud);
 
+  /** 切换数据源：这是唯一会退出登录的操作。 */
   async function pick(id: string, name: string) {
     if (id === activeId) return;
     setPendingId(id);
     await switchDataSource(id);
     toast.success(`已切换到 ${name}，请重新登录`);
-    await navigate({ to: "/login" });
+    await navigate({ to: "/login", replace: true });
   }
 
-  function submit() {
-    const name = draftName.trim();
-    const url = draftUrl.trim();
+  /** 保存：只写列表，不切换、不退出登录。 */
+  function save() {
+    if (!draft) return;
+    const name = draft.name.trim();
+    const url = draft.url.trim();
     if (name.length === 0) return setError("请填写名称");
-    if (!/^https?:\/\/.+/i.test(url)) return setError("地址需要以 http:// 或 https:// 开头");
-    const source = addCloud({ name, url });
-    setAdding(false);
-    setDraftName("");
-    setDraftUrl("");
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("bad");
+    } catch {
+      return setError("地址格式不正确，例如 http://192.168.1.10:3000");
+    }
+    void parsed;
+
+    if (draft.id) {
+      updateCloud(draft.id, { name, url });
+      toast.success("已保存");
+    } else {
+      const normalized = url.replace(/\/$/, "");
+      if (cloudSources.some((item) => item.url === normalized)) {
+        return setError("这个地址已经在列表里了");
+      }
+      addCloud({ name, url });
+      toast.success("已添加，点「使用」即可切换");
+    }
+    setDraft(null);
     setError(null);
-    void pick(source.id, source.name);
   }
 
   return (
@@ -432,7 +451,9 @@ function DataSourceCard() {
           数据源
         </CardTitle>
         <CardDescription>
-          当前：{label}。不同数据源之间数据完全独立，切换后需要重新登录。
+          当前：{label}。不同数据源之间数据完全独立。
+          <strong className="font-medium text-foreground">保存不会切换</strong>
+          ，点「使用」才会切走并重新登录。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -452,40 +473,43 @@ function DataSourceCard() {
         </div>
 
         <div className="space-y-2 pt-2">
-          <p className="text-xs font-medium text-muted-foreground">可切换</p>
+          <p className="text-xs font-medium text-muted-foreground">全部数据源</p>
 
           {activeId !== "local" ? (
             <SwitchRow
               icon={<Database className="h-4 w-4" />}
               name="本地数据"
-              note="这台电脑 · 无需登录"
+              note="这台电脑"
               busy={pendingId === "local"}
               onClick={() => void pick("local", "本地数据")}
             />
           ) : null}
 
-          {cloudSources
-            .filter((source) => source.id !== activeId)
-            .map((source) => (
-              <SwitchRow
-                key={source.id}
-                icon={<Cloud className="h-4 w-4" />}
-                name={source.name}
-                note={source.url}
-                busy={pendingId === source.id}
-                onClick={() => void pick(source.id, source.name)}
-                onRemove={() => setPendingRemove(source)}
-              />
-            ))}
+          {cloudSources.map((source) => (
+            <SwitchRow
+              key={source.id}
+              icon={<Cloud className="h-4 w-4" />}
+              name={source.name}
+              note={source.url}
+              busy={pendingId === source.id}
+              active={source.id === activeId}
+              onClick={() => void pick(source.id, source.name)}
+              onEdit={() => {
+                setDraft({ id: source.id, name: source.name, url: source.url });
+                setError(null);
+              }}
+              onRemove={source.id === activeId ? undefined : () => setPendingRemove(source)}
+            />
+          ))}
 
-          {adding ? (
+          {draft ? (
             <div className="space-y-2 rounded-lg border border-border p-3">
               <Field>
                 <FieldLabel htmlFor="new-name">名称</FieldLabel>
                 <Input
                   id="new-name"
-                  value={draftName}
-                  onChange={(event) => setDraftName(event.target.value)}
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                   placeholder="例如：公司服务器"
                   autoFocus
                 />
@@ -494,23 +518,23 @@ function DataSourceCard() {
                 <FieldLabel htmlFor="new-url">服务器地址</FieldLabel>
                 <Input
                   id="new-url"
-                  value={draftUrl}
-                  onChange={(event) => setDraftUrl(event.target.value)}
+                  value={draft.url}
+                  onChange={(event) => setDraft({ ...draft, url: event.target.value })}
                   placeholder="http://192.168.1.10:3000"
                   className="font-mono"
                 />
                 {error ? (
                   <p className="text-xs text-destructive">{error}</p>
                 ) : (
-                  <FieldHint>需要包含协议与端口，例如 http://192.168.1.10:3000。</FieldHint>
+                  <FieldHint>保存后不会自动切换，需要点「使用」。</FieldHint>
                 )}
               </Field>
               <div className="flex gap-2">
-                <Button onClick={submit}>保存并切换</Button>
+                <Button onClick={save}>保存</Button>
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setAdding(false);
+                    setDraft(null);
                     setError(null);
                   }}
                 >
@@ -519,7 +543,14 @@ function DataSourceCard() {
               </div>
             </div>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDraft({ id: null, name: "", url: "" });
+                setError(null);
+              }}
+            >
               <Plus className="h-4 w-4" />
               添加云端服务器
             </Button>
@@ -597,18 +628,27 @@ function SwitchRow({
   name,
   note,
   busy,
+  active = false,
   onClick,
+  onEdit,
   onRemove,
 }: {
   icon: React.ReactNode;
   name: string;
   note: string;
   busy: boolean;
+  active?: boolean;
   onClick: () => void;
+  onEdit?: () => void;
   onRemove?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-lg border px-3 py-2",
+        active ? "border-primary/30 bg-primary/[0.03]" : "border-border",
+      )}
+    >
       <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground">
         {icon}
       </div>
@@ -616,9 +656,21 @@ function SwitchRow({
         <p className="truncate text-sm font-medium">{name}</p>
         <p className="truncate text-xs text-muted-foreground">{note}</p>
       </div>
-      <Button variant="ghost" size="sm" disabled={busy} onClick={onClick}>
-        切换
-      </Button>
+
+      {onEdit ? (
+        <Button variant="ghost" size="sm" onClick={onEdit}>
+          编辑
+        </Button>
+      ) : null}
+
+      {active ? (
+        <Badge variant="secondary">使用中</Badge>
+      ) : (
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onClick}>
+          {busy ? "切换中…" : "使用"}
+        </Button>
+      )}
+
       {onRemove ? (
         <Button variant="ghost" size="sm" onClick={onRemove} className="text-destructive">
           删除

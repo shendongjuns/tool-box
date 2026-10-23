@@ -1,8 +1,8 @@
 import * as React from "react";
-import { Cloud, Database, Plus, Settings2 } from "lucide-react";
+import { Cloud, Database, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useDataSource } from "@/lib/data-source";
+import { useDataSource, type CloudSource } from "@/lib/data-source";
 import { switchDataSource } from "@/lib/session";
 import { canSwitchSource } from "@/lib/source";
 import { cn } from "@/lib/utils";
@@ -30,11 +30,16 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+type Draft = { id: string | null; name: string; url: string };
+
 /**
  * 数据源切换。
  *
- * 页面本身不区分本地 / 云端，这里只负责「换一个数据源连接」：
- * 选中后清空登录态并退回登录页（本地数据源会自动进入）。
+ * 交互约定：
+ * - **保存 ≠ 切换**：新增/编辑只写入列表，不会退出登录。
+ * - **只有点「使用」才切换**：切换会清空登录态并回到登录页。
+ *
+ * 这样即使填错地址，也不会被直接踢出登录页。
  */
 export function SourceSwitch({
   compact = false,
@@ -46,41 +51,69 @@ export function SourceSwitch({
   const { activeId, cloudSources, type, label } = useDataSource();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
-  const [adding, setAdding] = React.useState(false);
-  const [name, setName] = React.useState("");
-  const [url, setUrl] = React.useState("");
+  const [draft, setDraft] = React.useState<Draft | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+
   const addCloud = useDataSource((state) => state.addCloud);
+  const updateCloud = useDataSource((state) => state.updateCloud);
+  const removeCloud = useDataSource((state) => state.removeCloud);
 
   if (!canSwitchSource()) return null;
 
   async function pick(id: string) {
+    if (id === activeId) {
+      setOpen(false);
+      return;
+    }
+    setPendingId(id);
     await switchDataSource(id);
-    // 切到新数据源后，旧源的 bootstrap 探测结果必须丢弃 ——
-    // 否则登录页会先展示上一个数据源的 initialized/错误状态
-    // （切到本地时端口可能刚就绪，占位地址的失败结果也会被缓存）。
+    // 切到新数据源后，旧源的 bootstrap 探测结果必须丢弃
     queryClient.removeQueries({ queryKey: ["bootstrap"] });
+    setPendingId(null);
     setOpen(false);
     onChanged?.();
   }
 
-  function submitAdd() {
-    const trimmedName = name.trim();
-    const trimmedUrl = url.trim();
-    if (trimmedName.length === 0) return setError("请给这个数据源起个名字");
-    // 只接受能解析出 host 的 http/https 地址（拒绝 ftp:、javascript:、相对路径等）
-    if (!isValidHttpUrl(trimmedUrl)) {
+  function startAdd() {
+    setDraft({ id: null, name: "", url: "" });
+    setError(null);
+  }
+
+  function startEdit(source: CloudSource) {
+    setDraft({ id: source.id, name: source.name, url: source.url });
+    setError(null);
+  }
+
+  /** 保存：只写列表，不切换。 */
+  function save() {
+    if (!draft) return;
+    const name = draft.name.trim();
+    const url = draft.url.trim();
+    if (name.length === 0) return setError("请给这个数据源起个名字");
+    if (!isValidHttpUrl(url)) {
       return setError("地址格式不正确，例如 http://192.168.1.10:3000");
     }
 
-    const source = addCloud({ name: trimmedName, url: trimmedUrl });
-    const existed = cloudSources.some((item) => item.url === source.url);
-    setAdding(false);
-    setName("");
-    setUrl("");
+    if (draft.id) {
+      updateCloud(draft.id, { name, url });
+      toast.success("已保存，点「使用」即可切换");
+    } else {
+      const duplicate = cloudSources.find((item) => item.url === url.replace(/\/$/, ""));
+      if (duplicate) {
+        setError("这个地址已经在列表里了");
+        return;
+      }
+      addCloud({ name, url });
+      toast.success("已添加，点「使用」即可切换");
+    }
+    setDraft(null);
     setError(null);
-    if (existed) toast.info("这个地址已在列表中，已为你选中");
-    void pick(source.id);
+  }
+
+  function remove(source: CloudSource) {
+    removeCloud(source.id);
+    toast.success(`已移除 ${source.name}`);
   }
 
   return (
@@ -95,7 +128,7 @@ export function SourceSwitch({
             : "text-sky-600 dark:text-sky-400",
           compact && "text-xs px-2.5 py-1",
         )}
-        title="切换数据源"
+        title="管理数据源"
       >
         {type === "local" ? <Database className="h-3 w-3" /> : <Cloud className="h-3 w-3" />}
         {label}
@@ -105,9 +138,9 @@ export function SourceSwitch({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>切换数据源</DialogTitle>
+            <DialogTitle>数据源</DialogTitle>
             <DialogDescription>
-              选中的服务器不同，数据也不同。切换后需要重新登录。
+              点「使用」才会切换并重新登录；新增或修改只是保存，不会退出当前账号。
             </DialogDescription>
           </DialogHeader>
 
@@ -116,7 +149,8 @@ export function SourceSwitch({
               active={activeId === "local"}
               icon={<Database className="h-4 w-4" />}
               name="本地数据"
-              note="这台电脑 · 无需登录"
+              note="这台电脑"
+              busy={pendingId === "local"}
               onClick={() => void pick("local")}
             />
             {cloudSources.map((source) => (
@@ -126,19 +160,22 @@ export function SourceSwitch({
                 icon={<Cloud className="h-4 w-4" />}
                 name={source.name}
                 note={source.url}
+                busy={pendingId === source.id}
                 onClick={() => void pick(source.id)}
+                onEdit={() => startEdit(source)}
+                onRemove={() => remove(source)}
               />
             ))}
           </div>
 
-          {adding ? (
+          {draft ? (
             <div className="space-y-3 rounded-lg border border-border p-3">
               <Field>
                 <FieldLabel htmlFor="src-name">名称</FieldLabel>
                 <Input
                   id="src-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                   placeholder="例如：公司服务器"
                   autoFocus
                 />
@@ -147,19 +184,25 @@ export function SourceSwitch({
                 <FieldLabel htmlFor="src-url">服务器地址</FieldLabel>
                 <Input
                   id="src-url"
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
+                  value={draft.url}
+                  onChange={(event) => setDraft({ ...draft, url: event.target.value })}
                   placeholder="http://192.168.1.10:3000"
                   className="font-mono"
                 />
-                {error ? <FieldError>{error}</FieldError> : null}
+                {error ? (
+                  <FieldError>{error}</FieldError>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    保存后不会自动切换，需要点「使用」。
+                  </p>
+                )}
               </Field>
               <div className="flex gap-2">
-                <Button onClick={submitAdd}>添加并切换</Button>
+                <Button onClick={save}>保存</Button>
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setAdding(false);
+                    setDraft(null);
                     setError(null);
                   }}
                 >
@@ -168,7 +211,7 @@ export function SourceSwitch({
               </div>
             </div>
           ) : (
-            <Button variant="outline" onClick={() => setAdding(true)}>
+            <Button variant="outline" onClick={startAdd}>
               <Plus className="h-4 w-4" />
               添加云端服务器
             </Button>
@@ -190,23 +233,25 @@ function SourceRow({
   icon,
   name,
   note,
+  busy,
   onClick,
+  onEdit,
+  onRemove,
 }: {
   active: boolean;
   icon: React.ReactNode;
   name: string;
   note: string;
+  busy?: boolean;
   onClick: () => void;
+  onEdit?: () => void;
+  onRemove?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-        active
-          ? "border-primary/40 bg-primary/5"
-          : "border-border hover:bg-accent",
+        "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+        active ? "border-primary/40 bg-primary/5" : "border-border",
       )}
     >
       <span
@@ -221,7 +266,35 @@ function SourceRow({
         <span className="block truncate text-sm font-medium">{name}</span>
         <span className="block truncate text-xs text-muted-foreground">{note}</span>
       </span>
-      {active ? <span className="text-xs text-primary">使用中</span> : null}
-    </button>
+
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          title="编辑"
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          title="移除"
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+
+      {active ? (
+        <span className="shrink-0 text-xs text-primary">使用中</span>
+      ) : (
+        <Button size="sm" variant="outline" onClick={onClick} disabled={busy}>
+          {busy ? "切换中…" : "使用"}
+        </Button>
+      )}
+    </div>
   );
 }
