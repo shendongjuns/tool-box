@@ -14,12 +14,19 @@ import { isDesktop } from "@/lib/platform";
 import { sshConnect, sshDisconnect, subscribeSsh } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ServerList } from "./server-list";
 import { SftpPanel } from "./sftp-panel";
 import { MonitorPanel } from "./monitor-panel";
 import { MonitorCollector } from "./collector";
 import { TerminalView, type TerminalHandle } from "./terminal-view";
-import { useRemoteSessions, type RemoteSession } from "./session-store";
+import { nextLabel, useRemoteSessions, type RemoteSession } from "./session-store";
 
 const POLL_INTERVAL = 2000;
 
@@ -29,6 +36,7 @@ export function RemotePage() {
   const { sessions, activeId, add, remove, setActive, setTab, markDisconnected } =
     useRemoteSessions();
   const [connecting, setConnecting] = React.useState(false);
+  const [pendingClose, setPendingClose] = React.useState<RemoteSession | null>(null);
 
   const active = sessions.find((item) => item.id === activeId) ?? null;
 
@@ -106,10 +114,16 @@ export function RemotePage() {
         rows: 30,
       });
 
+      const label = nextLabel(
+        server.name,
+        sessions.map((item) => item.label),
+      );
+
       add({
         id: `tab-${Date.now().toString(36)}`,
         server,
         sshSessionId,
+        label,
         tab: "terminal",
         connected: true,
       });
@@ -154,12 +168,12 @@ export function RemotePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {/* 会话标签栏 */}
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto pb-1">
+      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
         {sessions.map((session) => (
           <div
             key={session.id}
             className={cn(
-              "group flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors",
+              "group flex min-w-[10rem] max-w-[16rem] shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
               session.id === activeId
                 ? "border-primary/40 bg-primary/[0.06] font-medium text-foreground"
                 : "border-border text-muted-foreground hover:bg-accent/60",
@@ -168,23 +182,24 @@ export function RemotePage() {
             <button
               type="button"
               onClick={() => setActive(session.id)}
-              className="flex items-center gap-1.5"
+              className="flex min-w-0 flex-1 items-center gap-1.5"
+              title={`${session.label} · ${session.server.username}@${session.server.host}:${session.server.port}`}
             >
               <span
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
                   session.connected ? "bg-emerald-500" : "bg-red-500",
                 )}
               />
-              {session.server.name}
+              <span className="truncate">{session.label}</span>
             </button>
             <button
               type="button"
-              onClick={() => void handleClose(session)}
+              onClick={() => setPendingClose(session)}
               title="关闭"
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+              className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}
@@ -217,6 +232,35 @@ export function RemotePage() {
           registerWriter={registerWriter}
         />
       )}
+
+      {/* 关闭确认 */}
+      <Dialog open={pendingClose !== null} onOpenChange={(open) => !open && setPendingClose(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>关闭这个会话？</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            将断开与 <strong className="text-foreground">{pendingClose?.label}</strong> 的连接，
+            终端历史会一并丢失。
+          </p>
+          <DialogFooter>
+            <Button size="sm" variant="ghost" onClick={() => setPendingClose(null)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                const target = pendingClose;
+                setPendingClose(null);
+                if (target) void handleClose(target);
+              }}
+            >
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/*
         非活动会话的终端保持挂载（用 hidden 包裹），

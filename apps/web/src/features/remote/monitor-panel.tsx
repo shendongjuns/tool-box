@@ -13,7 +13,7 @@ import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CpuChart, DiskBars, GpuChart, MemoryChart, NetworkChart } from "./charts";
+import { CpuChart, DiskBars, GpuCharts, MemoryChart, NetworkChart } from "./charts";
 import { formatBytes } from "./format";
 
 /** 使用率对应的文字色。 */
@@ -166,30 +166,19 @@ export function MonitorPanel({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 p-3 pt-1">
-            <GpuChart data={history} />
-            {metrics.gpus.map((gpu) => (
-              <div key={gpu.index} className="space-y-1 border-t border-border/40 pt-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="truncate font-medium">{gpu.name}</span>
-                  <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                    {gpu.memUsedMiB}/{gpu.memTotalMiB} MiB · {gpu.powerWatts.toFixed(0)}W
+            <GpuCharts data={history} />
+            <div className="space-y-0.5 border-t border-border/40 pt-1.5 text-[10px] text-muted-foreground">
+              {metrics.gpus.map((gpu) => (
+                <div key={gpu.index} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    #{gpu.index} {gpu.name}
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {gpu.memUsedMiB}/{gpu.memTotalMiB} MiB
                   </span>
                 </div>
-                <div className="h-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      gpu.utilPercent >= 90
-                        ? "bg-red-500"
-                        : gpu.utilPercent >= 70
-                          ? "bg-orange-500"
-                          : "bg-[var(--chart-1)]",
-                    )}
-                    style={{ width: `${Math.min(100, gpu.utilPercent)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}

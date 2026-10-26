@@ -19,8 +19,25 @@ export interface RemoteSession {
   server: Server;
   /** Rust 侧连接 id */
   sshSessionId: string;
+  /** 标签显示名，同一服务器多开时自动加序号 */
+  label: string;
   tab: "terminal" | "files" | "monitor";
   connected: boolean;
+}
+
+/**
+ * 生成不重名的标签名。
+ *
+ * 规则：第一次打开用服务器名；重复打开依次变成
+ * `名称（1）`、`名称（2）`…，直到找到未占用的名字。
+ */
+export function nextLabel(base: string, existing: readonly string[]): string {
+  const name = base.trim() || "未命名";
+  if (!existing.includes(name)) return name;
+
+  let index = 1;
+  while (existing.includes(`${name}（${index}）`)) index += 1;
+  return `${name}（${index}）`;
 }
 
 interface SessionState {

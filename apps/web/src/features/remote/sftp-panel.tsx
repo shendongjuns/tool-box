@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useTransfers } from "./transfer-store";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -75,17 +76,6 @@ function modeToRwx(mode: string): string {
   return `${triple(6)}${triple(3)}${triple(0)}`;
 }
 
-/** 传输任务。 */
-interface TransferTask {
-  id: string;
-  name: string;
-  direction: "download" | "upload";
-  transferred: number;
-  total: number;
-  percent: number;
-  status: "running" | "done" | "failed";
-  error?: string;
-}
 
 /** SFTP 文件浏览器。 */
 export function SftpPanel({ sessionId }: { sessionId: string }) {
@@ -100,7 +90,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [renaming, setRenaming] = React.useState<{ path: string; name: string } | null>(null);
   const [chmodTarget, setChmodTarget] = React.useState<SftpEntry | null>(null);
   const [chmodValue, setChmodValue] = React.useState("644");
-  const [transfers, setTransfers] = React.useState<TransferTask[]>([]);
+  const { tasks: transfers, add, patch, remove, clearFinished } = useTransfers();
   const [showTransfers, setShowTransfers] = React.useState(false);
 
   // 首次进入取远端 home 目录
@@ -124,18 +114,12 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
 
     void (async () => {
       const unsubscribe = await subscribeTransferProgress((payload) => {
-        setTransfers((prev) =>
-          prev.map((task) =>
-            task.id === payload.taskId
-              ? {
-                  ...task,
-                  transferred: payload.transferred,
-                  total: payload.total || task.total,
-                  percent: payload.percent,
-                }
-              : task,
-          ),
-        );
+        const current = useTransfers.getState().tasks.find((item) => item.id === payload.taskId);
+        patch(payload.taskId, {
+          transferred: payload.transferred,
+          total: payload.total || current?.total || 0,
+          percent: payload.percent,
+        });
       });
       if (cancelled) unsubscribe();
       else off = unsubscribe;
@@ -145,7 +129,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
       cancelled = true;
       off?.();
     };
-  }, []);
+  }, [patch]);
 
   const load = React.useCallback(
     async (target: string) => {
@@ -245,96 +229,73 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   }
 
   /** 下载：先选保存路径，再由 Rust 直连传输。 */
-  async function handleDownload(entry: SftpEntry) {
+  const handleDownload = React.useCallback(async (entry: SftpEntry) => {
     const localPath = await pickSavePath(entry.name);
     if (!localPath) return;
 
-    const taskId = `dl-${Date.now().toString(36)}`;
-    setTransfers((prev) => [
-      ...prev,
-      {
-        id: taskId,
-        name: entry.name,
-        direction: "download",
-        transferred: 0,
-        total: entry.size,
-        percent: 0,
-        status: "running",
-      },
-    ]);
-    setShowTransfers(true);
+    const now = Date.now();
+    const taskId = `dl-${now.toString(36)}`;
+    add({
+      id: taskId,
+      name: entry.name,
+      direction: "download",
+      remoteDir: path,
+      localPath,
+      transferred: 0,
+      total: entry.size,
+      percent: 0,
+      status: "running",
+      createdAt: now,
+    });
+    // 不自动弹窗：用户需要时自己打开传输列表
+    toast.info(`开始下载 ${entry.name}`, { description: `保存到 ${localPath}` });
 
     try {
       await sftpDownload(sessionId, entry.path, localPath, taskId);
-      setTransfers((prev) =>
-        prev.map((task) =>
-          task.id === taskId ? { ...task, status: "done", percent: 100 } : task,
-        ),
-      );
-      toast.success(`已下载 ${entry.name}`);
+      patch(taskId, { status: "done", percent: 100 });
+      toast.success(`已下载 ${entry.name}`, { description: `保存到 ${localPath}` });
     } catch (err) {
-      setTransfers((prev) =>
-        prev.map((task) =>
-          task.id === taskId
-            ? {
-                ...task,
-                status: "failed",
-                error: err instanceof Error ? err.message : "下载失败",
-              }
-            : task,
-        ),
-      );
-      toast.error(err instanceof Error ? err.message : "下载失败");
+      const message = err instanceof Error ? err.message : "下载失败";
+      patch(taskId, { status: "failed", error: message });
+      toast.error(message);
     }
-  }
+  }, [add, patch, path, sessionId]);
 
   /** 上传：先选本地文件，再由 Rust 直连传输。 */
-  async function handleUpload() {
+  const handleUpload = React.useCallback(async () => {
     const localPath = await pickOpenPath();
     if (!localPath) return;
 
     const name = localPath.split(/[/\\]/).pop() ?? "file";
     const remotePath = `${path.replace(/\/$/, "")}/${name}`;
-    const taskId = `ul-${Date.now().toString(36)}`;
+    const now = Date.now();
+    const taskId = `ul-${now.toString(36)}`;
 
-    setTransfers((prev) => [
-      ...prev,
-      {
-        id: taskId,
-        name,
-        direction: "upload",
-        transferred: 0,
-        total: 0,
-        percent: 0,
-        status: "running",
-      },
-    ]);
-    setShowTransfers(true);
+    add({
+      id: taskId,
+      name,
+      direction: "upload",
+      remoteDir: path,
+      localPath,
+      transferred: 0,
+      total: 0,
+      percent: 0,
+      status: "running",
+      createdAt: now,
+    });
+    toast.info(`开始上传 ${name}`, { description: `目标 ${path}` });
 
     try {
       await sftpUpload(sessionId, localPath, remotePath, taskId);
-      setTransfers((prev) =>
-        prev.map((task) =>
-          task.id === taskId ? { ...task, status: "done", percent: 100 } : task,
-        ),
-      );
-      toast.success(`已上传 ${name}`);
+      patch(taskId, { status: "done", percent: 100 });
+      toast.success(`已上传 ${name}`, { description: `目标 ${path}` });
       await load(path);
     } catch (err) {
-      setTransfers((prev) =>
-        prev.map((task) =>
-          task.id === taskId
-            ? {
-                ...task,
-                status: "failed",
-                error: err instanceof Error ? err.message : "上传失败",
-              }
-            : task,
-        ),
-      );
-      toast.error(err instanceof Error ? err.message : "上传失败");
+      const message = err instanceof Error ? err.message : "上传失败";
+      patch(taskId, { status: "failed", error: message });
+      toast.error(message);
     }
-  }
+  }, [add, patch, path, sessionId, load]);
 
   const runningCount = transfers.filter((task) => task.status === "running").length;
 
@@ -619,9 +580,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                     </span>
                     <button
                       type="button"
-                      onClick={() =>
-                        setTransfers((prev) => prev.filter((item) => item.id !== task.id))
-                      }
+                      onClick={() => remove(task.id)}
                       className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                     >
                       <X className="h-3 w-3" />
@@ -640,6 +599,15 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                       style={{ width: `${task.percent}%` }}
                     />
                   </div>
+                  {/* 传输位置：下载看保存路径，上传看目标目录 */}
+                  <p
+                    className="truncate font-mono text-[10px] text-muted-foreground/70"
+                    title={task.direction === "download" ? task.localPath : task.remoteDir}
+                  >
+                    {task.direction === "download"
+                      ? `→ ${task.localPath ?? "—"}`
+                      : `→ ${task.remoteDir}/${task.name}`}
+                  </p>
                   {task.error ? (
                     <p className="text-[10px] text-destructive">{task.error}</p>
                   ) : null}
@@ -649,7 +617,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
           )}
 
           <DialogFooter>
-            <Button size="sm" variant="ghost" onClick={() => setTransfers([])}>
+            <Button size="sm" variant="ghost" onClick={() => clearFinished()}>
               清空已完成
             </Button>
             <Button size="sm" onClick={() => setShowTransfers(false)}>

@@ -291,8 +291,46 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   );
 }
 
-/** GPU 使用率趋势（多卡各一条线）。 */
-export function GpuChart({ data }: { data: MonitorMetrics[] }) {
+/** GPU 四个指标分别成图。 */
+export type GpuMetric = "util" | "memory" | "temp" | "power";
+
+const GPU_METRIC_META: Record<
+  GpuMetric,
+  { label: string; unit: string; max?: number; color: string }
+> = {
+  util: { label: "使用率", unit: "%", max: 100, color: "var(--chart-1)" },
+  memory: { label: "显存", unit: "%", max: 100, color: "var(--chart-2)" },
+  temp: { label: "温度", unit: "°C", color: "var(--chart-4)" },
+  power: { label: "功耗", unit: "W", color: "var(--chart-5)" },
+};
+
+function gpuValue(
+  point: MonitorMetrics,
+  gpuIndex: number,
+  metric: GpuMetric,
+): number {
+  const gpu = point.gpus[gpuIndex];
+  if (!gpu) return 0;
+  switch (metric) {
+    case "util":
+      return gpu.utilPercent;
+    case "memory":
+      return gpu.memTotalMiB > 0 ? (gpu.memUsedMiB / gpu.memTotalMiB) * 100 : 0;
+    case "temp":
+      return gpu.tempC;
+    case "power":
+      return gpu.powerWatts;
+  }
+}
+
+/** 单个 GPU 指标的趋势图（多卡各一条线）。 */
+export function GpuChart({
+  data,
+  metric,
+}: {
+  data: MonitorMetrics[];
+  metric: GpuMetric;
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
 
@@ -308,7 +346,8 @@ export function GpuChart({ data }: { data: MonitorMetrics[] }) {
     return () => observer.disconnect();
   }, []);
 
-  const height = 96;
+  const meta = GPU_METRIC_META[metric];
+  const height = 72;
   const innerWidth = Math.max(0, width - PAD.left - PAD.right);
   const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
 
@@ -325,19 +364,22 @@ export function GpuChart({ data }: { data: MonitorMetrics[] }) {
     });
   }, [data, innerWidth]);
 
-  const yScale = React.useMemo(
-    () => scaleLinear({ domain: [0, 100], range: [innerHeight, 0] }),
-    [innerHeight],
-  );
+  const yScale = React.useMemo(() => {
+    const peak = Math.max(1, ...data.flatMap((point) =>
+      point.gpus.map((_, index) => gpuValue(point, index, metric)),
+    ));
+    const max = meta.max ?? Math.max(1, peak * 1.15);
+    return scaleLinear({ domain: [0, max], range: [innerHeight, 0] });
+  }, [data, metric, meta.max, innerHeight]);
 
   if (!data.length || gpuCount === 0) {
     return (
       <div
         ref={containerRef}
-        className="grid place-items-center text-xs text-muted-foreground"
+        className="grid place-items-center text-[10px] text-muted-foreground"
         style={{ height }}
       >
-        未检测到 GPU
+        无数据
       </div>
     );
   }
@@ -347,22 +389,27 @@ export function GpuChart({ data }: { data: MonitorMetrics[] }) {
 
   return (
     <div ref={containerRef}>
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px]">
-        {latest.gpus.map((gpu, index) => (
-          <span key={gpu.index} style={{ color: colors[index % colors.length] }}>
-            #{gpu.index} {gpu.utilPercent.toFixed(0)}% · {gpu.tempC.toFixed(0)}°C
-          </span>
-        ))}
+      <div className="mb-0.5 flex items-baseline justify-between">
+        <span className="text-[10px] font-medium text-muted-foreground">{meta.label}</span>
+        <span className="flex gap-2 text-[9px]">
+          {latest.gpus.map((gpu, index) => (
+            <span key={gpu.index} style={{ color: colors[index % colors.length] }}>
+              {gpuCount > 1 ? `#${gpu.index} ` : ""}
+              {gpuValue(latest, index, metric).toFixed(0)}
+              {meta.unit}
+            </span>
+          ))}
+        </span>
       </div>
 
       {innerWidth > 0 ? (
-        <svg width={width} height={height} role="img" aria-label="GPU 使用率趋势">
+        <svg width={width} height={height} role="img" aria-label={`GPU ${meta.label}趋势`}>
           <Group left={PAD.left} top={PAD.top}>
             <GridRows
               scale={yScale}
               width={innerWidth}
               height={innerHeight}
-              numTicks={3}
+              numTicks={2}
               stroke="currentColor"
               className="text-border"
               strokeOpacity={0.4}
@@ -373,21 +420,21 @@ export function GpuChart({ data }: { data: MonitorMetrics[] }) {
                 key={gpuIndex}
                 data={data.filter((point) => point.gpus[gpuIndex])}
                 x={(point) => xScale(new Date(point.timestamp)) ?? 0}
-                y={(point) => yScale(point.gpus[gpuIndex]?.utilPercent ?? 0) ?? 0}
+                y={(point) => yScale(gpuValue(point, gpuIndex, metric)) ?? 0}
                 curve={curveMonotoneX}
                 stroke={colors[gpuIndex % colors.length]}
                 strokeWidth={1.5}
               />
             ))}
-            {[0, 50, 100].map((tick) => (
+            {yScale.ticks(2).map((tick) => (
               <text
                 key={tick}
-                x={-6}
+                x={-5}
                 y={(yScale(tick) ?? 0) + 3}
                 textAnchor="end"
-                className="fill-muted-foreground text-[9px]"
+                className="fill-muted-foreground text-[8px]"
               >
-                {tick}%
+                {tick.toFixed(0)}
               </text>
             ))}
           </Group>
@@ -397,33 +444,78 @@ export function GpuChart({ data }: { data: MonitorMetrics[] }) {
   );
 }
 
-/** 磁盘使用率条形组。 */
+/** GPU 四联图。 */
+export function GpuCharts({ data }: { data: MonitorMetrics[] }) {
+  const metrics: GpuMetric[] = ["util", "memory", "temp", "power"];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {metrics.map((metric) => (
+        <GpuChart key={metric} data={data} metric={metric} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 磁盘使用：容量条 + 明细。
+ *
+ * 参考 Grafana / node_exporter 仪表盘的做法：
+ * - 主视觉是「已用 / 总量」的比例条，宽度代表容量占比
+ * - 右侧给出百分比，颜色只在接近满盘时才警示
+ * - 挂载点是等宽字体，便于扫描一列路径
+ */
 export function DiskBars({ disks }: { disks: MonitorMetrics["disks"] }) {
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
       {disks.map((disk) => {
         const percent = disk.totalBytes ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
+        const free = Math.max(0, disk.totalBytes - disk.usedBytes);
+        const level =
+          percent >= 90 ? "critical" : percent >= 75 ? "warning" : "normal";
+
         return (
           <div key={disk.mount} className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="truncate font-mono text-muted-foreground">{disk.mount}</span>
-              <span className="shrink-0 tabular-nums">
-                {formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">
+                {disk.mount}
+              </span>
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                {formatBytes(disk.usedBytes)}
+                <span className="opacity-50"> / </span>
+                {formatBytes(disk.totalBytes)}
+              </span>
+              <span
+                className={cn(
+                  "w-10 shrink-0 text-right font-mono text-[11px] tabular-nums",
+                  level === "critical"
+                    ? "text-red-600 dark:text-red-400"
+                    : level === "warning"
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-muted-foreground",
+                )}
+              >
+                {percent.toFixed(0)}%
               </span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+
+            {/* 容量条：整条代表总容量，填充代表已用 */}
+            <div className="h-2 overflow-hidden rounded-sm bg-muted">
               <div
                 className={cn(
-                  "h-full rounded-full transition-all duration-500",
-                  percent >= 90
+                  "h-full transition-all duration-500",
+                  level === "critical"
                     ? "bg-red-500"
-                    : percent >= 75
+                    : level === "warning"
                       ? "bg-orange-500"
                       : "bg-[var(--chart-5)]",
                 )}
                 style={{ width: `${Math.min(100, percent)}%` }}
               />
             </div>
+
+            <p className="text-[10px] text-muted-foreground/70">
+              剩余 {formatBytes(free)}
+            </p>
           </div>
         );
       })}
