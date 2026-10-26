@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { sshTest } from "@/lib/ssh";
 
 const DEFAULT_PORT = 22;
 
@@ -41,6 +42,10 @@ export function ServerFormDialog({
   const [password, setPassword] = React.useState("");
   const [privateKey, setPrivateKey] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [testing, setTesting] = React.useState(false);
+  const [testResult, setTestResult] = React.useState<
+    { ok: true; handshakeMs: number; authMs: number; totalMs: number } | { ok: false; message: string } | null
+  >(null);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -67,6 +72,37 @@ export function ServerFormDialog({
       setError(err instanceof Error ? err.message : "保存失败");
     },
   });
+
+  async function runTest() {
+    setTestResult(null);
+
+    if (!host.trim()) return setTestResult({ ok: false, message: "请先填写主机地址" });
+    if (!username.trim()) return setTestResult({ ok: false, message: "请先填写用户名" });
+    if (!server && authType === "password" && !password) {
+      return setTestResult({ ok: false, message: "请先填写密码" });
+    }
+    if (!server && authType === "key" && !privateKey.trim()) {
+      return setTestResult({ ok: false, message: "请先粘贴私钥内容" });
+    }
+
+    setTesting(true);
+    try {
+      // 编辑时若凭据留空，需要沿用已保存的凭据 —— 由调用方在保存后测试
+      const result = await sshTest({
+        host: host.trim(),
+        port: Number(port) || DEFAULT_PORT,
+        username: username.trim(),
+        authType,
+        password: password || undefined,
+        privateKey: privateKey || undefined,
+      });
+      setTestResult({ ok: true, ...result });
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   function submit() {
     setError(null);
@@ -184,16 +220,41 @@ export function ServerFormDialog({
             </Field>
           )}
 
+          {/* 测试结果 */}
+          {testResult ? (
+            testResult.ok ? (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                连接正常 · 握手 {testResult.handshakeMs}ms · 认证 {testResult.authMs}ms · 总计{" "}
+                {testResult.totalMs}ms
+              </div>
+            ) : (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+                测试失败：{testResult.message}
+              </div>
+            )
+          ) : null}
+
           {error ? <FieldError>{error}</FieldError> : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runTest()}
+            disabled={testing}
+          >
+            {testing ? "测试中…" : "测试连接"}
+          </Button>
+
+          <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={onClose}>
             取消
           </Button>
           <Button size="sm" onClick={submit} disabled={save.isPending}>
             {save.isPending ? "保存中…" : "保存"}
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

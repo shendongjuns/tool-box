@@ -83,6 +83,24 @@ fn save_window_state(window: &tauri::WebviewWindow) {
 /// 是否已通过「直接退出」放行关闭事件。
 static ALLOW_EXIT: AtomicBool = AtomicBool::new(false);
 
+
+/// TCP 连通性探测。
+///
+/// 列表页要对每个服务器显示延迟，完整 SSH 握手太重（几百毫秒），
+/// 这里只做一次 TCP connect 并测量耗时 —— 足够反映网络可达性。
+#[tauri::command]
+async fn tcp_ping(host: String, port: u16, timeout_ms: Option<u64>) -> Result<u64, String> {
+    let timeout = std::time::Duration::from_millis(timeout_ms.unwrap_or(3000));
+    let address = format!("{host}:{port}");
+    let started = std::time::Instant::now();
+
+    match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&address)).await {
+        Ok(Ok(_stream)) => Ok(started.elapsed().as_millis() as u64),
+        Ok(Err(error)) => Err(format!("连接失败：{error}")),
+        Err(_) => Err("连接超时".to_string()),
+    }
+}
+
 #[tauri::command]
 fn local_api_port(state: tauri::State<'_, LocalApiPort>) -> u16 {
     state.0
@@ -282,6 +300,8 @@ pub fn run() {
             quit_app,
             http_request,
             reload_webview,
+            tcp_ping,
+            ssh::ssh_test,
             ssh::ssh_connect,
             ssh::ssh_write,
             ssh::ssh_resize,

@@ -51,6 +51,18 @@ export async function sshConnect(config: ConnectConfig): Promise<void> {
   await invoke("ssh_connect", { config });
 }
 
+/** 测试连接（不建立持久会话），返回各阶段耗时。 */
+export async function sshTest(config: Omit<ConnectConfig, "sessionId" | "cols" | "rows">): Promise<{
+  handshakeMs: number;
+  authMs: number;
+  totalMs: number;
+}> {
+  const invoke = await getInvoke();
+  return invoke<{ handshakeMs: number; authMs: number; totalMs: number }>("ssh_test", {
+    config: { ...config, sessionId: "test", cols: 80, rows: 24 },
+  });
+}
+
 /** 写入终端输入（base64 编码的字节）。 */
 export async function sshWrite(sessionId: string, data: string): Promise<void> {
   const invoke = await getInvoke();
@@ -76,7 +88,30 @@ export async function sshExec(
   timeoutMs = 15_000,
 ): Promise<string> {
   const invoke = await getInvoke();
-  return invoke<string>("ssh_exec", { sessionId, command, timeoutMs });
+  // Rust 侧理论上总是返回 String，但连接中断时可能拿到 undefined
+  const result = await invoke<string | undefined>("ssh_exec", { sessionId, command, timeoutMs });
+  return result ?? "";
+}
+
+/**
+ * 探测服务器 TCP 延迟。
+ *
+ * 用 Rust 的 tcp_ping 做一次 connect，测的是网络往返 ——
+ * 比完整 SSH 握手快得多，适合列表页逐条展示。
+ */
+export async function probeServerLatency(
+  host: string,
+  port: number,
+  timeoutMs = 3000,
+): Promise<{ kind: "ok" | "timeout" | "error"; ms: number; message?: string }> {
+  try {
+    const invoke = await getInvoke();
+    const ms = await invoke<number>("tcp_ping", { host, port, timeoutMs });
+    return { kind: "ok", ms };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { kind: message.includes("超时") ? "timeout" : "error", ms: 0, message };
+  }
 }
 
 /** 订阅终端输出与关闭事件。返回取消订阅函数。 */

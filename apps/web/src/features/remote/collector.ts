@@ -71,7 +71,7 @@ export class MonitorCollector {
   /** 采集服务器基本信息。 */
   async fetchServerInfo(sessionId: string): Promise<ServerInfo | null> {
     try {
-      const raw = await sshExec(sessionId, INFO_COMMAND, 10_000);
+      const raw = (await sshExec(sessionId, INFO_COMMAND, 10_000)) ?? "";
       const map = new Map<string, string>();
       for (const line of raw.split("\n")) {
         const eq = line.indexOf("=");
@@ -104,7 +104,12 @@ export class MonitorCollector {
   private async collectOnce(sessionId: string): Promise<MonitorMetrics | null> {
     let raw: string;
     try {
-      raw = await sshExec(sessionId, METRICS_COMMAND, 15_000);
+      // 防御：IPC 在连接断开时可能返回 undefined，直接 split 会抛错
+      raw = (await sshExec(sessionId, METRICS_COMMAND, 15_000)) ?? "";
+      if (!raw.trim()) {
+        this.lastError = "采集命令没有返回数据";
+        return null;
+      }
       this.lastError = null;
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -178,6 +183,7 @@ export class MonitorCollector {
 /** 按 `==XXX==` 标记切分命令输出。 */
 function splitSections(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
+  if (typeof raw !== "string" || !raw) return out;
   let current = "stat";
   let buffer: string[] = [];
 

@@ -3,6 +3,7 @@ import {
   Activity,
   FolderOpen,
   Plus,
+  RefreshCw,
   TerminalSquare,
   Unplug,
   X,
@@ -25,11 +26,17 @@ import { ServerList } from "./server-list";
 import { SftpPanel } from "./sftp-panel";
 import { MonitorPanel } from "./monitor-panel";
 import { MonitorCollector } from "./collector";
-import { dropMonitor, readMonitor, writeMonitor } from "./monitor-store";
+import {
+  dropMonitor,
+  readMonitor,
+  readRefreshInterval,
+  REFRESH_OPTIONS,
+  saveRefreshInterval,
+  writeMonitor,
+  type RefreshInterval,
+} from "./monitor-store";
 import { TerminalView, type TerminalHandle } from "./terminal-view";
 import { nextLabel, useRemoteSessions, type RemoteSession } from "./session-store";
-
-const POLL_INTERVAL = 2000;
 
 /** 远程管理主页面。 */
 export function RemotePage() {
@@ -383,7 +390,7 @@ function TerminalHost({
   );
 }
 
-/** 监控标签页：定时采集，保留历史用于趋势图。 */
+/** 监控标签页：按用户选择的间隔采集，支持暂停与手动刷新。 */
 function MonitorTab({ sessionId }: { sessionId: string }) {
   const cached = readMonitor(sessionId);
 
@@ -392,63 +399,141 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
   const [error, setError] = React.useState<string | null>(cached?.error ?? null);
   const [loading, setLoading] = React.useState(!cached);
   const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
+  const [interval, setIntervalValue] = React.useState<RefreshInterval>(() =>
+    readRefreshInterval(),
+  );
+  /** 手动刷新计数：自增即触发一次采集 */
+  const [refreshTick, setRefreshTick] = React.useState(0);
 
-  // 每次数据变化都写回缓存，保证切走再切回（换会话）时不丢
+  // 数据变化写回缓存，切换会话再切回来不丢
   React.useEffect(() => {
     writeMonitor(sessionId, { metrics, info, history, error });
   }, [sessionId, metrics, info, history, error]);
 
-  React.useEffect(() => {
-    // 有缓存（刚从一个别的会话切回来）就不重新拉取
-    const resumed = Boolean(readMonitor(sessionId)?.metrics);
+  const collectorRef = React.useRef<MonitorCollector | null>(null);
 
-    const collector = new MonitorCollector();
+  React.useEffect(() => {
+    if (!collectorRef.current) collectorRef.current = new MonitorCollector();
+    const collector = collectorRef.current;
+
     let stopped = false;
     let timer: number | undefined;
 
     void (async () => {
-      if (resumed) {
-        // 已经渲染过缓存，直接标记加载完成，不发起新的采集
-        await Promise.resolve();
-        setLoading(false);
-        return;
-      }
+      // 有缓存且非手动刷新时，直接展示缓存，不再重新采集
+      const resumed = Boolean(readMonitor(sessionId)?.metrics) && refreshTick === 0;
 
-      setInfo(await collector.fetchServerInfo(sessionId));
-
-      const tick = async () => {
-        if (stopped) return;
+      if (!resumed) {
         const next = await collector.collect(sessionId);
         if (stopped) return;
-
         if (next) {
           setMetrics(next);
           setError(null);
-          // 保留最近 60 个采样点（2s × 60 = 2 分钟窗口）
           setHistory((prev) => [...prev.slice(-59), next]);
         } else if (collector.lastError) {
           setError(collector.lastError);
         }
         setLoading(false);
-        timer = window.setTimeout(() => void tick(), POLL_INTERVAL);
-      };
+      } else {
+        await Promise.resolve();
+        setLoading(false);
+      }
 
-      await tick();
+      if (!resumed && !info) {
+        setInfo(await collector.fetchServerInfo(sessionId));
+      }
+
+      // 暂停（0）时不排下一轮
+      if (interval === 0) return;
+
+      const schedule = () => {
+        if (stopped) return;
+        timer = window.setTimeout(() => {
+          void (async () => {
+            const next = await collector.collect(sessionId);
+            if (stopped) return;
+            if (next) {
+              setMetrics(next);
+              setError(null);
+              setHistory((prev) => [...prev.slice(-59), next]);
+            } else if (collector.lastError) {
+              setError(collector.lastError);
+            }
+            schedule();
+          })();
+        }, interval);
+      };
+      schedule();
     })();
 
     return () => {
       stopped = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [sessionId]);
+  }, [sessionId, interval, refreshTick, info]);
+
+  function changeInterval(value: RefreshInterval) {
+    setIntervalValue(value);
+    saveRefreshInterval(value);
+    // 从暂停切到自动时，立即补一次数据
+    if (value !== 0) setRefreshTick((n) => n + 1);
+  }
 
   return (
-    <MonitorPanel
-      metrics={metrics}
-      info={info}
-      loading={loading}
-      error={error}
-      history={history}
-    />
+    <div className="space-y-3">
+      {/* 刷新控制条 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+          {REFRESH_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => changeInterval(option.value)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] transition-colors",
+                interval === option.value
+                  ? "bg-card font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => setRefreshTick((n) => n + 1)}
+          disabled={loading}
+        >
+          <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+          手动刷新
+        </Button>
+
+        {interval === 0 ? (
+          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+            已暂停
+          </span>
+        ) : (
+          <span className="text-[10px] text-muted-foreground">每 {interval / 1000}s 刷新</span>
+        )}
+
+        {metrics ? (
+          <span className="ml-auto text-[10px] text-muted-foreground">
+            最近更新 {new Date(metrics.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
+          </span>
+        ) : null}
+      </div>
+
+      <MonitorPanel
+        metrics={metrics}
+        info={info}
+        loading={loading}
+        error={error}
+        history={history}
+      />
+    </div>
   );
 }

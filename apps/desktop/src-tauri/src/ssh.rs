@@ -277,6 +277,83 @@ fn emit_data(app: &tauri::AppHandle, session_id: &str, pending: &mut Vec<u8>) {
 
 // ---------------- Tauri commands ----------------
 
+/// 测试连接（不建立持久会话）。
+///
+/// 用于设置页「测试」按钮：验证 TCP 可达、SSH 握手成功、凭据有效。
+/// 返回各阶段耗时，方便定位是网络还是认证的问题。
+#[tauri::command]
+pub async fn ssh_test(config: ConnectConfig) -> Result<TestResult, String> {
+    let started = std::time::Instant::now();
+
+    let ssh_config = Arc::new(client::Config {
+        inactivity_timeout: Some(Duration::from_secs(8)),
+        ..Default::default()
+    });
+
+    let mut handle = client::connect(
+        ssh_config,
+        (config.host.as_str(), config.port),
+        ClientHandler,
+    )
+    .await
+    .map_err(|e| format!("无法连接：{e}"))?;
+
+    let handshake_ms = started.elapsed().as_millis() as u64;
+
+    let auth_started = std::time::Instant::now();
+    let ok = match config.auth_type.as_str() {
+        "password" => handle
+            .authenticate_password(&config.username, config.password.as_deref().unwrap_or(""))
+            .await
+            .map_err(|e| format!("认证请求失败：{e}"))?
+            .success(),
+        "key" => {
+            let pem = config
+                .private_key
+                .as_deref()
+                .ok_or_else(|| "缺少私钥内容".to_string())?;
+            let key = russh::keys::decode_secret_key(pem, config.passphrase.as_deref())
+                .map_err(|e| format!("私钥解析失败：{e}"))?;
+            let hash = match key.algorithm() {
+                russh::keys::ssh_key::Algorithm::Rsa { .. } => {
+                    Some(russh::keys::HashAlg::Sha256)
+                }
+                _ => None,
+            };
+            handle
+                .authenticate_publickey(
+                    &config.username,
+                    PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+                )
+                .await
+                .map_err(|e| format!("认证请求失败：{e}"))?
+                .success()
+        }
+        other => return Err(format!("不支持的认证方式：{other}")),
+    };
+
+    if !ok {
+        return Err("认证失败：用户名或凭据不正确".to_string());
+    }
+
+    Ok(TestResult {
+        handshake_ms,
+        auth_ms: auth_started.elapsed().as_millis() as u64,
+        total_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResult {
+    /// TCP 连接 + 密钥交换耗时
+    pub handshake_ms: u64,
+    /// 认证耗时
+    pub auth_ms: u64,
+    /// 总耗时
+    pub total_ms: u64,
+}
+
 #[tauri::command]
 pub async fn ssh_connect(
     state: tauri::State<'_, SshState>,

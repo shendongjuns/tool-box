@@ -56,17 +56,15 @@ function formatSize(bytes: number): string {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
-/** 时间精确到秒。 */
+/** 时间精确到秒，含年份。 */
 function formatTime(seconds: number): string {
   if (!seconds) return "—";
-  return new Date(seconds * 1000).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  const date = new Date(seconds * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
 }
 
 /** 权限位转 rwx 字符串。 */
@@ -416,7 +414,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
           <span className="min-w-0 flex-1">名称</span>
           <span className="w-28 shrink-0">权限</span>
           <span className="w-16 shrink-0 text-right">大小</span>
-          <span className="w-32 shrink-0 text-right">修改时间</span>
+          <span className="w-40 shrink-0 text-right">修改时间</span>
           <span className="w-24 shrink-0" />
         </div>
 
@@ -514,7 +512,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                 <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
                   {entry.isDir ? "—" : formatSize(entry.size)}
                 </span>
-                <span className="w-32 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+                <span className="w-40 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
                   {formatTime(entry.modified)}
                 </span>
 

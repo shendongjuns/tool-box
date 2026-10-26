@@ -11,6 +11,34 @@ import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
  * 因此缓存不放在 React state，而是模块级 Map：组件卸载后数据还在，
  * 由调用方显式 `dropMonitor()` 清理。
  */
+/** 刷新间隔（毫秒）；0 表示暂停。 */
+export type RefreshInterval = 0 | 1000 | 3000 | 10000;
+
+export const REFRESH_OPTIONS: { value: RefreshInterval; label: string }[] = [
+  { value: 0, label: "暂停" },
+  { value: 1000, label: "1s" },
+  { value: 3000, label: "3s" },
+  { value: 10000, label: "10s" },
+];
+
+const STORAGE_KEY = "toolbox.monitor.interval";
+const DEFAULT_INTERVAL: RefreshInterval = 3000;
+
+/** 读取上次选择的刷新间隔。默认 3s（原来自动 2s 刷太快）。 */
+export function readRefreshInterval(): RefreshInterval {
+  if (typeof window === "undefined") return DEFAULT_INTERVAL;
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const parsed = Number(raw);
+  return parsed === 0 || parsed === 1000 || parsed === 3000 || parsed === 10000
+    ? (parsed as RefreshInterval)
+    : DEFAULT_INTERVAL;
+}
+
+export function saveRefreshInterval(value: RefreshInterval): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, String(value));
+}
+
 interface MonitorSnapshot {
   metrics: MonitorMetrics | null;
   info: ServerInfo | null;

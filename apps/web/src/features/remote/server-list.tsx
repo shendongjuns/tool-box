@@ -6,6 +6,7 @@ import type { Server } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
 import { relativeTime } from "@/lib/utils";
+import { probeServerLatency } from "@/lib/ssh";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +41,27 @@ export function ServerList({
       toast.error(error instanceof Error ? error.message : "删除失败"),
   });
 
-  const items = servers.data?.items ?? [];
+  const items = React.useMemo(() => servers.data?.items ?? [], [servers.data]);
+
+  // 延迟探测：进入列表后逐条测一次，可点击重测
+  const [latency, setLatency] = React.useState<
+    Record<string, { kind: "ok" | "timeout" | "error"; ms: number; loading?: boolean }>
+  >({});
+
+  const measure = React.useCallback(async (server: Server) => {
+    setLatency((prev) => ({ ...prev, [server.id]: { kind: "ok", ms: 0, loading: true } }));
+    const result = await probeServerLatency(server.host, server.port);
+    setLatency((prev) => ({ ...prev, [server.id]: result }));
+  }, []);
+
+  React.useEffect(() => {
+    if (items.length === 0) return;
+    // 直接进列表时自动探测一次（不阻塞渲染）
+    const timer = window.setTimeout(() => {
+      void Promise.all(items.map((server) => measure(server)));
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [items, measure]);
 
   return (
     <div className="space-y-2">
@@ -96,6 +117,11 @@ export function ServerList({
                 </span>
               </button>
 
+              <LatencyPill
+                state={latency[server.id]}
+                onRetry={() => void measure(server)}
+              />
+
               <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                 <Button size="sm" variant="ghost" onClick={() => setEditing(server)}>
                   编辑
@@ -129,5 +155,48 @@ export function ServerList({
         }}
       />
     </div>
+  );
+}
+/** 延迟徽标：绿 = 正常，黄 = 较慢，红 = 不可达。 */
+function LatencyPill({
+  state,
+  onRetry,
+}: {
+  state?: { kind: "ok" | "timeout" | "error"; ms: number; loading?: boolean };
+  onRetry: () => void;
+}) {
+  if (!state) {
+    return <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground/40">—</span>;
+  }
+
+  if (state.loading) {
+    return (
+      <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground/60">
+        …
+      </span>
+    );
+  }
+
+  const tone =
+    state.kind === "timeout" || state.kind === "error"
+      ? "text-red-600 dark:text-red-400 border-red-500/30 bg-red-500/10"
+      : state.ms < 80
+        ? "text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+        : state.ms < 200
+          ? "text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10"
+          : "text-orange-600 dark:text-orange-400 border-orange-500/30 bg-orange-500/10";
+
+  const label =
+    state.kind === "timeout" ? "超时" : state.kind === "error" ? "不可达" : `${state.ms}ms`;
+
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      title="点击重新测量"
+      className={`w-14 shrink-0 rounded-full border px-1.5 py-0.5 text-center text-[10px] font-medium tabular-nums transition-colors hover:brightness-110 ${tone}`}
+    >
+      {label}
+    </button>
   );
 }
