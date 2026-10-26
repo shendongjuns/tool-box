@@ -184,6 +184,26 @@ pub async fn sftp_mkdir(
         .map_err(|e| format!("创建目录失败：{e}"))
 }
 
+/// 修改权限。
+#[tauri::command]
+pub async fn sftp_chmod(
+    state: State<'_, SshState>,
+    session_id: String,
+    path: String,
+    mode: u32,
+) -> Result<(), String> {
+    let sftp = open_sftp(&state, &session_id).await?;
+    sftp.set_metadata(
+        &path,
+        russh_sftp::protocol::FileAttributes {
+            permissions: Some(mode & 0o7777),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| format!("修改权限失败：{e}"))
+}
+
 /// 重命名 / 移动。
 #[tauri::command]
 pub async fn sftp_rename(

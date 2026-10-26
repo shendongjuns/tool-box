@@ -144,12 +144,15 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.group)}
-                  className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+                  className="mb-0.5 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-foreground"
                 >
                   <ChevronRight
-                    className={cn("h-3 w-3 transition-transform", groupOpen && "rotate-90")}
+                    className={cn(
+                      "h-3 w-3 shrink-0 transition-transform duration-150",
+                      groupOpen && "rotate-90",
+                    )}
                   />
-                  {group.label}
+                  <span className="truncate">{group.label}</span>
                 </button>
               ) : null}
 
@@ -163,7 +166,7 @@ export function Sidebar({
                       params={{ toolId: tool.id }}
                       active={pathname === `/tools/${tool.id}`}
                       collapsed={collapsed}
-                      indent={!collapsed && group.group === "encode"}
+                      indent={!collapsed}
                       icon={<Icon className="h-4 w-4" />}
                       label={tool.name}
                       title={tool.description}
@@ -258,12 +261,15 @@ function SidebarLink({
       params={params}
       title={title ?? label}
       className={cn(
-        "flex items-center gap-2.5 rounded-md py-1.5 pr-2 text-sm transition-colors",
-        indent ? "pl-10" : "pl-2",
+        "relative flex items-center gap-2.5 rounded-md py-1.5 pr-2 text-sm transition-colors",
+        indent ? "ml-4 pl-3" : "pl-2",
+        // 缩进项左侧画一条细引导线，让层级一眼可见
+        indent &&
+          "before:absolute before:left-0 before:top-1 before:bottom-1 before:w-px before:bg-sidebar-border before:content-['']",
         active
           ? "bg-sidebar-accent font-medium text-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground",
-        collapsed && "justify-center px-0",
+        collapsed && "ml-0 justify-center px-0 before:hidden",
       )}
     >
       <span className={cn(active && "text-primary")}>{icon}</span>

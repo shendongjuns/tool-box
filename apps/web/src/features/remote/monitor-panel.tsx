@@ -1,61 +1,56 @@
 import * as React from "react";
-import { Activity, Cpu, HardDrive, MemoryStick, Network, Server, Thermometer } from "lucide-react";
+import {
+  Activity,
+  Cpu,
+  HardDrive,
+  MemoryStick,
+  Network,
+  Server,
+  Thermometer,
+} from "lucide-react";
 import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CpuChart, DiskBars, MemoryChart, NetworkChart } from "./charts";
+import { formatBytes } from "./format";
 
-/** 字节格式化。 */
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  const value = bytes / 1024 ** index;
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+/** 使用率对应的文字色。 */
+function toneClass(percent: number): string {
+  if (percent >= 90) return "text-red-600 dark:text-red-400";
+  if (percent >= 75) return "text-orange-600 dark:text-orange-400";
+  if (percent >= 50) return "text-amber-600 dark:text-amber-400";
+  return "text-emerald-600 dark:text-emerald-400";
 }
 
-/** 速率格式化。 */
-function formatRate(bytesPerSec: number): string {
-  return `${formatBytes(bytesPerSec)}/s`;
-}
-
-/** 使用率对应的颜色。 */
-function toneFor(percent: number): string {
-  if (percent >= 90) return "bg-red-500";
-  if (percent >= 75) return "bg-orange-500";
-  if (percent >= 50) return "bg-amber-500";
-  return "bg-emerald-500";
-}
-
-/** 横向进度条。 */
-function Meter({
+/** 顶部指标卡：数值 + 迷你趋势。 */
+function MetricCard({
   label,
-  value,
-  detail,
   icon: Icon,
+  value,
+  sub,
+  children,
 }: {
   label: string;
-  value: number;
-  detail: string;
   icon: React.ComponentType<{ className?: string }>;
+  value: string;
+  sub?: string;
+  children?: React.ReactNode;
 }) {
-  const clamped = Math.min(100, Math.max(0, value));
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          <Icon className="h-3.5 w-3.5" />
-          {label}
-        </span>
-        <span className="font-mono tabular-nums text-foreground">{detail}</span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all duration-500", toneFor(clamped))}
-          style={{ width: `${clamped}%` }}
-        />
-      </div>
-    </div>
+    <Card>
+      <CardContent className="p-3">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </span>
+          <span className="text-lg font-semibold tabular-nums leading-none">{value}</span>
+        </div>
+        {sub ? <p className="mb-1 text-[10px] text-muted-foreground">{sub}</p> : null}
+        {children}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -65,11 +60,13 @@ export function MonitorPanel({
   info,
   loading,
   error,
+  history = [],
 }: {
   metrics: MonitorMetrics | null;
   info: ServerInfo | null;
   loading: boolean;
   error: string | null;
+  history?: MonitorMetrics[];
 }) {
   if (error) {
     return (
@@ -83,23 +80,18 @@ export function MonitorPanel({
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         {[0, 1, 2, 3].map((index) => (
-          <Skeleton key={index} className="h-28 w-full" />
+          <Skeleton key={index} className="h-32 w-full" />
         ))}
       </div>
     );
   }
 
   if (!metrics) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">正在采集第一组数据…</p>
-    );
+    return <p className="py-8 text-center text-sm text-muted-foreground">正在采集第一组数据…</p>;
   }
 
   const memPercent = metrics.memTotalBytes
     ? (metrics.memUsedBytes / metrics.memTotalBytes) * 100
-    : 0;
-  const swapPercent = metrics.swapTotalBytes
-    ? (metrics.swapUsedBytes / metrics.swapTotalBytes) * 100
     : 0;
 
   return (
@@ -107,18 +99,16 @@ export function MonitorPanel({
       {/* 服务器信息 */}
       {info ? (
         <Card>
-          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-1.5 p-3 text-xs">
+          <CardContent className="flex flex-wrap items-center gap-x-5 gap-y-1 p-2.5 text-[11px]">
             <span className="flex items-center gap-1.5 font-medium">
               <Server className="h-3.5 w-3.5 text-primary" />
               {info.hostname || "未知主机"}
             </span>
             {info.ip ? <span className="text-muted-foreground">{info.ip}</span> : null}
             {info.os ? <span className="text-muted-foreground">{info.os}</span> : null}
-            {info.kernel ? (
-              <span className="text-muted-foreground">kernel {info.kernel}</span>
-            ) : null}
+            {info.kernel ? <span className="text-muted-foreground">kernel {info.kernel}</span> : null}
             {info.cpuModel ? (
-              <span className="max-w-[22rem] truncate text-muted-foreground">
+              <span className="max-w-[20rem] truncate text-muted-foreground">
                 {info.cpuModel} · {info.cpuCores} 核
               </span>
             ) : null}
@@ -126,72 +116,76 @@ export function MonitorPanel({
         </Card>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {/* CPU / 内存 */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">资源</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Meter
-              label="CPU"
-              icon={Cpu}
-              value={metrics.cpuPercent}
-              detail={`${metrics.cpuPercent.toFixed(1)}% · ${metrics.cpuCores} 核`}
-            />
-            <Meter
-              label="内存"
-              icon={MemoryStick}
-              value={memPercent}
-              detail={`${formatBytes(metrics.memUsedBytes)} / ${formatBytes(metrics.memTotalBytes)}`}
-            />
-            {metrics.swapTotalBytes > 0 ? (
-              <Meter
-                label="Swap"
-                icon={MemoryStick}
-                value={swapPercent}
-                detail={`${formatBytes(metrics.swapUsedBytes)} / ${formatBytes(metrics.swapTotalBytes)}`}
-              />
-            ) : null}
-          </CardContent>
-        </Card>
+      {/* 核心指标 + 趋势图 */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <MetricCard
+          label="CPU"
+          icon={Cpu}
+          value={`${metrics.cpuPercent.toFixed(1)}%`}
+          sub={`${metrics.cpuCores} 核 · 负载 ${metrics.load1.toFixed(2)}`}
+        >
+          <CpuChart data={history} />
+        </MetricCard>
 
-        {/* 负载 / 网络 */}
+        <MetricCard
+          label="内存"
+          icon={MemoryStick}
+          value={`${memPercent.toFixed(0)}%`}
+          sub={`${formatBytes(metrics.memUsedBytes)} / ${formatBytes(metrics.memTotalBytes)}`}
+        >
+          <MemoryChart data={history} />
+        </MetricCard>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <MetricCard
+          label="网络"
+          icon={Network}
+          value={`${(metrics.netRxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
+          sub={`上行 ${(metrics.netTxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
+        >
+          <NetworkChart data={history} />
+        </MetricCard>
+
+        {/* 负载与 Swap */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              负载与网络
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <Activity className="h-3.5 w-3.5" />
+              负载与交换
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+          <CardContent className="space-y-2 p-3 pt-1 text-xs">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Activity className="h-3.5 w-3.5" />
-                负载
-              </span>
+              <span className="text-muted-foreground">1 / 5 / 15 分钟</span>
               <span className="font-mono tabular-nums">
                 {metrics.load1.toFixed(2)} / {metrics.load5.toFixed(2)} /{" "}
                 {metrics.load15.toFixed(2)}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Network className="h-3.5 w-3.5" />
-                下行
-              </span>
-              <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                {formatRate(metrics.netRxBytesPerSec)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Network className="h-3.5 w-3.5" />
-                上行
-              </span>
-              <span className="font-mono tabular-nums text-sky-600 dark:text-sky-400">
-                {formatRate(metrics.netTxBytesPerSec)}
-              </span>
-            </div>
+            {metrics.swapTotalBytes > 0 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Swap</span>
+                  <span className="font-mono tabular-nums">
+                    {formatBytes(metrics.swapUsedBytes)} / {formatBytes(metrics.swapTotalBytes)}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-[var(--chart-5)] transition-all duration-500"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (metrics.swapUsedBytes / metrics.swapTotalBytes) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">未启用 Swap</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -199,22 +193,14 @@ export function MonitorPanel({
       {/* 磁盘 */}
       {metrics.disks.length > 0 ? (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">磁盘</CardTitle>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <HardDrive className="h-3.5 w-3.5" />
+              磁盘
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2.5">
-            {metrics.disks.map((disk) => {
-              const percent = disk.totalBytes ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
-              return (
-                <Meter
-                  key={disk.mount}
-                  label={disk.mount}
-                  icon={HardDrive}
-                  value={percent}
-                  detail={`${formatBytes(disk.usedBytes)} / ${formatBytes(disk.totalBytes)}`}
-                />
-              );
-            })}
+          <CardContent className="p-3 pt-2">
+            <DiskBars disks={metrics.disks} />
           </CardContent>
         </Card>
       ) : null}
@@ -222,13 +208,13 @@ export function MonitorPanel({
       {/* GPU */}
       {metrics.gpus.length > 0 ? (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
               <Thermometer className="h-3.5 w-3.5" />
               GPU
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-3 pt-2">
             {metrics.gpus.map((gpu) => (
               <div key={gpu.index} className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
@@ -240,7 +226,14 @@ export function MonitorPanel({
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
-                    className={cn("h-full rounded-full", toneFor(gpu.utilPercent))}
+                    className={cn(
+                      "h-full rounded-full transition-all",
+                      gpu.utilPercent >= 90
+                        ? "bg-red-500"
+                        : gpu.utilPercent >= 70
+                          ? "bg-orange-500"
+                          : "bg-[var(--chart-1)]",
+                    )}
                     style={{ width: `${Math.min(100, gpu.utilPercent)}%` }}
                   />
                 </div>
@@ -253,10 +246,12 @@ export function MonitorPanel({
       {/* NPU */}
       {metrics.npus.length > 0 ? (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">NPU（昇腾）</CardTitle>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-[11px] font-medium text-muted-foreground">
+              NPU（昇腾）
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs">
+          <CardContent className="space-y-2 p-3 pt-1 text-xs">
             {metrics.npus.map((npu) => (
               <div key={npu.index} className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-1.5">
@@ -286,25 +281,36 @@ export function MonitorPanel({
       {/* 进程 */}
       {metrics.processes.length > 0 ? (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-[11px] font-medium text-muted-foreground">
               CPU 占用 TOP
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1">
+          <CardContent className="p-2">
+            <div className="mb-1 flex items-center gap-3 px-1 text-[10px] text-muted-foreground">
+              <span className="w-12 shrink-0">PID</span>
+              <span className="min-w-0 flex-1">命令</span>
+              <span className="w-14 shrink-0 text-right">CPU</span>
+              <span className="w-14 shrink-0 text-right">MEM</span>
+            </div>
             {metrics.processes.map((proc) => (
               <div
                 key={proc.pid}
-                className="flex items-center gap-3 rounded px-1 py-1 text-xs hover:bg-accent/50"
+                className="flex items-center gap-3 rounded px-1 py-0.5 text-xs hover:bg-accent/50"
               >
                 <span className="w-12 shrink-0 font-mono text-muted-foreground">{proc.pid}</span>
                 <span className="min-w-0 flex-1 truncate font-mono" title={proc.name}>
                   {proc.name}
                 </span>
-                <span className="w-14 shrink-0 text-right font-mono tabular-nums text-orange-600 dark:text-orange-400">
+                <span
+                  className={cn(
+                    "w-14 shrink-0 text-right font-mono tabular-nums",
+                    toneClass(proc.cpuPercent),
+                  )}
+                >
                   {proc.cpuPercent.toFixed(1)}%
                 </span>
-                <span className="w-14 shrink-0 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400">
+                <span className="w-14 shrink-0 text-right font-mono tabular-nums text-muted-foreground">
                   {proc.memPercent.toFixed(1)}%
                 </span>
               </div>

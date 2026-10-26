@@ -150,6 +150,24 @@ export async function sftpRename(sessionId: string, from: string, to: string): P
   await invoke("sftp_rename", { sessionId, from, to });
 }
 
+/** 修改权限（八进制，如 0o644）。 */
+export async function sftpChmod(sessionId: string, path: string, mode: number): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke("sftp_chmod", { sessionId, path, mode });
+}
+
+/** 取当前工作目录（绝对路径），用于文件浏览器的起始路径。 */
+export async function remoteHomeDir(sessionId: string): Promise<string> {
+  const { sshExec } = await import("./ssh");
+  try {
+    const raw = await sshExec(sessionId, "pwd 2>/dev/null || echo /", 5000);
+    const line = raw.trim().split("\n")[0] ?? "/";
+    return line.startsWith("/") ? line : "/";
+  } catch {
+    return "/";
+  }
+}
+
 /** 读取本地文件为 base64（上传用）。 */
 export async function readLocalFileAsBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();

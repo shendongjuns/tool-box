@@ -291,7 +291,8 @@ pub fn run() {
             sftp::sftp_write,
             sftp::sftp_remove,
             sftp::sftp_mkdir,
-            sftp::sftp_rename
+            sftp::sftp_rename,
+            sftp::sftp_chmod
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
