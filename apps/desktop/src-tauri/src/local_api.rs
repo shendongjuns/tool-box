@@ -98,6 +98,52 @@ fn write_setting(conn: &Connection, key: &str, value: &str, now: i64) {
     );
 }
 
+/// 当前请求的 (用户 id, 会话 id)。
+fn current_session(state: &AppState, request: &Request) -> Option<(String, String)> {
+    let token = bearer_token(request)?;
+    let hash = sha256_hex(&token);
+    let conn = state.conn.lock().ok()?;
+
+    conn.query_row(
+        "SELECT user_id, id FROM sessions
+         WHERE token_hash = ?1 AND revoked_at IS NULL AND expires_at > ?2",
+        params![hash, now_ms()],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+/// 会话列表（不含 token 摘要）。
+fn list_sessions_json(
+    conn: &Connection,
+    user_id: &str,
+    current_id: &str,
+) -> rusqlite::Result<Vec<serde_json::Value>> {
+    let mut statement = conn.prepare(
+        "SELECT id, kind, device_name, user_agent, ip, created_at, last_used_at, expires_at
+         FROM sessions
+         WHERE user_id = ?1 AND revoked_at IS NULL
+         ORDER BY last_used_at DESC",
+    )?;
+    let rows = statement.query_map(params![user_id], |row| {
+        let id: String = row.get(0)?;
+        Ok(serde_json::json!({
+            "id": id,
+            "kind": row.get::<_, String>(1)?,
+            "deviceName": row.get::<_, Option<String>>(2)?,
+            "userAgent": row.get::<_, Option<String>>(3)?,
+            "ip": row.get::<_, Option<String>>(4)?,
+            "createdAt": row.get::<_, i64>(5)?,
+            "lastUsedAt": row.get::<_, i64>(6)?,
+            "expiresAt": row.get::<_, i64>(7)?,
+            "current": id == current_id
+        }))
+    })?;
+    Ok(rows.flatten().collect())
+}
+
 /// 本地凭据混淆。
 ///
 /// 本地库只对本机当前用户开放（服务绑定 127.0.0.1），
@@ -678,6 +724,83 @@ fn handle(state: &AppState, mut request: Request) {
                 );
             }
             drop(conn);
+            respond_empty(request, 204);
+        }
+
+        // ---- 登录会话（设置页「登录设备」） ----
+        (Method::Get, "/api/auth/sessions") => {
+            let Some((user_id, current_id)) = current_session(state, &request) else {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            };
+
+            let items = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                list_sessions_json(&conn, &user_id, &current_id).unwrap_or_default()
+            };
+            respond_json(request, 200, &serde_json::json!({ "items": items }));
+        }
+
+        (Method::Delete, path) if path.starts_with("/api/auth/sessions/") => {
+            let Some((user_id, current_id)) = current_session(state, &request) else {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            };
+            let id = path.trim_start_matches("/api/auth/sessions/").to_string();
+            if id == "revoke-all" {
+                respond_json(request, 404, &error_body("NOT_FOUND", "资源不存在"));
+                return;
+            }
+
+            let ok = {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                // 只允许撤销自己的会话
+                conn.execute(
+                    "UPDATE sessions SET revoked_at = ?1 WHERE id = ?2 AND user_id = ?3",
+                    params![now_ms(), id, user_id],
+                )
+                .unwrap_or(0)
+                    > 0
+            };
+
+            if ok {
+                respond_empty(request, 204);
+            } else {
+                respond_json(request, 404, &error_body("NOT_FOUND", "会话不存在"));
+            }
+        }
+
+        (Method::Post, "/api/auth/sessions/revoke-all") => {
+            let Some((user_id, current_id)) = current_session(state, &request) else {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            };
+            {
+                let conn = match state.conn.lock() {
+                    Ok(conn) => conn,
+                    Err(_) => {
+                        respond_json(request, 500, &error_body("INTERNAL_ERROR", "本地数据库不可用"));
+                        return;
+                    }
+                };
+                let _ = conn.execute(
+                    "UPDATE sessions SET revoked_at = ?1
+                     WHERE user_id = ?2 AND id != ?3 AND revoked_at IS NULL",
+                    params![now_ms(), user_id, current_id],
+                );
+            }
             respond_empty(request, 204);
         }
 

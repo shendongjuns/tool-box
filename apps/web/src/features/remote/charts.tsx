@@ -294,14 +294,20 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
 /** GPU 四个指标分别成图。 */
 export type GpuMetric = "util" | "memory" | "temp" | "power";
 
+/**
+ * 四个指标各自的颜色。
+ *
+ * 颜色只用来区分「指标类型」，同一张图里的多块卡仍靠位置与
+ * 右上角数值区分，避免二次编码造成误读。
+ */
 const GPU_METRIC_META: Record<
   GpuMetric,
-  { label: string; unit: string; max?: number; color: string }
+  { label: string; unit: string; max?: number; color: string; fill: string }
 > = {
-  util: { label: "使用率", unit: "%", max: 100, color: "var(--chart-1)" },
-  memory: { label: "显存", unit: "%", max: 100, color: "var(--chart-2)" },
-  temp: { label: "温度", unit: "°C", color: "var(--chart-4)" },
-  power: { label: "功耗", unit: "W", color: "var(--chart-5)" },
+  util: { label: "使用率", unit: "%", max: 100, color: "var(--chart-1)", fill: "gpu-util" },
+  memory: { label: "显存", unit: "%", max: 100, color: "var(--chart-2)", fill: "gpu-mem" },
+  temp: { label: "温度", unit: "°C", color: "var(--chart-4)", fill: "gpu-temp" },
+  power: { label: "功耗", unit: "W", color: "var(--chart-5)", fill: "gpu-power" },
 };
 
 function gpuValue(
@@ -385,25 +391,38 @@ export function GpuChart({
   }
 
   const latest = data[data.length - 1]!;
-  const colors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)"];
 
   return (
     <div ref={containerRef}>
       <div className="mb-0.5 flex items-baseline justify-between">
-        <span className="text-[10px] font-medium text-muted-foreground">{meta.label}</span>
-        <span className="flex gap-2 text-[9px]">
-          {latest.gpus.map((gpu, index) => (
-            <span key={gpu.index} style={{ color: colors[index % colors.length] }}>
-              {gpuCount > 1 ? `#${gpu.index} ` : ""}
-              {gpuValue(latest, index, metric).toFixed(0)}
-              {meta.unit}
-            </span>
-          ))}
+        <span
+          className="flex items-center gap-1 text-[10px] font-medium"
+          style={{ color: meta.color }}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: meta.color }}
+          />
+          {meta.label}
+        </span>
+        <span className="font-mono text-[9px] tabular-nums" style={{ color: meta.color }}>
+          {latest.gpus
+            .map((gpu, index) => {
+              const value = gpuValue(latest, index, metric).toFixed(0);
+              return gpuCount > 1 ? `#${gpu.index} ${value}${meta.unit}` : `${value}${meta.unit}`;
+            })
+            .join("  ")}
         </span>
       </div>
 
       {innerWidth > 0 ? (
         <svg width={width} height={height} role="img" aria-label={`GPU ${meta.label}趋势`}>
+          <defs>
+            <linearGradient id={meta.fill} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={meta.color} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={meta.color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
           <Group left={PAD.left} top={PAD.top}>
             <GridRows
               scale={yScale}
@@ -415,6 +434,16 @@ export function GpuChart({
               strokeOpacity={0.4}
               strokeDasharray="2,3"
             />
+            {gpuCount === 1 ? (
+              <AreaClosed
+                data={data.filter((point) => point.gpus[0])}
+                x={(point) => xScale(new Date(point.timestamp)) ?? 0}
+                y={(point) => yScale(gpuValue(point, 0, metric)) ?? 0}
+                yScale={yScale}
+                curve={curveMonotoneX}
+                fill={`url(#${meta.fill})`}
+              />
+            ) : null}
             {Array.from({ length: gpuCount }).map((_, gpuIndex) => (
               <LinePath
                 key={gpuIndex}
@@ -422,8 +451,9 @@ export function GpuChart({
                 x={(point) => xScale(new Date(point.timestamp)) ?? 0}
                 y={(point) => yScale(gpuValue(point, gpuIndex, metric)) ?? 0}
                 curve={curveMonotoneX}
-                stroke={colors[gpuIndex % colors.length]}
+                stroke={meta.color}
                 strokeWidth={1.5}
+                strokeDasharray={gpuCount > 1 ? `${4 + gpuIndex * 3} 3` : undefined}
               />
             ))}
             {yScale.ticks(2).map((tick) => (

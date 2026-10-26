@@ -25,6 +25,7 @@ import { ServerList } from "./server-list";
 import { SftpPanel } from "./sftp-panel";
 import { MonitorPanel } from "./monitor-panel";
 import { MonitorCollector } from "./collector";
+import { dropMonitor, readMonitor, writeMonitor } from "./monitor-store";
 import { TerminalView, type TerminalHandle } from "./terminal-view";
 import { nextLabel, useRemoteSessions, type RemoteSession } from "./session-store";
 
@@ -297,6 +298,18 @@ function SessionWorkspace({
     { id: "monitor", label: "监控", icon: Activity },
   ];
 
+  /*
+   * 离开「监控」时彻底关闭：停止采集（组件卸载即停）并清空缓存。
+   * 仅仅切到别的会话标签则不受影响，数据留在 monitor-store 里。
+   */
+  const prevTab = React.useRef(session.tab);
+  React.useEffect(() => {
+    if (prevTab.current === "monitor" && session.tab !== "monitor") {
+      dropMonitor(session.sshSessionId);
+    }
+    prevTab.current = session.tab;
+  }, [session.tab, session.sshSessionId]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 items-center justify-between gap-3">
@@ -372,18 +385,35 @@ function TerminalHost({
 
 /** 监控标签页：定时采集，保留历史用于趋势图。 */
 function MonitorTab({ sessionId }: { sessionId: string }) {
-  const [metrics, setMetrics] = React.useState<MonitorMetrics | null>(null);
-  const [info, setInfo] = React.useState<ServerInfo | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [history, setHistory] = React.useState<MonitorMetrics[]>([]);
+  const cached = readMonitor(sessionId);
+
+  const [metrics, setMetrics] = React.useState<MonitorMetrics | null>(cached?.metrics ?? null);
+  const [info, setInfo] = React.useState<ServerInfo | null>(cached?.info ?? null);
+  const [error, setError] = React.useState<string | null>(cached?.error ?? null);
+  const [loading, setLoading] = React.useState(!cached);
+  const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
+
+  // 每次数据变化都写回缓存，保证切走再切回（换会话）时不丢
+  React.useEffect(() => {
+    writeMonitor(sessionId, { metrics, info, history, error });
+  }, [sessionId, metrics, info, history, error]);
 
   React.useEffect(() => {
+    // 有缓存（刚从一个别的会话切回来）就不重新拉取
+    const resumed = Boolean(readMonitor(sessionId)?.metrics);
+
     const collector = new MonitorCollector();
     let stopped = false;
     let timer: number | undefined;
 
     void (async () => {
+      if (resumed) {
+        // 已经渲染过缓存，直接标记加载完成，不发起新的采集
+        await Promise.resolve();
+        setLoading(false);
+        return;
+      }
+
       setInfo(await collector.fetchServerInfo(sessionId));
 
       const tick = async () => {

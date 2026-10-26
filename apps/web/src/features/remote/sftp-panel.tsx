@@ -7,6 +7,7 @@ import {
   Folder,
   FolderPlus,
   Home,
+  MoreHorizontal,
   Pencil,
   RefreshCw,
   Shield,
@@ -40,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { ContextMenu } from "@/components/ui/context-menu";
 import { useTransfers } from "./transfer-store";
 
 function formatSize(bytes: number): string {
@@ -87,9 +89,12 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [error, setError] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [newDir, setNewDir] = React.useState("");
-  const [renaming, setRenaming] = React.useState<{ path: string; name: string } | null>(null);
-  const [chmodTarget, setChmodTarget] = React.useState<SftpEntry | null>(null);
-  const [chmodValue, setChmodValue] = React.useState("644");
+  /** 行内重命名：正在编辑的条目路径与输入值 */
+  const [renaming, setRenaming] = React.useState<{ path: string; value: string } | null>(null);
+  /** 行内改权限：正在编辑的条目路径与八进制输入 */
+  const [chmod, setChmod] = React.useState<{ path: string; value: string } | null>(null);
+  /** 右键菜单位置与目标条目 */
+  const [menu, setMenu] = React.useState<{ x: number; y: number; entry: SftpEntry } | null>(null);
   const { tasks: transfers, add, patch, remove, clearFinished } = useTransfers();
   const [showTransfers, setShowTransfers] = React.useState(false);
 
@@ -184,30 +189,39 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function handleRename() {
+  /** 行内重命名：提交时把新名字拼回同一目录。 */
+  async function submitRename() {
     if (!renaming) return;
-    const target = `${path.replace(/\/$/, "")}/${renaming.name}`;
+    const name = renaming.value.trim();
+    const original = renaming.path;
+    setRenaming(null);
+    if (!name || `${path.replace(/\/$/, "")}/${name}` === original) return;
+
+    const target = `${path.replace(/\/$/, "")}/${name}`;
     try {
-      await sftpRename(sessionId, renaming.path, target);
+      await sftpRename(sessionId, original, target);
       toast.success("已重命名");
-      setRenaming(null);
       await load(path);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "重命名失败");
     }
   }
 
-  async function handleChmod() {
-    if (!chmodTarget) return;
-    const mode = Number.parseInt(chmodValue, 8);
+  /** 行内改权限。 */
+  async function submitChmod() {
+    if (!chmod) return;
+    const value = chmod.value.trim();
+    const target = chmod.path;
+    setChmod(null);
+
+    const mode = Number.parseInt(value, 8);
     if (!Number.isFinite(mode)) {
       toast.error("权限需要用八进制，例如 644");
       return;
     }
     try {
-      await sftpChmod(sessionId, chmodTarget.path, mode);
-      toast.success(`权限已改为 ${chmodValue}`);
-      setChmodTarget(null);
+      await sftpChmod(sessionId, target, mode);
+      toast.success(`权限已改为 ${value}`);
       await load(path);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "修改权限失败");
@@ -394,50 +408,6 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
         </div>
       ) : null}
 
-      {renaming ? (
-        <div className="flex items-center gap-2">
-          <Input
-            value={renaming.name}
-            onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
-            className="h-8 max-w-xs text-xs"
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void handleRename();
-              if (event.key === "Escape") setRenaming(null);
-            }}
-          />
-          <Button size="sm" onClick={() => void handleRename()}>
-            保存
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
-            取消
-          </Button>
-        </div>
-      ) : null}
-
-      {chmodTarget ? (
-        <div className="flex items-center gap-2">
-          <span className="truncate text-xs text-muted-foreground">{chmodTarget.name}</span>
-          <Input
-            value={chmodValue}
-            onChange={(event) => setChmodValue(event.target.value)}
-            className="h-8 w-24 font-mono text-xs"
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void handleChmod();
-              if (event.key === "Escape") setChmodTarget(null);
-            }}
-          />
-          <span className="text-[10px] text-muted-foreground">八进制，如 644 / 755</span>
-          <Button size="sm" onClick={() => void handleChmod()}>
-            应用
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setChmodTarget(null)}>
-            取消
-          </Button>
-        </div>
-      ) : null}
-
       {/* 文件列表 */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
         {/* 表头：列宽与行一致，末列留出按钮空间 */}
@@ -461,86 +431,148 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
         ) : entries && entries.length === 0 ? (
           <p className="px-3 py-8 text-center text-sm text-muted-foreground">空目录</p>
         ) : (
-          entries?.map((entry) => (
-            <div
-              key={entry.path}
-              onDoubleClick={() => {
-                if (entry.isDir) navigate(entry.path);
-              }}
-              className="group flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0 hover:bg-accent"
-            >
-              {entry.isDir ? (
-                <Folder className="h-4 w-4 shrink-0 text-amber-500" />
-              ) : (
-                <File className="h-4 w-4 shrink-0 text-muted-foreground" />
-              )}
+          entries?.map((entry) => {
+            const isRenaming = renaming?.path === entry.path;
+            const isChmod = chmod?.path === entry.path;
 
-              {/* 单击选中（仅高亮），双击进入 */}
-              <span
-                className="min-w-0 flex-1 cursor-default select-none truncate"
-                title={entry.isDir ? "双击进入" : entry.name}
+            return (
+              <div
+                key={entry.path}
+                onDoubleClick={() => {
+                  if (entry.isDir) navigate(entry.path);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({ x: event.clientX, y: event.clientY, entry });
+                }}
+                className={cn(
+                  "group flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0",
+                  menu?.entry.path === entry.path ? "bg-accent" : "hover:bg-accent/70",
+                )}
               >
-                {entry.name}
-              </span>
+                {entry.isDir ? (
+                  <Folder className="h-4 w-4 shrink-0 text-amber-500" />
+                ) : (
+                  <File className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
 
-              <span
-                className="w-28 shrink-0 font-mono text-[10px] text-muted-foreground"
-                title={`权限 ${modeToRwx(entry.mode)}（${entry.mode}）`}
-              >
-                {modeToRwx(entry.mode)}{" "}
-                <span className="text-muted-foreground/60">{entry.mode}</span>
-              </span>
+                {/* 名称：双击文件夹进入；右键出菜单；重命名时变输入框 */}
+                {isRenaming ? (
+                  <span className="flex min-w-0 flex-1 items-center gap-1">
+                    <input
+                      value={renaming.value}
+                      onChange={(event) =>
+                        setRenaming({ path: entry.path, value: event.target.value })
+                      }
+                      onBlur={() => void submitRename()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void submitRename();
+                        if (event.key === "Escape") setRenaming(null);
+                      }}
+                      autoFocus
+                      spellCheck={false}
+                      className="h-6 min-w-0 flex-1 rounded border border-primary/40 bg-background px-1.5 font-mono text-xs outline-none"
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className="min-w-0 flex-1 cursor-default select-none truncate"
+                    title={entry.isDir ? "双击进入 · 右键更多" : "右键更多"}
+                  >
+                    {entry.name}
+                  </span>
+                )}
 
-              <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
-                {entry.isDir ? "—" : formatSize(entry.size)}
-              </span>
-              <span className="w-32 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
-                {formatTime(entry.modified)}
-              </span>
+                {/* 权限：正常情况下显示；改权限时变输入框 */}
+                {isChmod ? (
+                  <span className="flex w-28 shrink-0 items-center gap-1">
+                    <input
+                      value={chmod.value}
+                      onChange={(event) => setChmod({ path: entry.path, value: event.target.value })}
+                      onBlur={() => void submitChmod()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void submitChmod();
+                        if (event.key === "Escape") setChmod(null);
+                      }}
+                      autoFocus
+                      spellCheck={false}
+                      placeholder="644"
+                      className="h-6 w-full rounded border border-primary/40 bg-background px-1.5 font-mono text-xs outline-none"
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className="w-28 shrink-0 cursor-pointer font-mono text-[10px] text-muted-foreground hover:text-foreground"
+                    title={`点击修改权限（当前 ${entry.mode}）`}
+                    onClick={() => setChmod({ path: entry.path, value: entry.mode })}
+                  >
+                    {modeToRwx(entry.mode)}{" "}
+                    <span className="text-muted-foreground/60">{entry.mode}</span>
+                  </span>
+                )}
 
-              <span className="flex w-24 shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                {!entry.isDir ? (
+                <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+                  {entry.isDir ? "—" : formatSize(entry.size)}
+                </span>
+                <span className="w-32 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+                  {formatTime(entry.modified)}
+                </span>
+
+                {/* 操作栏精简为「更多」一个入口 */}
+                <span className="flex w-8 shrink-0 justify-end">
                   <button
                     type="button"
-                    onClick={() => void handleDownload(entry)}
-                    title="下载"
-                    className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    title="更多"
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setMenu({ x: rect.left, y: rect.bottom + 2, entry });
+                    }}
+                    className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <MoreHorizontal className="h-3.5 w-3.5" />
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setRenaming({ path: entry.path, name: entry.name })}
-                  title="重命名"
-                  className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setChmodTarget(entry);
-                    setChmodValue(entry.mode);
-                  }}
-                  title="修改权限"
-                  className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                >
-                  <Shield className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDelete(entry)}
-                  title="删除"
-                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            </div>
-          ))
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {/* 右键菜单 */}
+      {menu ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[
+            ...(menu.entry.isDir
+              ? [{ label: "打开", icon: Folder, onSelect: () => navigate(menu.entry.path) }]
+              : [
+                  {
+                    label: "下载",
+                    icon: Download,
+                    onSelect: () => void handleDownload(menu.entry),
+                  },
+                ]),
+            {
+              label: "重命名",
+              icon: Pencil,
+              onSelect: () => setRenaming({ path: menu.entry.path, value: menu.entry.name }),
+            },
+            {
+              label: "修改权限",
+              icon: Shield,
+              onSelect: () => setChmod({ path: menu.entry.path, value: menu.entry.mode }),
+            },
+            {
+              label: "删除",
+              icon: Trash2,
+              destructive: true,
+              onSelect: () => void handleDelete(menu.entry),
+            },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
 
       {/* 传输列表：弹窗，不占用文件列表空间 */}
       <Dialog open={showTransfers} onOpenChange={setShowTransfers}>
