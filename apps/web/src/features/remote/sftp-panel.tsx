@@ -16,21 +16,29 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  base64ToBlob,
-  readLocalFileAsBase64,
+  pickOpenPath,
+  pickSavePath,
   remoteHomeDir,
   sftpChmod,
+  sftpDownload,
   sftpList,
   sftpMkdir,
-  sftpRead,
   sftpRemove,
   sftpRename,
-  sftpWrite,
+  sftpUpload,
+  subscribeTransferProgress,
   type SftpEntry,
 } from "@/lib/ssh";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 function formatSize(bytes: number): string {
@@ -45,6 +53,7 @@ function formatSize(bytes: number): string {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
+/** 时间精确到秒。 */
 function formatTime(seconds: number): string {
   if (!seconds) return "—";
   return new Date(seconds * 1000).toLocaleString("zh-CN", {
@@ -52,6 +61,8 @@ function formatTime(seconds: number): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   });
 }
 
@@ -64,14 +75,15 @@ function modeToRwx(mode: string): string {
   return `${triple(6)}${triple(3)}${triple(0)}`;
 }
 
-/** 下载任务。 */
-interface DownloadTask {
+/** 传输任务。 */
+interface TransferTask {
   id: string;
   name: string;
-  path: string;
-  status: "pending" | "downloading" | "done" | "failed";
-  progress: number;
-  size: number;
+  direction: "download" | "upload";
+  transferred: number;
+  total: number;
+  percent: number;
+  status: "running" | "done" | "failed";
   error?: string;
 }
 
@@ -88,11 +100,10 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [renaming, setRenaming] = React.useState<{ path: string; name: string } | null>(null);
   const [chmodTarget, setChmodTarget] = React.useState<SftpEntry | null>(null);
   const [chmodValue, setChmodValue] = React.useState("644");
-  const [downloads, setDownloads] = React.useState<DownloadTask[]>([]);
-  const [showDownloads, setShowDownloads] = React.useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [transfers, setTransfers] = React.useState<TransferTask[]>([]);
+  const [showTransfers, setShowTransfers] = React.useState(false);
 
-  // 首次进入取远端 home 目录（绝对路径）
+  // 首次进入取远端 home 目录
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -105,6 +116,36 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
       cancelled = true;
     };
   }, [sessionId]);
+
+  // 订阅传输进度
+  React.useEffect(() => {
+    let cancelled = false;
+    let off: (() => void) | null = null;
+
+    void (async () => {
+      const unsubscribe = await subscribeTransferProgress((payload) => {
+        setTransfers((prev) =>
+          prev.map((task) =>
+            task.id === payload.taskId
+              ? {
+                  ...task,
+                  transferred: payload.transferred,
+                  total: payload.total || task.total,
+                  percent: payload.percent,
+                }
+              : task,
+          ),
+        );
+      });
+      if (cancelled) unsubscribe();
+      else off = unsubscribe;
+    })();
+
+    return () => {
+      cancelled = true;
+      off?.();
+    };
+  }, []);
 
   const load = React.useCallback(
     async (target: string) => {
@@ -203,81 +244,108 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
     }
   }
 
-  /** 下载：建立任务、更新进度、触发浏览器保存。 */
+  /** 下载：先选保存路径，再由 Rust 直连传输。 */
   async function handleDownload(entry: SftpEntry) {
-    const taskId = `dl-${Date.now()}`;
-    setDownloads((prev) => [
+    const localPath = await pickSavePath(entry.name);
+    if (!localPath) return;
+
+    const taskId = `dl-${Date.now().toString(36)}`;
+    setTransfers((prev) => [
       ...prev,
       {
         id: taskId,
         name: entry.name,
-        path: entry.path,
-        status: "downloading",
-        progress: 10,
-        size: entry.size,
+        direction: "download",
+        transferred: 0,
+        total: entry.size,
+        percent: 0,
+        status: "running",
       },
     ]);
-    setShowDownloads(true);
-
-    const patch = (next: Partial<DownloadTask>) =>
-      setDownloads((prev) =>
-        prev.map((item) => (item.id === taskId ? { ...item, ...next } : item)),
-      );
+    setShowTransfers(true);
 
     try {
-      // SFTP 读取是一次性拿全量，这里用阶段进度反映实际过程
-      patch({ progress: 45 });
-      const base64 = await sftpRead(sessionId, entry.path);
-      patch({ progress: 85 });
-
-      const blob = base64ToBlob(base64);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = entry.name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      // 延迟回收，避免下载被中断
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-      patch({ status: "done", progress: 100 });
+      await sftpDownload(sessionId, entry.path, localPath, taskId);
+      setTransfers((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, status: "done", percent: 100 } : task,
+        ),
+      );
+      toast.success(`已下载 ${entry.name}`);
     } catch (err) {
-      patch({
-        status: "failed",
-        error: err instanceof Error ? err.message : "下载失败",
-        progress: 100,
-      });
+      setTransfers((prev) =>
+        prev.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: "failed",
+                error: err instanceof Error ? err.message : "下载失败",
+              }
+            : task,
+        ),
+      );
+      toast.error(err instanceof Error ? err.message : "下载失败");
     }
   }
 
-  async function handleUpload(file: File) {
+  /** 上传：先选本地文件，再由 Rust 直连传输。 */
+  async function handleUpload() {
+    const localPath = await pickOpenPath();
+    if (!localPath) return;
+
+    const name = localPath.split(/[/\\]/).pop() ?? "file";
+    const remotePath = `${path.replace(/\/$/, "")}/${name}`;
+    const taskId = `ul-${Date.now().toString(36)}`;
+
+    setTransfers((prev) => [
+      ...prev,
+      {
+        id: taskId,
+        name,
+        direction: "upload",
+        transferred: 0,
+        total: 0,
+        percent: 0,
+        status: "running",
+      },
+    ]);
+    setShowTransfers(true);
+
     try {
-      const base64 = await readLocalFileAsBase64(file);
-      const target = `${path.replace(/\/$/, "")}/${file.name}`;
-      await sftpWrite(sessionId, target, base64);
-      toast.success(`已上传 ${file.name}`);
+      await sftpUpload(sessionId, localPath, remotePath, taskId);
+      setTransfers((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, status: "done", percent: 100 } : task,
+        ),
+      );
+      toast.success(`已上传 ${name}`);
       await load(path);
     } catch (err) {
+      setTransfers((prev) =>
+        prev.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: "failed",
+                error: err instanceof Error ? err.message : "上传失败",
+              }
+            : task,
+        ),
+      );
       toast.error(err instanceof Error ? err.message : "上传失败");
     }
   }
 
-  const activeDownloads = downloads.filter((task) => task.status === "downloading").length;
+  const runningCount = transfers.filter((task) => task.status === "running").length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {/* 路径栏：可编辑跳转 */}
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+      {/* 路径栏 */}
       <div className="flex items-center gap-1.5">
         <Button size="sm" variant="ghost" onClick={goUp} disabled={path === "/"} title="上级目录">
           <ArrowUp className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => navigate("/")}
-          title="根目录"
-        >
+        <Button size="sm" variant="ghost" onClick={() => navigate("/")} title="根目录">
           <Home className="h-3.5 w-3.5" />
         </Button>
         <Button
@@ -290,7 +358,6 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </Button>
 
-        {/* 绝对路径输入 */}
         <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-input bg-[var(--card)] px-2">
           <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
           {editingPath ? (
@@ -324,95 +391,26 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
         <Button size="sm" variant="ghost" onClick={() => setCreating((v) => !v)} title="新建目录">
           <FolderPlus className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => fileInputRef.current?.click()} title="上传">
+        <Button size="sm" variant="ghost" onClick={() => void handleUpload()} title="上传">
           <Upload className="h-3.5 w-3.5" />
         </Button>
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => setShowDownloads((v) => !v)}
-          title="下载列表"
-          className={cn(activeDownloads > 0 && "text-primary")}
+          onClick={() => setShowTransfers(true)}
+          title="传输列表"
+          className={cn(runningCount > 0 && "text-primary")}
         >
           <Download className="h-3.5 w-3.5" />
-          {downloads.length > 0 ? (
-            <span className="ml-0.5 text-[10px] tabular-nums">{downloads.length}</span>
+          {transfers.length > 0 ? (
+            <span className="ml-0.5 text-[10px] tabular-nums">
+              {runningCount > 0 ? `${runningCount}/${transfers.length}` : transfers.length}
+            </span>
           ) : null}
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void handleUpload(file);
-            event.target.value = "";
-          }}
-        />
       </div>
 
-      {/* 下载列表 */}
-      {showDownloads && downloads.length > 0 ? (
-        <div className="rounded-lg border border-border bg-card p-2">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground">下载列表</span>
-            <button
-              type="button"
-              onClick={() => setDownloads([])}
-              className="text-[10px] text-muted-foreground hover:text-foreground"
-            >
-              清空
-            </button>
-          </div>
-          <div className="space-y-1.5">
-            {downloads.map((task) => (
-              <div key={task.id} className="space-y-1">
-                <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="min-w-0 flex-1 truncate">{task.name}</span>
-                  <span
-                    className={cn(
-                      "shrink-0 tabular-nums",
-                      task.status === "done" && "text-emerald-600 dark:text-emerald-400",
-                      task.status === "failed" && "text-destructive",
-                      task.status === "downloading" && "text-muted-foreground",
-                    )}
-                  >
-                    {task.status === "done"
-                      ? `完成 · ${formatSize(task.size)}`
-                      : task.status === "failed"
-                        ? `失败：${task.error ?? "未知"}`
-                        : `${task.progress}%`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDownloads((prev) => prev.filter((item) => item.id !== task.id))
-                    }
-                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-                <div className="h-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-300",
-                      task.status === "failed"
-                        ? "bg-destructive"
-                        : task.status === "done"
-                          ? "bg-emerald-500"
-                          : "bg-primary",
-                    )}
-                    style={{ width: `${task.progress}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {/* 新建目录 / 重命名 / 权限 表单 */}
+      {/* 表单区 */}
       {creating ? (
         <div className="flex items-center gap-2">
           <Input
@@ -481,14 +479,14 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
 
       {/* 文件列表 */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
-        {/* 表头 */}
+        {/* 表头：列宽与行一致，末列留出按钮空间 */}
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-3 py-1.5 text-[10px] font-medium text-muted-foreground">
           <span className="w-4 shrink-0" />
           <span className="min-w-0 flex-1">名称</span>
-          <span className="w-24 shrink-0">权限</span>
-          <span className="w-20 shrink-0 text-right">大小</span>
-          <span className="w-28 shrink-0 text-right">修改时间</span>
-          <span className="w-20 shrink-0" />
+          <span className="w-28 shrink-0">权限</span>
+          <span className="w-16 shrink-0 text-right">大小</span>
+          <span className="w-32 shrink-0 text-right">修改时间</span>
+          <span className="w-24 shrink-0" />
         </div>
 
         {error ? (
@@ -505,7 +503,10 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
           entries?.map((entry) => (
             <div
               key={entry.path}
-              className="group flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0 hover:bg-accent/50"
+              onDoubleClick={() => {
+                if (entry.isDir) navigate(entry.path);
+              }}
+              className="group flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0 hover:bg-accent"
             >
               {entry.isDir ? (
                 <Folder className="h-4 w-4 shrink-0 text-amber-500" />
@@ -513,40 +514,36 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                 <File className="h-4 w-4 shrink-0 text-muted-foreground" />
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (entry.isDir) navigate(entry.path);
-                }}
-                disabled={!entry.isDir}
-                className="min-w-0 flex-1 truncate text-left disabled:cursor-default"
+              {/* 单击选中（仅高亮），双击进入 */}
+              <span
+                className="min-w-0 flex-1 cursor-default select-none truncate"
+                title={entry.isDir ? "双击进入" : entry.name}
               >
                 {entry.name}
-              </button>
+              </span>
 
-              {/* 权限：rwx + 八进制 */}
               <span
-                className="w-24 shrink-0 font-mono text-[10px] text-muted-foreground"
-                title={`拥有者权限 ${modeToRwx(entry.mode)}`}
+                className="w-28 shrink-0 font-mono text-[10px] text-muted-foreground"
+                title={`权限 ${modeToRwx(entry.mode)}（${entry.mode}）`}
               >
                 {modeToRwx(entry.mode)}{" "}
                 <span className="text-muted-foreground/60">{entry.mode}</span>
               </span>
 
-              <span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+              <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
                 {entry.isDir ? "—" : formatSize(entry.size)}
               </span>
-              <span className="w-28 shrink-0 text-right text-[11px] text-muted-foreground">
+              <span className="w-32 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
                 {formatTime(entry.modified)}
               </span>
 
-              <span className="flex w-20 shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <span className="flex w-24 shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                 {!entry.isDir ? (
                   <button
                     type="button"
                     onClick={() => void handleDownload(entry)}
                     title="下载"
-                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                   >
                     <Download className="h-3.5 w-3.5" />
                   </button>
@@ -555,7 +552,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                   type="button"
                   onClick={() => setRenaming({ path: entry.path, name: entry.name })}
                   title="重命名"
-                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
@@ -566,7 +563,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                     setChmodValue(entry.mode);
                   }}
                   title="修改权限"
-                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   <Shield className="h-3.5 w-3.5" />
                 </button>
@@ -583,6 +580,84 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
           ))
         )}
       </div>
+
+      {/* 传输列表：弹窗，不占用文件列表空间 */}
+      <Dialog open={showTransfers} onOpenChange={setShowTransfers}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>传输列表</DialogTitle>
+          </DialogHeader>
+
+          {transfers.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">暂无传输任务</p>
+          ) : (
+            <div className="max-h-80 space-y-3 overflow-y-auto">
+              {transfers.map((task) => (
+                <div key={task.id} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      {task.direction === "download" ? (
+                        <Download className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Upload className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate">{task.name}</span>
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 tabular-nums",
+                        task.status === "done" && "text-emerald-600 dark:text-emerald-400",
+                        task.status === "failed" && "text-destructive",
+                        task.status === "running" && "text-muted-foreground",
+                      )}
+                    >
+                      {task.status === "done"
+                        ? `完成 · ${formatSize(task.total || task.transferred)}`
+                        : task.status === "failed"
+                          ? "失败"
+                          : `${task.percent}%`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTransfers((prev) => prev.filter((item) => item.id !== task.id))
+                      }
+                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="h-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all duration-200",
+                        task.status === "failed"
+                          ? "bg-destructive"
+                          : task.status === "done"
+                            ? "bg-emerald-500"
+                            : "bg-primary",
+                      )}
+                      style={{ width: `${task.percent}%` }}
+                    />
+                  </div>
+                  {task.error ? (
+                    <p className="text-[10px] text-destructive">{task.error}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button size="sm" variant="ghost" onClick={() => setTransfers([])}>
+              清空已完成
+            </Button>
+            <Button size="sm" onClick={() => setShowTransfers(false)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

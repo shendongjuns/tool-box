@@ -38,7 +38,8 @@
     "@visx/scale": "^4.0.0",
     "@visx/axis": "^4.0.0",
     "@visx/grid": "^4.0.0",
-    "@visx/curve": "^4.0.0"
+    "@visx/curve": "^4.0.0",
+    "@tauri-apps/plugin-dialog": "^2.8.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

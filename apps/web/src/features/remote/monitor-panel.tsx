@@ -1,18 +1,19 @@
 import * as React from "react";
 import {
-  Activity,
   Cpu,
   HardDrive,
   MemoryStick,
   Network,
+  Search,
   Server,
   Thermometer,
+  X,
 } from "lucide-react";
 import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CpuChart, DiskBars, MemoryChart, NetworkChart } from "./charts";
+import { CpuChart, DiskBars, GpuChart, MemoryChart, NetworkChart } from "./charts";
 import { formatBytes } from "./format";
 
 /** 使用率对应的文字色。 */
@@ -112,6 +113,15 @@ export function MonitorPanel({
                 {info.cpuModel} · {info.cpuCores} 核
               </span>
             ) : null}
+            {metrics.swapTotalBytes > 0 ? (
+              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                Swap {formatBytes(metrics.swapUsedBytes)} / {formatBytes(metrics.swapTotalBytes)}
+              </span>
+            ) : (
+              <span className="rounded-full border border-border/50 px-2 py-0.5 text-[10px] text-muted-foreground/60">
+                Swap 未启用
+              </span>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -137,75 +147,16 @@ export function MonitorPanel({
         </MetricCard>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <MetricCard
-          label="网络"
-          icon={Network}
-          value={`${(metrics.netRxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
-          sub={`上行 ${(metrics.netTxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
-        >
-          <NetworkChart data={history} />
-        </MetricCard>
+      <MetricCard
+        label="网络"
+        icon={Network}
+        value={`${(metrics.netRxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
+        sub={`上行 ${(metrics.netTxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
+      >
+        <NetworkChart data={history} />
+      </MetricCard>
 
-        {/* 负载与 Swap */}
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <Activity className="h-3.5 w-3.5" />
-              负载与交换
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 p-3 pt-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">1 / 5 / 15 分钟</span>
-              <span className="font-mono tabular-nums">
-                {metrics.load1.toFixed(2)} / {metrics.load5.toFixed(2)} /{" "}
-                {metrics.load15.toFixed(2)}
-              </span>
-            </div>
-            {metrics.swapTotalBytes > 0 ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Swap</span>
-                  <span className="font-mono tabular-nums">
-                    {formatBytes(metrics.swapUsedBytes)} / {formatBytes(metrics.swapTotalBytes)}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-[var(--chart-5)] transition-all duration-500"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        (metrics.swapUsedBytes / metrics.swapTotalBytes) * 100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </>
-            ) : (
-              <p className="text-[11px] text-muted-foreground">未启用 Swap</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 磁盘 */}
-      {metrics.disks.length > 0 ? (
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <HardDrive className="h-3.5 w-3.5" />
-              磁盘
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-2">
-            <DiskBars disks={metrics.disks} />
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* GPU */}
+      {/* GPU：趋势图 + 每卡详情 */}
       {metrics.gpus.length > 0 ? (
         <Card>
           <CardHeader className="p-3 pb-1">
@@ -214,17 +165,17 @@ export function MonitorPanel({
               GPU
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 p-3 pt-2">
+          <CardContent className="space-y-2 p-3 pt-1">
+            <GpuChart data={history} />
             {metrics.gpus.map((gpu) => (
-              <div key={gpu.index} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
+              <div key={gpu.index} className="space-y-1 border-t border-border/40 pt-1.5">
+                <div className="flex items-center justify-between text-[11px]">
                   <span className="truncate font-medium">{gpu.name}</span>
                   <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                    {gpu.utilPercent.toFixed(0)}% · {gpu.memUsedMiB}/{gpu.memTotalMiB} MiB ·{" "}
-                    {gpu.tempC.toFixed(0)}°C · {gpu.powerWatts.toFixed(0)}W
+                    {gpu.memUsedMiB}/{gpu.memTotalMiB} MiB · {gpu.powerWatts.toFixed(0)}W
                   </span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-1 overflow-hidden rounded-full bg-muted">
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
@@ -278,46 +229,103 @@ export function MonitorPanel({
         </Card>
       ) : null}
 
-      {/* 进程 */}
+      {/* 进程（带关键字过滤） */}
       {metrics.processes.length > 0 ? (
+        <ProcessTable processes={metrics.processes} />
+      ) : null}
+
+      {/* 磁盘：放最下 */}
+      {metrics.disks.length > 0 ? (
         <Card>
           <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-[11px] font-medium text-muted-foreground">
-              CPU 占用 TOP
+            <CardTitle className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <HardDrive className="h-3.5 w-3.5" />
+              磁盘
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-2">
-            <div className="mb-1 flex items-center gap-3 px-1 text-[10px] text-muted-foreground">
-              <span className="w-12 shrink-0">PID</span>
-              <span className="min-w-0 flex-1">命令</span>
-              <span className="w-14 shrink-0 text-right">CPU</span>
-              <span className="w-14 shrink-0 text-right">MEM</span>
-            </div>
-            {metrics.processes.map((proc) => (
-              <div
-                key={proc.pid}
-                className="flex items-center gap-3 rounded px-1 py-0.5 text-xs hover:bg-accent/50"
-              >
-                <span className="w-12 shrink-0 font-mono text-muted-foreground">{proc.pid}</span>
-                <span className="min-w-0 flex-1 truncate font-mono" title={proc.name}>
-                  {proc.name}
-                </span>
-                <span
-                  className={cn(
-                    "w-14 shrink-0 text-right font-mono tabular-nums",
-                    toneClass(proc.cpuPercent),
-                  )}
-                >
-                  {proc.cpuPercent.toFixed(1)}%
-                </span>
-                <span className="w-14 shrink-0 text-right font-mono tabular-nums text-muted-foreground">
-                  {proc.memPercent.toFixed(1)}%
-                </span>
-              </div>
-            ))}
+          <CardContent className="p-3 pt-2">
+            <DiskBars disks={metrics.disks} />
           </CardContent>
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/** TOP 进程表：支持按命令关键字过滤。 */
+function ProcessTable({ processes }: { processes: MonitorMetrics["processes"] }) {
+  const [keyword, setKeyword] = React.useState("");
+
+  const filtered = React.useMemo(() => {
+    const query = keyword.trim().toLowerCase();
+    if (!query) return processes;
+    return processes.filter((proc) => proc.name.toLowerCase().includes(query));
+  }, [processes, keyword]);
+
+  return (
+    <Card>
+      <CardHeader className="p-3 pb-1">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-[11px] font-medium text-muted-foreground">
+            CPU 占用 TOP
+            {keyword ? ` · ${filtered.length} 条匹配` : ""}
+          </CardTitle>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/60" />
+            <input
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="筛选命令…"
+              className="h-6 w-40 rounded-md border border-input bg-[var(--card)] pl-7 pr-2 text-[11px] outline-none focus-visible:border-[var(--ring)]"
+            />
+            {keyword ? (
+              <button
+                type="button"
+                onClick={() => setKeyword("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-2">
+        <div className="mb-1 flex items-center gap-3 px-1 text-[10px] text-muted-foreground">
+          <span className="w-12 shrink-0">PID</span>
+          <span className="min-w-0 flex-1">命令</span>
+          <span className="w-14 shrink-0 text-right">CPU</span>
+          <span className="w-14 shrink-0 text-right">MEM</span>
+        </div>
+        {filtered.length === 0 ? (
+          <p className="py-4 text-center text-[11px] text-muted-foreground">
+            没有匹配「{keyword}」的进程
+          </p>
+        ) : (
+          filtered.map((proc) => (
+            <div
+              key={proc.pid}
+              className="flex items-center gap-3 rounded px-1 py-0.5 text-xs hover:bg-accent/50"
+            >
+              <span className="w-12 shrink-0 font-mono text-muted-foreground">{proc.pid}</span>
+              <span className="min-w-0 flex-1 truncate font-mono" title={proc.name}>
+                {proc.name}
+              </span>
+              <span
+                className={cn(
+                  "w-14 shrink-0 text-right font-mono tabular-nums",
+                  toneClass(proc.cpuPercent),
+                )}
+              >
+                {proc.cpuPercent.toFixed(1)}%
+              </span>
+              <span className="w-14 shrink-0 text-right font-mono tabular-nums text-muted-foreground">
+                {proc.memPercent.toFixed(1)}%
+              </span>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }

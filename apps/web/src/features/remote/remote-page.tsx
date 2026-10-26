@@ -152,7 +152,7 @@ export function RemotePage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-6.5rem)] flex-col gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
       {/* 会话标签栏 */}
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto pb-1">
         {sessions.map((session) => (

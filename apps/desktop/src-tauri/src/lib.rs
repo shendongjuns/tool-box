@@ -234,6 +234,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             focus_main(app);
         }))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -292,7 +293,9 @@ pub fn run() {
             sftp::sftp_remove,
             sftp::sftp_mkdir,
             sftp::sftp_rename,
-            sftp::sftp_chmod
+            sftp::sftp_chmod,
+            sftp::sftp_download,
+            sftp::sftp_upload
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

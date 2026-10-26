@@ -52,7 +52,12 @@ function ToolPage() {
   }, [api, tool.id, queryClient, sourceKey]);
 
   if (selfLayout) {
-    return <ToolRunner toolId={tool.id} />;
+    // 自带布局的工具需要撑满可用高度（终端/文件/监控都是全高界面）
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ToolRunner toolId={tool.id} />
+      </div>
+    );
   }
 
   return (

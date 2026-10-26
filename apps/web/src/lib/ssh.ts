@@ -168,6 +168,60 @@ export async function remoteHomeDir(sessionId: string): Promise<string> {
   }
 }
 
+/**
+ * 下载远端文件到本地路径（Rust 直连，带进度事件）。
+ *
+ * 不用 sftpRead + base64：大文件编码会卡死渲染进程。
+ */
+export async function sftpDownload(
+  sessionId: string,
+  remotePath: string,
+  localPath: string,
+  taskId: string,
+): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke("sftp_download", { sessionId, remotePath, localPath, taskId });
+}
+
+/** 从本地路径上传（Rust 直连，带进度事件）。 */
+export async function sftpUpload(
+  sessionId: string,
+  localPath: string,
+  remotePath: string,
+  taskId: string,
+): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke("sftp_upload", { sessionId, localPath, remotePath, taskId });
+}
+
+/** 订阅传输进度。 */
+export async function subscribeTransferProgress(
+  handler: (payload: { taskId: string; transferred: number; total: number; percent: number }) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<{ taskId: string; transferred: number; total: number; percent: number }>(
+    "sftp://progress",
+    (event) => handler(event.payload),
+  );
+}
+
+/** 打开保存对话框，返回选中的本地路径。 */
+export async function pickSavePath(defaultName: string): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const chosen = await save({ defaultPath: defaultName });
+  return typeof chosen === "string" ? chosen : null;
+}
+
+/** 打开文件选择对话框，返回选中的本地路径。 */
+export async function pickOpenPath(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const chosen = await open({ multiple: false, directory: false });
+  return typeof chosen === "string" ? chosen : null;
+}
+
 /** 读取本地文件为 base64（上传用）。 */
 export async function readLocalFileAsBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();

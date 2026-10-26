@@ -51,6 +51,153 @@ async fn open_sftp(
         .map_err(|e| format!("初始化 SFTP 失败：{e}"))
 }
 
+/// 分块大小：64KB。足够小以更新进度，足够大以保证吞吐。
+const CHUNK_SIZE: usize = 64 * 1024;
+
+/// 下载到本地文件（Rust 直连，不经过 JS）。
+///
+/// 为什么不复用 `sftp_read` + JS 保存：
+/// base64 编码一个 100MB 文件会让渲染进程主线程卡死好几秒，
+/// 而且字符串要跨 IPC 传两遍。这里直接在 Rust 里读远端、写本地，
+/// 前端只收进度事件。
+#[tauri::command]
+pub async fn sftp_download(
+    app: tauri::AppHandle,
+    state: State<'_, SshState>,
+    session_id: String,
+    remote_path: String,
+    local_path: String,
+    task_id: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let sftp = open_sftp(&state, &session_id).await?;
+
+    let mut remote = sftp
+        .open(&remote_path)
+        .await
+        .map_err(|e| format!("打开远端文件失败：{e}"))?;
+
+    let total = remote
+        .metadata()
+        .await
+        .map(|meta| meta.size.unwrap_or(0))
+        .unwrap_or(0);
+
+    let mut local = tokio::fs::File::create(&local_path)
+        .await
+        .map_err(|e| format!("创建本地文件失败：{e}"))?;
+
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+    let mut transferred: u64 = 0;
+
+    loop {
+        let read = remote
+            .read(&mut buffer)
+            .await
+            .map_err(|e| format!("读取远端数据失败：{e}"))?;
+        if read == 0 {
+            break;
+        }
+        local
+            .write_all(&buffer[..read])
+            .await
+            .map_err(|e| format!("写入本地文件失败：{e}"))?;
+
+        transferred += read as u64;
+        let percent = if total > 0 {
+            ((transferred as f64 / total as f64) * 100.0).min(100.0) as u8
+        } else {
+            0
+        };
+        let _ = app.emit(
+            "sftp://progress",
+            serde_json::json!({
+                "taskId": task_id,
+                "transferred": transferred,
+                "total": total,
+                "percent": percent
+            }),
+        );
+    }
+
+    local
+        .flush()
+        .await
+        .map_err(|e| format!("保存失败：{e}"))?;
+    Ok(())
+}
+
+/// 从本地文件上传（Rust 直连）。
+#[tauri::command]
+pub async fn sftp_upload(
+    app: tauri::AppHandle,
+    state: State<'_, SshState>,
+    session_id: String,
+    local_path: String,
+    remote_path: String,
+    task_id: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let total = tokio::fs::metadata(&local_path)
+        .await
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+
+    let mut local = tokio::fs::File::open(&local_path)
+        .await
+        .map_err(|e| format!("打开本地文件失败：{e}"))?;
+
+    let sftp = open_sftp(&state, &session_id).await?;
+    let mut remote = sftp
+        .create(&remote_path)
+        .await
+        .map_err(|e| format!("创建远端文件失败：{e}"))?;
+
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+    let mut transferred: u64 = 0;
+
+    loop {
+        let read = local
+            .read(&mut buffer)
+            .await
+            .map_err(|e| format!("读取本地文件失败：{e}"))?;
+        if read == 0 {
+            break;
+        }
+        remote
+            .write_all(&buffer[..read])
+            .await
+            .map_err(|e| format!("写入远端失败：{e}"))?;
+
+        transferred += read as u64;
+        let percent = if total > 0 {
+            ((transferred as f64 / total as f64) * 100.0).min(100.0) as u8
+        } else {
+            0
+        };
+        let _ = app.emit(
+            "sftp://progress",
+            serde_json::json!({
+                "taskId": task_id,
+                "transferred": transferred,
+                "total": total,
+                "percent": percent
+            }),
+        );
+    }
+
+    remote
+        .flush()
+        .await
+        .map_err(|e| format!("刷盘失败：{e}"))?;
+    let _ = remote.shutdown().await;
+    Ok(())
+}
+
 /// 列出目录内容。
 #[tauri::command]
 pub async fn sftp_list(

@@ -291,6 +291,112 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   );
 }
 
+/** GPU 使用率趋势（多卡各一条线）。 */
+export function GpuChart({ data }: { data: MonitorMetrics[] }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [width, setWidth] = React.useState(0);
+
+  React.useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    setWidth(element.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
+  const height = 96;
+  const innerWidth = Math.max(0, width - PAD.left - PAD.right);
+  const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
+
+  const gpuCount = Math.max(0, ...data.map((point) => point.gpus.length));
+
+  const xScale = React.useMemo(() => {
+    if (data.length === 0)
+      return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
+    const first = data[0]!.timestamp;
+    const last = data[data.length - 1]!.timestamp;
+    return scaleTime({
+      domain: [new Date(first), new Date(Math.max(last, first + 1))],
+      range: [0, innerWidth],
+    });
+  }, [data, innerWidth]);
+
+  const yScale = React.useMemo(
+    () => scaleLinear({ domain: [0, 100], range: [innerHeight, 0] }),
+    [innerHeight],
+  );
+
+  if (!data.length || gpuCount === 0) {
+    return (
+      <div
+        ref={containerRef}
+        className="grid place-items-center text-xs text-muted-foreground"
+        style={{ height }}
+      >
+        未检测到 GPU
+      </div>
+    );
+  }
+
+  const latest = data[data.length - 1]!;
+  const colors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)"];
+
+  return (
+    <div ref={containerRef}>
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px]">
+        {latest.gpus.map((gpu, index) => (
+          <span key={gpu.index} style={{ color: colors[index % colors.length] }}>
+            #{gpu.index} {gpu.utilPercent.toFixed(0)}% · {gpu.tempC.toFixed(0)}°C
+          </span>
+        ))}
+      </div>
+
+      {innerWidth > 0 ? (
+        <svg width={width} height={height} role="img" aria-label="GPU 使用率趋势">
+          <Group left={PAD.left} top={PAD.top}>
+            <GridRows
+              scale={yScale}
+              width={innerWidth}
+              height={innerHeight}
+              numTicks={3}
+              stroke="currentColor"
+              className="text-border"
+              strokeOpacity={0.4}
+              strokeDasharray="2,3"
+            />
+            {Array.from({ length: gpuCount }).map((_, gpuIndex) => (
+              <LinePath
+                key={gpuIndex}
+                data={data.filter((point) => point.gpus[gpuIndex])}
+                x={(point) => xScale(new Date(point.timestamp)) ?? 0}
+                y={(point) => yScale(point.gpus[gpuIndex]?.utilPercent ?? 0) ?? 0}
+                curve={curveMonotoneX}
+                stroke={colors[gpuIndex % colors.length]}
+                strokeWidth={1.5}
+              />
+            ))}
+            {[0, 50, 100].map((tick) => (
+              <text
+                key={tick}
+                x={-6}
+                y={(yScale(tick) ?? 0) + 3}
+                textAnchor="end"
+                className="fill-muted-foreground text-[9px]"
+              >
+                {tick}%
+              </text>
+            ))}
+          </Group>
+        </svg>
+      ) : null}
+    </div>
+  );
+}
+
 /** 磁盘使用率条形组。 */
 export function DiskBars({ disks }: { disks: MonitorMetrics["disks"] }) {
   return (

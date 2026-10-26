@@ -15,6 +15,7 @@
     "core:window:allow-show",
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
-    "log:default"
+    "log:default",
+    "dialog:default"
   ]
 }

@@ -75,11 +75,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Topbar onOpenCommand={() => setCommandOpen(true)} />
         <main
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto",
+            "flex min-h-0 flex-1 flex-col overflow-y-auto",
             "bg-[radial-gradient(circle_at_100%_0%,color-mix(in_oklch,var(--primary)_7%,transparent),transparent_45%)]",
           )}
         >
-          <div className="mx-auto w-full max-w-6xl px-6 py-7">{children}</div>
+          {/*
+            高度用 100% 而不是 100vh 计算：
+            窗口最大化 / 全屏后，顶栏与内边距都不变，
+            但 vh 会把浏览器 chrome 算进去，导致内容溢出或留白。
+          */}
+          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-7">
+            {children}
+          </div>
         </main>
       </div>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
