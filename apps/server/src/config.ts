@@ -12,7 +12,14 @@ const boolish = z
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().int().positive().default(3000),
+  /*
+   * 默认端口 7788。
+   *
+   * 原默认 3000，但 Windows 上 3000 常被 Hyper-V / WSL 划进
+   * 「保留端口段」而无法绑定（EACCES），且保留段每次开机都会变 ——
+   * 靠用户手动改端口不是长久之计。7788 远离常见段，实测稳定。
+   */
+  PORT: z.coerce.number().int().positive().default(7788),
   HOST: z.string().default("0.0.0.0"),
   DATABASE_PATH: z.string().default("./data/toolbox.db"),
   /** 会话有效期（天） */

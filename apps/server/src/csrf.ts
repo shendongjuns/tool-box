@@ -43,7 +43,7 @@ function hostOf(value: string | undefined): string | null {
  * 浏览器不会自动附带这个头，恶意站点无法伪造，因此不需要 CSRF 校验。
  *
  * 历史上这里要求 Origin 与 Host 完全一致，导致局域网部署不可用：
- * 客户端页面在 http://192.168.1.100:8080，API 在 http://10.0.0.11:3000，
+ * 客户端页面在 http://192.168.1.100:8080，API 在 http://10.0.0.11:7788，
  * Origin 与 Host 天然不同，所有写请求被 403 拒绝。
  *
  * 现在的规则：

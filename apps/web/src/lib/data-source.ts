@@ -17,7 +17,7 @@ export interface CloudSource {
   id: string;
   /** 用户起的名字，显示在左下角与切换列表 */
   name: string;
-  /** 服务器地址，例如 http://192.168.1.10:3000 */
+  /** 服务器地址，例如 http://192.168.1.10:7788 */
   url: string;
 }
 
@@ -57,7 +57,7 @@ export const LOCAL_SOURCE: CloudSource = {
 const DEFAULT_CLOUD: CloudSource = {
   id: "cloud-default",
   name: "默认服务器",
-  url: "http://127.0.0.1:3000",
+  url: "http://127.0.0.1:7788",
 };
 
 function normalizeUrl(url: string): string {

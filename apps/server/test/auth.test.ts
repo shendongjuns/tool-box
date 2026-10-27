@@ -291,7 +291,7 @@ describe("跨源与代理场景（回归）", () => {
       method: "POST",
       url: "/api/auth/login",
       headers: {
-        host: "127.0.0.1:3000",
+        host: "127.0.0.1:7788",
         "x-forwarded-host": "tool.example.com",
         origin: "https://tool.example.com",
       },

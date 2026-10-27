@@ -6,6 +6,17 @@ import { fileURLToPath, URL } from "node:url";
 
 const target = process.env.VITE_APP_TARGET === "desktop" ? "desktop" : "web";
 
+/**
+ * 后端地址。
+ *
+ * 默认 7788（与服务端一致）。开发时如果 7788 被占用，
+ * 只要两边都设同一个 PORT 就能一起切换：
+ *   PORT=8080 pnpm dev
+ * 这里读同一个环境变量，避免「服务端换了端口但代理还指向旧端口」。
+ */
+const apiPort = process.env.PORT ?? "7788";
+const apiTarget = `http://127.0.0.1:${apiPort}`;
+
 export default defineConfig({
   plugins: [
     tanstackRouter({
@@ -24,12 +35,20 @@ export default defineConfig({
     __APP_TARGET__: JSON.stringify(target),
   },
   server: {
+    /*
+     * 绑定 127.0.0.1 而不是默认的 localhost。
+     *
+     * Vite 默认解析 localhost 时在部分 Windows 上只听 [::1]（IPv6），
+     * 导致 http://127.0.0.1:5173 连不上 —— 而很多工具/文档默认写 IPv4。
+     * 显式指定 IPv4 后两种写法都能用。
+     */
+    host: "127.0.0.1",
     port: 5173,
     strictPort: true,
     proxy: {
       // changeOrigin 必须为 false：服务端的 CSRF 校验比较 Origin 与 Host，
       // 改写 Host 会让两者不一致，所有写请求都会被 403 拒绝。
-      "/api": { target: "http://127.0.0.1:3000", changeOrigin: false },
+      "/api": { target: apiTarget, changeOrigin: false },
     },
   },
   build: {

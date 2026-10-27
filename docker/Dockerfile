@@ -28,7 +28,7 @@ RUN pnpm install --frozen-lockfile --prod --filter @toolbox/server...
 # ---------- 运行阶段 ----------
 FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production \
-    PORT=3000 \
+    PORT=7788 \
     HOST=0.0.0.0 \
     DATABASE_PATH=/app/data/toolbox.db
 
@@ -48,8 +48,8 @@ RUN mkdir -p /app/data && chown -R toolbox:toolbox /app/data
 USER toolbox
 WORKDIR /app/apps/server
 
-EXPOSE 3000
+EXPOSE 7788
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:3000/api/health || exit 1
+  CMD curl -fsS http://127.0.0.1:7788/api/health || exit 1
 
 CMD ["node", "dist/index.js"]

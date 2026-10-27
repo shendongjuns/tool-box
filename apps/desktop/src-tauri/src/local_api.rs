@@ -867,7 +867,7 @@ fn handle(state: &AppState, mut request: Request) {
         }
 
         // 桌面端令牌存取：按数据源分别保存，存在本地库 settings 表（app.tokens）里。
-        // 结构：{ "local": "<token>", "cloud:http://1.2.3.4:3000": "<token>" }
+        // 结构：{ "local": "<token>", "cloud:http://1.2.3.4:7788": "<token>" }
         // 切换数据源只影响当前源的令牌，其它源保留，切回来无需重新登录。
         // 数据随 exe 目录走，不写 AppData，也不需要 store 插件。
         (Method::Get, "/api/app/tokens") => {

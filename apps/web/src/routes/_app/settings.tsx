@@ -455,7 +455,7 @@ function DataSourceCard() {
                   id="ds-url"
                   value={draft.url}
                   onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                  placeholder="http://10.0.0.2:3000"
+                  placeholder="http://10.0.0.2:7788"
                   className="font-mono text-xs"
                 />
               </Field>

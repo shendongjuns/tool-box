@@ -9,7 +9,7 @@ import { setTauriInvoke } from "./tauri-invoke";
  * - 云端数据源：请求通过 Authorization: Bearer 发往用户配置的服务器。
  *
  * 令牌按数据源分别持久化（存在本地库 settings 表的 app.tokens JSON 里）：
- *   { "local": "<token>", "cloud:http://1.2.3.4:3000": "<token>" }
+ *   { "local": "<token>", "cloud:http://1.2.3.4:7788": "<token>" }
  * 切换数据源只读写当前源的令牌，其它源的令牌原样保留 ——
  * 切回来不需要重新登录。
  *
