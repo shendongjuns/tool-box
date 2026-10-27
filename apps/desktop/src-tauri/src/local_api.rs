@@ -183,22 +183,86 @@ fn list_sessions_json(
     Ok(rows.flatten().collect())
 }
 
-/// 本地凭据混淆。
-///
-/// 本地库只对本机当前用户开放（服务绑定 127.0.0.1），
-/// 这里做一层可逆混淆，避免明文直接躺在 SQLite 里被随手看见。
-/// 真正的安全边界是文件系统权限，不是这层编码。
-pub fn obfuscate(plain: &str) -> String {
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD.encode(plain.as_bytes())
+/*
+ * 本地凭据加解密（AES-256-GCM）。
+ *
+ * 之前只是 base64 —— 等于明文。任何人拿到 local.db 都能还原
+ * 所有 SSH 密码与私钥。
+ *
+ * 现在用 AES-256-GCM：密钥由机器名 + 用户名经 Argon2id 派生，不落盘；
+ * 每次随机 IV，密文带认证标签，篡改会被发现。
+ */
+const CRED_VERSION: &str = "v1";
+
+fn credential_key() -> [u8; 32] {
+    let mut material = String::from("toolbox-credential-v1");
+    if let Ok(name) = std::env::var("COMPUTERNAME") {
+        material.push_str(&name);
+    }
+    if let Ok(user) = std::env::var("USERNAME") {
+        material.push_str(&user);
+    }
+    let params = argon2::Params::new(8192, 2, 1, Some(32)).expect("derive params");
+    let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let mut out = [0u8; 32];
+    let _ = argon.hash_password_into(material.as_bytes(), b"toolbox-cred-salt", &mut out);
+    out
 }
 
-fn deobfuscate(encoded: &str) -> Option<String> {
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD
-        .decode(encoded.as_bytes())
-        .ok()
+/// 加密凭据，返回 v1:iv:tag:data。
+pub fn encrypt_credential(plain: &str) -> String {
+    use aes_gcm::aead::{Aead, KeyInit};
+    use aes_gcm::{Aes256Gcm, Nonce};
+    let Ok(cipher) = Aes256Gcm::new_from_slice(&credential_key()) else {
+        return String::new();
+    };
+    let iv: [u8; 12] = rand::random();
+    match cipher.encrypt(Nonce::from_slice(&iv), plain.as_bytes()) {
+        Ok(sealed) if sealed.len() > 16 => {
+            let (data, tag) = sealed.split_at(sealed.len() - 16);
+            format!("{CRED_VERSION}:{}:{}:{}", hex_encode(&iv), hex_encode(tag), hex_encode(data))
+        }
+        _ => String::new(),
+    }
+}
+
+/// 解密凭据。
+fn decrypt_credential(stored: &str) -> Option<String> {
+    use aes_gcm::aead::{Aead, KeyInit};
+    use aes_gcm::{Aes256Gcm, Nonce};
+    // 兼容历史 base64 数据
+    if !stored.starts_with(&format!("{CRED_VERSION}:")) {
+        use base64::Engine as _;
+        return base64::engine::general_purpose::STANDARD
+            .decode(stored.as_bytes())
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+    }
+    let parts: Vec<&str> = stored.split(':').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let iv = hex_decode(parts.get(1)?)?;
+    let tag = hex_decode(parts.get(2)?)?;
+    let data = hex_decode(parts.get(3)?)?;
+    if iv.len() != 12 || tag.len() != 16 {
+        return None;
+    }
+    let cipher = Aes256Gcm::new_from_slice(&credential_key()).ok()?;
+    let mut sealed = data;
+    sealed.extend_from_slice(&tag);
+    cipher.decrypt(Nonce::from_slice(&iv), sealed.as_slice()).ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
+}
+
+fn hex_decode(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&value[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// 服务器列表（不含凭据）。
@@ -295,8 +359,8 @@ fn server_credential_json(conn: &Connection, id: &str) -> Option<serde_json::Val
                 "port": row.get::<_, i64>(2)?,
                 "username": row.get::<_, String>(3)?,
                 "authType": row.get::<_, String>(4)?,
-                "password": row.get::<_, Option<String>>(5)?.and_then(|v| deobfuscate(&v)),
-                "privateKey": row.get::<_, Option<String>>(6)?.and_then(|v| deobfuscate(&v)),
+                "password": row.get::<_, Option<String>>(5)?.and_then(|v| decrypt_credential(&v)),
+                "privateKey": row.get::<_, Option<String>>(6)?.and_then(|v| decrypt_credential(&v)),
                 "passphrase": serde_json::Value::Null
             }))
         },
@@ -311,11 +375,34 @@ fn header(name: &str, value: &str) -> Header {
 }
 
 /// 所有响应共用的头：CORS + 禁止缓存 + JSON。
-fn base_headers() -> Vec<Header> {
+/// 是否允许该 Origin 访问本地 API。
+///
+/// 只允许 Tauri WebView 自身。之前用 `*`，意味着浏览器里打开的任意网页
+/// 都能直接请求 127.0.0.1:随机端口 —— 配合无认证的 /api/app/tokens
+/// 就能读走全部会话令牌。
+fn is_allowed_origin(origin: Option<&str>) -> bool {
+    match origin {
+        None => true,
+        Some(value) => {
+            value.starts_with("tauri://")
+                || value.starts_with("http://tauri.localhost")
+                || value.starts_with("https://tauri.localhost")
+        }
+    }
+}
+
+/// 构造响应头。origin 用于回显允许的来源。
+fn base_headers(origin: Option<&str>) -> Vec<Header> {
+    let allow_origin = if is_allowed_origin(origin) {
+        origin.unwrap_or("*")
+    } else {
+        "null"
+    };
+
     vec![
         header("Content-Type", "application/json; charset=utf-8"),
-        // WebView 的 origin 是 tauri://localhost，必须允许跨源
-        header("Access-Control-Allow-Origin", "*"),
+        header("Access-Control-Allow-Origin", allow_origin),
+        header("Vary", "Origin"),
         header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS"),
         header(
             "Access-Control-Allow-Headers",
@@ -326,10 +413,20 @@ fn base_headers() -> Vec<Header> {
     ]
 }
 
+/// 从请求里取 Origin 头。
+fn origin_of(request: &Request) -> Option<String> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Origin"))
+        .map(|h| h.value.as_str().to_string())
+}
+
 fn respond_json<T: Serialize>(request: Request, status: u16, body: &T) {
     let payload = serde_json::to_string(body).unwrap_or_else(|_| "{}".to_string());
     let mut response = Response::from_string(payload).with_status_code(StatusCode(status));
-    for item in base_headers() {
+    let origin = origin_of(&request);
+    for item in base_headers(origin.as_deref()) {
         response.add_header(item);
     }
     let _ = request.respond(response);
@@ -337,7 +434,8 @@ fn respond_json<T: Serialize>(request: Request, status: u16, body: &T) {
 
 fn respond_empty(request: Request, status: u16) {
     let mut response = Response::empty(StatusCode(status));
-    for item in base_headers() {
+    let origin = origin_of(&request);
+    for item in base_headers(origin.as_deref()) {
         response.add_header(item);
     }
     let _ = request.respond(response);
@@ -489,6 +587,39 @@ fn session_json(now: i64, expires_at: i64) -> serde_json::Value {
     })
 }
 
+/// 登录失败计数，用于本地暴力破解防护。
+///
+/// 本地服务虽只绑 127.0.0.1，但同机其他程序/脚本仍可访问；
+/// 没有限流的话 Argon2 再慢也只是把在线爆破变成「慢速在线爆破」。
+static LOGIN_FAILURES: std::sync::Mutex<Option<(std::time::Instant, u32)>> =
+    std::sync::Mutex::new(None);
+
+/// 1 分钟内失败超过 10 次则拒绝。
+fn login_throttled() -> bool {
+    match LOGIN_FAILURES.lock() {
+        Ok(guard) => match *guard {
+            Some((start, count)) => {
+                start.elapsed() <= std::time::Duration::from_secs(60) && count >= 10
+            }
+            None => false,
+        },
+        Err(_) => false,
+    }
+}
+
+fn record_login_failure() {
+    if let Ok(mut guard) = LOGIN_FAILURES.lock() {
+        match *guard {
+            Some((start, count)) if start.elapsed() <= std::time::Duration::from_secs(60) => {
+                *guard = Some((start, count + 1));
+            }
+            _ => {
+                *guard = Some((std::time::Instant::now(), 1));
+            }
+        }
+    }
+}
+
 fn handle(state: &AppState, mut request: Request) {
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -630,11 +761,22 @@ fn handle(state: &AppState, mut request: Request) {
                 .unwrap_or(None)
             };
 
+            if login_throttled() {
+                respond_json(
+                    request,
+                    429,
+                    &error_body("TOO_MANY_ATTEMPTS", "尝试过于频繁，请 1 分钟后再试"),
+                );
+                return;
+            }
+
             let Some((id, hash, display_name, created_at)) = found else {
+                record_login_failure();
                 respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
                 return;
             };
             if !verify_password(&hash, &password) {
+                record_login_failure();
                 respond_json(request, 401, &error_body("UNAUTHENTICATED", "用户名或密码不正确"));
                 return;
             }
@@ -1027,8 +1169,8 @@ fn handle(state: &AppState, mut request: Request) {
                         port,
                         username,
                         auth_type,
-                        body["password"].as_str().map(crate::local_api::obfuscate),
-                        body["privateKey"].as_str().map(crate::local_api::obfuscate),
+                        body["password"].as_str().map(encrypt_credential),
+                        body["privateKey"].as_str().map(encrypt_credential),
                         now
                     ],
                 )
@@ -1094,9 +1236,9 @@ fn handle(state: &AppState, mut request: Request) {
                         body["username"].as_str(),
                         body["authType"].as_str(),
                         body.get("password").is_some(),
-                        body["password"].as_str().map(obfuscate),
+                        body["password"].as_str().map(encrypt_credential),
                         body.get("privateKey").is_some(),
-                        body["privateKey"].as_str().map(obfuscate),
+                        body["privateKey"].as_str().map(encrypt_credential),
                         now,
                         id
                     ],

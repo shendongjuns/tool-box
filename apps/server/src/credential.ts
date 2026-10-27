@@ -1,27 +1,65 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 /**
- * 服务器凭据加解密。
+ * 服务器凭据加解密（AES-256-GCM）。
  *
- * 用 AES-256-GCM。密钥由环境变量 `CREDENTIAL_KEY` 派生，未设置时退化到
- * 一个基于数据库路径的默认值（单机部署够用，多机请显式配置）。
+ * 密钥来源优先级：
+ * 1. 环境变量 `CREDENTIAL_KEY`（推荐，生产必须设置）
+ * 2. 数据库同目录下的 `.credential-key` 文件（首次启动自动生成，0600 权限）
+ *
+ * 早期版本在未设置环境变量时退化成一个**硬编码常量** ——
+ * 等于所有部署共用同一把钥匙，任何人 clone 代码就能解开别人的库。
+ * 现在改为每实例随机生成并持久化，绝不用常量兜底。
  *
  * 密文格式：`v1:<iv-hex>:<tag-hex>:<data-hex>`
  */
 
 const VERSION = "v1";
 
+/** 默认密钥文件名，与数据库放同一目录。 */
+const KEY_FILE = ".credential-key";
+
 function deriveKey(secret: string): Buffer {
-  // scrypt 派生固定 salt（salt 不保密，只用于避免直接使用口令）
   return scryptSync(secret, "toolbox-credential-v1", 32);
 }
 
 let cachedKey: Buffer | null = null;
 
+/** 读取或生成实例专属密钥。 */
+function loadOrCreateSecret(): string {
+  const fromEnv = process.env.CREDENTIAL_KEY;
+  if (fromEnv && fromEnv.length >= 16) return fromEnv;
+
+  const dbPath = process.env.DATABASE_PATH ?? "./data/toolbox.db";
+  const dir = dirname(resolve(dbPath));
+  const keyPath = join(dir, KEY_FILE);
+
+  try {
+    if (existsSync(keyPath)) {
+      const existing = readFileSync(keyPath, "utf8").trim();
+      if (existing.length >= 32) return existing;
+    }
+
+    // 生成 32 字节随机密钥并以仅本人可读的权限落盘
+    const secret = randomBytes(32).toString("hex");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(keyPath, secret, { mode: 0o600 });
+    return secret;
+  } catch {
+    /*
+     * 落盘失败时退回「进程内随机密钥」：
+     * 本次运行可正常加解密，重启后旧密文无法解开（用户需重新填写凭据）。
+     * 这比使用固定常量安全得多 —— 常量意味着全世界的部署共用一把钥匙。
+     */
+    return randomBytes(32).toString("hex");
+  }
+}
+
 function getKey(): Buffer {
   if (cachedKey) return cachedKey;
-  const secret = process.env.CREDENTIAL_KEY ?? "toolbox-default-credential-key";
-  cachedKey = deriveKey(secret);
+  cachedKey = deriveKey(loadOrCreateSecret());
   return cachedKey;
 }
 
