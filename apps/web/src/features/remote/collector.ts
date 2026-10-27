@@ -345,12 +345,22 @@ function parseGpu(raw: string): {
 }
 
 /**
- * 解析 npu-smi info 输出。
+ * 解析 `npu-smi info` 输出（华为昇腾）。
  *
- * 不同机型列布局不同，这里做宽松匹配：抓「NPU 编号 + 名称」行，
- * 以及包含利用率/温度的百分比数值。解析失败返回空数组，不报错。
+ * 移植自 1.5.0 的 parseNpuSmi —— 输出是**两行一组**的表格：
+ *
+ *   | NPU     Name      | Health | Power(W) Temp(C) HugePages-Usage(page) |
+ *   | 0       910B3     | OK     | 90.4     48      0 / 0                 |
+ *   | Chip    | Bus-Id        | AICore(%) Memory-Usage(MB) HBM-Usage(MB) |
+ *   | 0       | 0000:C1:00.0  | 0       0 / 0            3154 / 21527    |
+ *
+ * 关键点：
+ * - **NPU 行**给 Health / Power / Temp，**Chip 行**给 AICore / Memory
+ * - 必须先缓存 NPU 行，等 Chip 行到达再合并成一条记录
+ * - 用列特征区分「NPU 行 / Chip 行 / 进程表行」，不能只靠正则匹配数字
+ * - 部分机型（如 310P）的 `-t` 查询受限，所以采集用默认 info 表格
  */
-function parseNpu(raw: string): {
+export function parseNpu(raw: string): {
   index: number;
   name: string;
   aiCorePercent: number;
@@ -359,8 +369,7 @@ function parseNpu(raw: string): {
   tempC: number;
   health: string;
 }[] {
-  if (!raw.trim()) return [];
-  const out: {
+  type Npu = {
     index: number;
     name: string;
     aiCorePercent: number;
@@ -368,26 +377,113 @@ function parseNpu(raw: string): {
     powerWatts: number;
     tempC: number;
     health: string;
-  }[] = [];
+  };
+
+  const result: Npu[] = [];
+  if (typeof raw !== "string" || !raw.trim()) return result;
+
+  /** 按 | 切列并 trim */
+  const cells = (line: string) => line.split("|").map((part) => part.trim());
+
+  let curName: string | null = null;
+  let curHealth = "";
+  let curPower = 0;
+  let curTemp = 0;
+  let curAicore = 0;
+  /** Chip 行的 Memory-Usage，形如 "3154 / 21527" */
+  let curMemory = "";
+
+  const flush = () => {
+    if (curName === null) return;
+
+    // Memory-Usage 可能是 "3154 / 21527" 或 "0 / 0"
+    const memParts = curMemory.split("/").map((part) => part.trim());
+    const memUsed = Number.parseFloat(memParts[0] ?? "") || 0;
+    const memTotal = Number.parseFloat(memParts[1] ?? "") || 0;
+
+    result.push({
+      index: result.length,
+      name: curName,
+      aiCorePercent: curAicore,
+      // HBM 使用率 = 已用 / 总量 × 100
+      hbmPercent: memTotal > 0 ? (memUsed / memTotal) * 100 : 0,
+      powerWatts: curPower,
+      tempC: curTemp,
+      health: curHealth,
+    });
+
+    curName = null;
+    curHealth = "";
+    curPower = 0;
+    curTemp = 0;
+    curAicore = 0;
+    curMemory = "";
+  };
 
   for (const line of raw.split("\n")) {
-    // 形如：| 0    910B3   | OK   | 45.0  30  12  1000 / 65536  38  |
-    const match = /^\|\s*(\d+)\s+([\w-]+)\s*\|\s*(\w+)/.exec(line.trim());
-    if (!match) continue;
+    const c = cells(line);
+    // 至少要有 4 列（行首空 + 3 个内容列）
+    if (c.length < 4) continue;
 
-    const percents = [...line.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map((m) => Number(m[1]));
-    const nums = [...line.matchAll(/\b(\d{2,3})\b/g)].map((m) => Number(m[1]));
+    const c1First = (c[1] ?? "").split(/\s+/)[0] ?? "";
+    const isNumeric = /^\d+$/.test(c1First);
 
-    out.push({
-      index: Number(match[1]),
-      name: match[2] ?? "",
-      aiCorePercent: percents[0] ?? 0,
-      hbmPercent: percents[1] ?? 0,
-      powerWatts: nums[nums.length - 2] ?? 0,
-      tempC: nums[nums.length - 1] ?? 0,
-      health: match[3] ?? "UNKNOWN",
-    });
+    // 进程表行：c[2] 是纯数字 PID，c[3] 是进程名（非数值）
+    const c2IsPid = /^\d+$/.test(c[2] ?? "");
+    const c3First = (c[3] ?? "").split(/\s+/)[0] ?? "";
+    // 注意：Power 可能是小数（如 90.4），所以要允许小数点
+    const c3IsValue = /^\d+(\.\d+)?$/.test(c3First) || c3First === "NA";
+
+    // ---- NPU 行 ----
+    // c[1] 首段是数字，c[2] 是 Health（非 PID、非 Bus-Id），c[3] 是 Power/Temp
+    if (
+      isNumeric &&
+      !c2IsPid &&
+      !(c[2] ?? "").startsWith("NPU") &&
+      !(c[2] ?? "").startsWith("Chip") &&
+      !(c[2] ?? "").includes(":") &&
+      !(c[2] ?? "").includes(".") &&
+      c3IsValue
+    ) {
+      flush();
+      const c1Parts = (c[1] ?? "").split(/\s+/);
+      curName = c1Parts.length > 1 ? (c1Parts[1] ?? `NPU ${c1First}`) : `NPU ${c1First}`;
+      curHealth = c[2] ?? "";
+
+      // c[3] 形如 "90.4  48  0 / 0"（Power / Temp / HugePages）
+      const p3 = (c[3] ?? "").split(/\s+/).filter(Boolean);
+      curPower = Number.parseFloat(p3[0] ?? "") || 0;
+      curTemp = Number.parseFloat(p3[1] ?? "") || 0;
+      continue;
+    }
+
+    // ---- Chip 行 ----
+    // c[1] 首段是数字，c[2] 是 Bus-Id（含冒号或点）
+    if (isNumeric && ((c[2] ?? "").includes(":") || (c[2] ?? "").includes("."))) {
+      /*
+       * c[3] 的实际形态因机型而异，常见两种：
+       *   "0  3154 / 21527"                    （只有 HBM）
+       *   "0  0 / 0  3154 / 21527"             （HugePages + HBM）
+       * 前者直接取剩余部分，后者要取**最后一组** a/b。
+       */
+      const p3 = (c[3] ?? "").split(/\s+/).filter(Boolean);
+      curAicore = Number.parseFloat(p3[0] ?? "") || 0;
+
+      // 从剩余 token 里找所有 "数字 / 数字" 组合，取最后一组作为 HBM
+      const rest = p3.slice(1);
+      const pairs: string[] = [];
+      for (let i = 0; i + 2 < rest.length + 1; i += 1) {
+        if (rest[i + 1] === "/" && rest[i] !== undefined && rest[i + 2] !== undefined) {
+          pairs.push(`${rest[i]} / ${rest[i + 2]}`);
+          i += 2;
+        }
+      }
+      curMemory = pairs.length > 0 ? (pairs[pairs.length - 1] ?? "") : "";
+    }
   }
 
-  return out;
+  flush();
+  return result;
 }
+/** 仅供单元测试使用。 */
+export const parseNpuForTest = parseNpu;

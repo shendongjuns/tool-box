@@ -144,6 +144,8 @@ export function RemotePage() {
   }
 
   async function handleClose(session: RemoteSession) {
+    // 会话关闭才真正停止监控并丢弃缓存
+    dropMonitor(session.sshSessionId);
     try {
       await sshDisconnect(session.sshSessionId);
     } catch {
@@ -305,18 +307,6 @@ function SessionWorkspace({
     { id: "monitor", label: "监控", icon: Activity },
   ];
 
-  /*
-   * 离开「监控」时彻底关闭：停止采集（组件卸载即停）并清空缓存。
-   * 仅仅切到别的会话标签则不受影响，数据留在 monitor-store 里。
-   */
-  const prevTab = React.useRef(session.tab);
-  React.useEffect(() => {
-    if (prevTab.current === "monitor" && session.tab !== "monitor") {
-      dropMonitor(session.sshSessionId);
-    }
-    prevTab.current = session.tab;
-  }, [session.tab, session.sshSessionId]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 items-center justify-between gap-3">
@@ -358,11 +348,20 @@ function SessionWorkspace({
         </div>
       ) : null}
 
-      {session.tab === "monitor" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <MonitorTab sessionId={session.sshSessionId} />
-        </div>
-      ) : null}
+      {/*
+        监控常驻挂载（与终端同理）。
+        切到「终端 / 文件」只是隐藏，采集任务继续跑 ——
+        否则切回来会从零开始，且历史上的曲线会断。
+        真正停止只发生在会话关闭时（handleClose 里 dropMonitor）。
+      */}
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto",
+          session.tab !== "monitor" && "hidden",
+        )}
+      >
+        <MonitorTab sessionId={session.sshSessionId} />
+      </div>
     </div>
   );
 }

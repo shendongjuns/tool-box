@@ -22,9 +22,9 @@ export const REFRESH_OPTIONS: { value: RefreshInterval; label: string }[] = [
 ];
 
 const STORAGE_KEY = "toolbox.monitor.interval";
-const DEFAULT_INTERVAL: RefreshInterval = 3000;
+const DEFAULT_INTERVAL: RefreshInterval = 1000;
 
-/** 读取上次选择的刷新间隔。默认 3s（原来自动 2s 刷太快）。 */
+/** 读取上次选择的刷新间隔。默认 1s。 */
 export function readRefreshInterval(): RefreshInterval {
   if (typeof window === "undefined") return DEFAULT_INTERVAL;
   const raw = window.localStorage.getItem(STORAGE_KEY);

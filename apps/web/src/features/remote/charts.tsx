@@ -486,6 +486,183 @@ export function GpuCharts({ data }: { data: MonitorMetrics[] }) {
   );
 }
 
+/** NPU 指标。 */
+export type NpuMetric = "aicore" | "hbm" | "temp" | "power";
+
+const NPU_METRIC_META: Record<
+  NpuMetric,
+  { label: string; unit: string; max?: number; color: string; fill: string }
+> = {
+  aicore: { label: "AI Core", unit: "%", max: 100, color: "var(--chart-1)", fill: "npu-ai" },
+  hbm: { label: "HBM", unit: "%", max: 100, color: "var(--chart-2)", fill: "npu-hbm" },
+  temp: { label: "温度", unit: "°C", color: "var(--chart-4)", fill: "npu-temp" },
+  power: { label: "功耗", unit: "W", color: "var(--chart-5)", fill: "npu-power" },
+};
+
+function npuValue(point: MonitorMetrics, index: number, metric: NpuMetric): number {
+  const npu = point.npus[index];
+  if (!npu) return 0;
+  switch (metric) {
+    case "aicore":
+      return npu.aiCorePercent;
+    case "hbm":
+      return npu.hbmPercent;
+    case "temp":
+      return npu.tempC;
+    case "power":
+      return npu.powerWatts;
+  }
+}
+
+/** 单个 NPU 指标趋势图（多卡多线）。 */
+function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [width, setWidth] = React.useState(0);
+
+  React.useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    setWidth(element.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
+  const meta = NPU_METRIC_META[metric];
+  const height = 72;
+  const innerWidth = Math.max(0, width - PAD.left - PAD.right);
+  const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
+
+  const count = Math.max(0, ...data.map((point) => point.npus.length));
+
+  const xScale = React.useMemo(() => {
+    if (data.length === 0)
+      return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
+    const first = data[0]!.timestamp;
+    const last = data[data.length - 1]!.timestamp;
+    return scaleTime({
+      domain: [new Date(first), new Date(Math.max(last, first + 1))],
+      range: [0, innerWidth],
+    });
+  }, [data, innerWidth]);
+
+  const yScale = React.useMemo(() => {
+    const peak = Math.max(
+      1,
+      ...data.flatMap((point) => point.npus.map((_, index) => npuValue(point, index, metric))),
+    );
+    const max = meta.max ?? Math.max(1, peak * 1.15);
+    return scaleLinear({ domain: [0, max], range: [innerHeight, 0] });
+  }, [data, metric, meta.max, innerHeight]);
+
+  if (!data.length || count === 0) {
+    return (
+      <div
+        ref={containerRef}
+        className="grid place-items-center text-[10px] text-muted-foreground"
+        style={{ height }}
+      >
+        无数据
+      </div>
+    );
+  }
+
+  const latest = data[data.length - 1]!;
+
+  return (
+    <div ref={containerRef}>
+      <div className="mb-0.5 flex items-baseline justify-between">
+        <span
+          className="flex items-center gap-1 text-[10px] font-medium"
+          style={{ color: meta.color }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+          {meta.label}
+        </span>
+        <span className="font-mono text-[9px] tabular-nums" style={{ color: meta.color }}>
+          {latest.npus
+            .map((npu, index) => {
+              const value = npuValue(latest, index, metric).toFixed(0);
+              return count > 1 ? `#${npu.index} ${value}${meta.unit}` : `${value}${meta.unit}`;
+            })
+            .join("  ")}
+        </span>
+      </div>
+
+      {innerWidth > 0 ? (
+        <svg width={width} height={height} role="img" aria-label={`NPU ${meta.label}趋势`}>
+          <defs>
+            <linearGradient id={meta.fill} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={meta.color} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={meta.color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <Group left={PAD.left} top={PAD.top}>
+            <GridRows
+              scale={yScale}
+              width={innerWidth}
+              height={innerHeight}
+              numTicks={2}
+              stroke="currentColor"
+              className="text-border"
+              strokeOpacity={0.4}
+              strokeDasharray="2,3"
+            />
+            {count === 1 ? (
+              <AreaClosed
+                data={data.filter((point) => point.npus[0])}
+                x={(point) => xScale(new Date(point.timestamp)) ?? 0}
+                y={(point) => yScale(npuValue(point, 0, metric)) ?? 0}
+                yScale={yScale}
+                curve={curveMonotoneX}
+                fill={`url(#${meta.fill})`}
+              />
+            ) : null}
+            {Array.from({ length: count }).map((_, index) => (
+              <LinePath
+                key={index}
+                data={data.filter((point) => point.npus[index])}
+                x={(point) => xScale(new Date(point.timestamp)) ?? 0}
+                y={(point) => yScale(npuValue(point, index, metric)) ?? 0}
+                curve={curveMonotoneX}
+                stroke={meta.color}
+                strokeWidth={1.5}
+                strokeDasharray={count > 1 ? `${4 + index * 3} 3` : undefined}
+              />
+            ))}
+            {yScale.ticks(2).map((tick) => (
+              <text
+                key={tick}
+                x={-5}
+                y={(yScale(tick) ?? 0) + 3}
+                textAnchor="end"
+                className="fill-muted-foreground text-[8px]"
+              >
+                {tick.toFixed(0)}
+              </text>
+            ))}
+          </Group>
+        </svg>
+      ) : null}
+    </div>
+  );
+}
+
+/** NPU 四联图。 */
+export function NpuCharts({ data }: { data: MonitorMetrics[] }) {
+  const metrics: NpuMetric[] = ["aicore", "hbm", "temp", "power"];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {metrics.map((metric) => (
+        <NpuChart key={metric} data={data} metric={metric} />
+      ))}
+    </div>
+  );
+}
+
 /**
  * 磁盘使用：容量条 + 明细。
  *

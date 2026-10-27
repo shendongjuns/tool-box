@@ -13,7 +13,7 @@ import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CpuChart, DiskBars, GpuCharts, MemoryChart, NetworkChart } from "./charts";
+import { CpuChart, DiskBars, GpuCharts, MemoryChart, NetworkChart, NpuCharts } from "./charts";
 import { formatBytes } from "./format";
 
 /** 使用率对应的文字色。 */
@@ -183,7 +183,7 @@ export function MonitorPanel({
         </Card>
       ) : null}
 
-      {/* NPU */}
+      {/* NPU：与 GPU 同样的四联图 + 设备明细 */}
       {metrics.npus.length > 0 ? (
         <Card>
           <CardHeader className="p-3 pb-1">
@@ -191,29 +191,30 @@ export function MonitorPanel({
               NPU（昇腾）
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 p-3 pt-1 text-xs">
-            {metrics.npus.map((npu) => (
-              <div key={npu.index} className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5">
-                  <span className="font-mono text-muted-foreground">#{npu.index}</span>
-                  <span className="truncate font-medium">{npu.name}</span>
-                </span>
-                <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                  AI {npu.aiCorePercent.toFixed(0)}% · HBM {npu.hbmPercent.toFixed(0)}% ·{" "}
-                  {npu.tempC.toFixed(0)}°C · {npu.powerWatts.toFixed(0)}W
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-                    /ok/i.test(npu.health)
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-                  )}
-                >
-                  {npu.health}
-                </span>
-              </div>
-            ))}
+          <CardContent className="space-y-2 p-3 pt-1">
+            <NpuCharts data={history} />
+            <div className="space-y-1 border-t border-border/40 pt-1.5 text-[10px]">
+              {metrics.npus.map((npu) => (
+                <div key={npu.index} className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="shrink-0 font-mono text-muted-foreground">
+                      #{npu.index}
+                    </span>
+                    <span className="truncate text-muted-foreground">{npu.name}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 font-medium",
+                      /ok/i.test(npu.health)
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                    )}
+                  >
+                    {npu.health}
+                  </span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}
