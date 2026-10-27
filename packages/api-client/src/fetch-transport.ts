@@ -7,16 +7,23 @@ export interface FetchTransportOptions {
   /** 每次请求时求值的额外请求头（桌面端注入 Bearer） */
   headers?: () => Record<string, string>;
   /**
-   * 请求超时（毫秒）。默认 3000。
+   * 请求超时（毫秒）。默认 15000。
    *
-   * 云端地址不可达时浏览器会挂很久（TCP 超时可能 30s+），
-   * 登录页的「正在连接…」会一直转下去。这里强制 3 秒内出结果。
+   * 历史：曾设为 3000，本意是让「云端不可达」快速失败。
+   * 但局域网 / 弱网环境下，TCP 握手 + TLS + 服务端 Argon2 验证
+   * 叠加后经常超过 3 秒，导致合法服务器被误判为「连接失败」。
+   *
+   * 现在改为 15 秒：
+   * - 局域网下这个值足够宽松，不会误杀
+   * - 对不可达地址，用户最多等 15 秒（而不是永远转圈）
+   * - 「不可达」的正确做法是**主动探测**（登录页的延迟探测 3s），
+   *   而不是把业务请求的超时压到极限
    */
   timeoutMs?: number;
 }
 
-/** 默认请求超时：3 秒。 */
-export const DEFAULT_TIMEOUT_MS = 3000;
+/** 默认请求超时：15 秒。 */
+export const DEFAULT_TIMEOUT_MS = 15_000;
 
 /** 把网络层异常统一成 ApiError，避免上层拿到 "Failed to fetch" 这种无从处理的错误。 */
 function toNetworkError(error: unknown): ApiError {

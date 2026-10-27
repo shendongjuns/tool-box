@@ -300,14 +300,59 @@ describe("跨源与代理场景（回归）", () => {
     expect(response.statusCode).toBe(200);
   });
 
-  it("无关来源仍然拒绝（403）", async () => {
+  /*
+   * CSRF 规则（2026-10 修正）：
+   *
+   * CSRF 只威胁「浏览器自动携带 Cookie」的场景。本服务的跨源客户端
+   * 都用 Bearer，浏览器不会自动附带，因此：
+   * - 认证入口（bootstrap / login / desktop-login）放行 —— 否则局域网
+   *   部署时（页面与服务端不同源）根本无法登录
+   * - 带 Authorization 的请求放行 —— 无 CSRF 攻击面
+   * - 无 Origin 的请求放行 —— 非浏览器客户端
+   * - 只有「无 Authorization + 有 Origin + 非同源」才拒绝（Cookie 场景）
+   */
+  it("认证入口放行无关来源（局域网可登录）", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/login",
       headers: { origin: "https://evil.example" },
       payload: credentials,
     });
+    // 登录接口本身不产生副作用，攻击者拿到 200 也读不到 Cookie
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("Cookie 场景下无关来源仍被拒绝（403）", async () => {
+    // 不带 Authorization 的写操作 = 可能依赖 Cookie 的浏览器请求
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/settings",
+      headers: { origin: "https://evil.example" },
+      payload: { values: { "ui.theme": "dark" } },
+    });
     expect(response.statusCode).toBe(403);
+  });
+
+  it("带 Bearer 的请求不受 CSRF 限制（局域网跨源写操作）", async () => {
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/desktop-login",
+      headers: { origin: "http://192.168.1.100:8080" },
+      payload: credentials,
+    });
+    const token = JSON.parse(login.body).token as string;
+    expect(token.length).toBeGreaterThan(20);
+
+    const write = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: {
+        origin: "http://192.168.1.100:8080",
+        authorization: `Bearer ${token}`,
+      },
+      payload: { values: { "ui.theme": "dark" } },
+    });
+    expect(write.statusCode).toBe(200);
   });
 
   it("预检请求返回 CORS 头", async () => {

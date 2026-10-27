@@ -21,16 +21,16 @@ function LoginPage() {
   const bootstrap = useQuery({
     queryKey: ["bootstrap", activeId, cloudBaseUrl],
     /*
-     * queryFn 本身设硬上限：4 秒。
+     * queryFn 兜底上限：18 秒（比传输层的 15 秒多留 3 秒余量）。
      *
-     * 传输层有 3 秒超时，但如果遇到传输层没能覆盖的情况
-     * （例如请求被 WebView 拦截且永不 settle），
-     * 这里的 Promise.race 保证查询一定会结束 ——
-     * isFetching 不会无限为 true，界面不会永远「正在连接…」。
+     * 作用仅是防止「WebView 拦截请求且永不 settle」时界面无限转圈，
+     * 不是用来判断网络好坏的。真正的可达性判断交给下面的延迟探测。
+     *
+     * 历史：曾是 4 秒，导致局域网稍慢就把好服务器误判为不可达。
      */
     queryFn: async () => {
       const timeout = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("连接超时，请检查地址与网络")), 4000);
+        setTimeout(() => reject(new Error("连接超时，请检查地址与网络")), 18_000);
       });
       return Promise.race([getApi().getBootstrap(), timeout]);
     },

@@ -158,8 +158,22 @@ async fn http_request(
         return Err("仅支持 http/https".to_string());
     }
 
+    /*
+     * 超时设置很关键。
+     *
+     * 之前没设超时：目标不可达时 reqwest 会一直等到系统 TCP 超时
+     * （Windows 上可达 21 秒以上），前端 Promise.race 虽然能提前返回，
+     * 但 Rust 侧的请求仍在跑，反复重试会堆积连接。
+     *
+     * 现在显式限制：
+     * - connect 10s：TCP 握手最多等 10 秒
+     * - total 30s：整个请求（含读响应）上限 30 秒
+     * 前端传输层的 15 秒会先触发，这里只是兜底避免资源泄漏。
+     */
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
 

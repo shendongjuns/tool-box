@@ -64,7 +64,21 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
   app.decorateRequest("auth");
 
   await app.register(cookie);
-  await app.register(helmet, { contentSecurityPolicy: false });
+  /*
+   * helmet 默认发 Cross-Origin-Resource-Policy: same-origin，
+   * 会阻止浏览器/WebView 跨源读取响应体 —— 即使 CORS 头正确。
+   * 桌面端（tauri://localhost）和网页端跨源访问都受此影响，
+   * 表现为「请求 200 但前端拿不到数据」。
+   *
+   * 这里设为 cross-origin：本服务本来就是给多个客户端跨源调用的。
+   * 真正的访问控制由 CORS 白名单 + 认证令牌负责，不靠 CORP。
+   */
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // 同理：COOP 会隔离跨源窗口引用，对我们的纯 API 无意义
+    crossOriginOpenerPolicy: false,
+  });
 
   /**
    * 桌面端是跨源客户端（Tauri 的 origin 是 tauri://localhost），

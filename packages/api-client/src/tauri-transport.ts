@@ -8,7 +8,7 @@ export interface TauriTransportOptions {
   timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 3000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
  * 桌面端传输层：所有请求经 Rust 的 http_request 命令转发。
