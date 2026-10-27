@@ -183,32 +183,48 @@ export function RemotePage() {
       {/* 会话标签栏 */}
       <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
         {sessions.map((session) => (
+          /*
+           * 整个标签就是一个按钮。
+           *
+           * 之前外层是 div（带边框背景，看起来像按钮），
+           * 但 onClick 只挂在内层文字按钮上 ——
+           * 点在 padding（px-3 py-2 = 12px/8px）区域没有任何反应，
+           * 用户感受就是「按钮变大了但边缘点不动」。
+           * 现在把点击区域铺满整个标签，关闭按钮用 stopPropagation 隔离。
+           */
           <div
             key={session.id}
+            onClick={() => setActive(session.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setActive(session.id);
+              }
+            }}
             className={cn(
-              "group flex min-w-[10rem] max-w-[16rem] shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
+              "group flex min-w-[10rem] max-w-[16rem] shrink-0 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
               session.id === activeId
                 ? "border-primary/40 bg-primary/[0.06] font-medium text-foreground"
                 : "border-border text-muted-foreground hover:bg-accent/60",
             )}
+            title={`${session.label} · ${session.server.username}@${session.server.host}:${session.server.port}`}
           >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                session.connected ? "bg-emerald-500" : "bg-red-500",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">{session.label}</span>
             <button
               type="button"
-              onClick={() => setActive(session.id)}
-              className="flex min-w-0 flex-1 items-center gap-1.5"
-              title={`${session.label} · ${session.server.username}@${session.server.host}:${session.server.port}`}
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  session.connected ? "bg-emerald-500" : "bg-red-500",
-                )}
-              />
-              <span className="truncate">{session.label}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingClose(session)}
+              onClick={(event) => {
+                // 阻止冒泡，否则点关闭会先触发切换
+                event.stopPropagation();
+                setPendingClose(session);
+              }}
               title="关闭"
               className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
             >

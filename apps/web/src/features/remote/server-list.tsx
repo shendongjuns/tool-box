@@ -109,10 +109,24 @@ export function ServerList({
       ) : (
         <>
           {items.map((server) => (
+            /*
+             * 整行可点击：点图标、点空白、点文字都应建立连接。
+             * 之前只有中间文字是 button，图标与右侧留白点不动 ——
+             * 和「按钮看着挺大但边缘无响应」是同一类问题。
+             */
             <div
               key={server.id}
+              onClick={() => onConnect(server)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onConnect(server);
+                }
+              }}
+              role="button"
+              tabIndex={0}
               className={
-                "group flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors " +
+                "group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors " +
                 (server.id === activeId
                   ? "border-primary/40 bg-primary/[0.04]"
                   : "border-border hover:bg-accent/40")
@@ -122,11 +136,7 @@ export function ServerList({
                 <ServerIcon className="h-4 w-4" />
               </span>
 
-              <button
-                type="button"
-                onClick={() => onConnect(server)}
-                className="min-w-0 flex-1 text-left"
-              >
+              <div className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-sm font-medium">{server.name}</span>
                 <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">
                   {server.username}@{server.host}:{server.port}
@@ -134,14 +144,17 @@ export function ServerList({
                     ? ` · ${relativeTime(server.lastConnectedAt)}`
                     : ""}
                 </span>
-              </button>
+              </div>
 
               <LatencyPill
                 state={latency[server.id]}
                 onRetry={() => void measure(server)}
               />
 
-              <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <span
+                className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <Button size="sm" variant="ghost" onClick={() => openEdit(server)}>
                   编辑
                 </Button>
