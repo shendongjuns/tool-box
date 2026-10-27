@@ -46,23 +46,62 @@ fn sha256_hex(value: &str) -> String {
     hex_encode(&hasher.finalize())
 }
 
-/// 本地密码哈希：sha256(salt + password)，salt 存在哈希串里。
-///
-/// 本地库只对当前 Windows 用户开放（服务绑定 127.0.0.1），
-/// 因此不需要 Argon2 那种级别的成本，但仍然避免明文落盘。
-fn hash_password(password: &str) -> String {
-    let salt: [u8; 16] = rand::random();
-    let salt_hex = hex_encode(&salt);
-    let digest = sha256_hex(&format!("{salt_hex}{password}"));
-    format!("{salt_hex}:{digest}")
+/*
+ * 密码哈希：Argon2id，参数与云端保持一致（OWASP 推荐档）。
+ *
+ * 之前的实现是 sha256(salt + password) —— 单轮 SHA-256 只有微秒级，
+ * 攻击者拿到 local.db 后可以用 GPU 每秒尝试上亿次，弱密码几分钟就破。
+ * Argon2id 是内存硬算法，19456 KiB / t=2 让每次尝试都要占约 19MB 内存，
+ * GPU 无法并行堆叠，暴力破解成本提高几个数量级。
+ *
+ * 哈希串是 PHC 格式（$argon2id$v=19$m=19456,t=2,p=1$...），
+ * 参数随串保存，未来调参不会让旧密码失效。
+ */
+fn argon2_instance() -> argon2::Argon2<'static> {
+    // 19456 KiB = 19 MiB，时间成本 2 轮，单通道
+    let params = argon2::Params::new(19456, 2, 1, None)
+        .expect("Argon2 参数非法：19456/2/1 是合法组合");
+    argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
 }
 
+fn hash_password(password: &str) -> String {
+    use argon2::password_hash::PasswordHasher;
+    // argon2 0.6 会自动生成随机 salt 并编码进 PHC 串
+    argon2_instance()
+        .hash_password(password.as_bytes())
+        .map(|hash| hash.to_string())
+        .unwrap_or_default()
+}
+
+/// 校验密码。
+///
+/// 兼容旧格式 `salt:sha256hex`：老库里已有账号不会被锁在门外，
+/// 登录成功后由调用方触发一次 rehash 升级到 Argon2id。
 fn verify_password(stored: &str, password: &str) -> bool {
+    use argon2::password_hash::{PasswordVerifier, phc::PasswordHash};
+
+    if stored.starts_with("$argon2") {
+        let Ok(parsed) = PasswordHash::new(stored) else {
+            return false;
+        };
+        // 注意：参数取自哈希串本身，不是 argon2_instance() 的配置，
+        // 这样调整默认参数后老密码依然能验证。
+        return argon2::Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok();
+    }
+
+    // 旧格式：salt:sha256(salt+password)
     let mut parts = stored.splitn(2, ':');
     let (Some(salt), Some(expected)) = (parts.next(), parts.next()) else {
         return false;
     };
     sha256_hex(&format!("{salt}{password}")) == expected
+}
+
+/// 判断哈希是否需要用新算法重算。
+fn needs_rehash(stored: &str) -> bool {
+    !stored.starts_with("$argon2")
 }
 
 /// 读取 app.tokens（桌面端按数据源保存的令牌表）。
@@ -601,6 +640,20 @@ fn handle(state: &AppState, mut request: Request) {
             }
 
             if let Ok(conn) = state.conn.lock() {
+                /*
+                 * 老库里的密码可能是 sha256 格式。登录成功后立刻用
+                 * Argon2id 重算写回 —— 用户无感知，但下次验证就走强算法了。
+                 */
+                if needs_rehash(&hash) {
+                    let upgraded = hash_password(&password);
+                    if !upgraded.is_empty() {
+                        let _ = conn.execute(
+                            "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+                            params![upgraded, id],
+                        );
+                    }
+                }
+
                 let _ = conn.execute(
                     "UPDATE users SET last_login_at = ?1, updated_at = ?1 WHERE id = ?2",
                     params![now, id],

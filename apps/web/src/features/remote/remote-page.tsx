@@ -236,7 +236,12 @@ export function RemotePage() {
           />
         </div>
       ) : (
+        // key 必须绑定会话 id。
+        // 否则切换标签时 React 复用同一个 SessionWorkspace 实例，
+        // 内部的 MonitorTab 仍持有旧 sessionId 的采集循环，
+        // 表现为「切了标签但监控画面没变」。
         <SessionWorkspace
+          key={active.id}
           session={active}
           onTabChange={(tab) => setTab(active.id, tab)}
           registerWriter={registerWriter}
