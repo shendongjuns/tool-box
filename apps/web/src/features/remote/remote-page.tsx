@@ -380,7 +380,17 @@ function SessionWorkspace({
       */}
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto",
+          /*
+           * overflow-x-hidden：监控面板内部有大量图表，
+           * 任何元素偶然溢出都会立刻撑出横向滚动条 ——
+           * 滚动条本身占据宽度，触发 ResizeObserver，图表重排，
+           * 表现为「鼠标一划画面抖一下」。
+           * 这里直接禁掉横向滚动，纵向保留。
+           *
+           * scrollbar-gutter: stable：给滚动条预留固定空间，
+           * 内容从「不需要滚动」变成「需要滚动」时宽度不会突变。
+           */
+          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]",
           session.tab !== "monitor" && "hidden",
         )}
       >

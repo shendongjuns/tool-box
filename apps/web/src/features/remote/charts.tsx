@@ -46,13 +46,37 @@ function SparkArea({
   React.useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
+
+    /*
+     * 宽度变化才更新。
+     *
+     * 1. 取整到 px：滚动条出现/消失会带来亚像素抖动（如 512.3 → 511.8），
+     *    不取整会触发无意义的重绘。
+     * 2. 用 rAF 合并同一帧内的多次回调，避免 ResizeObserver 循环。
+     */
+    let frame = 0;
+    let lastWidth = -1;
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) setWidth(entry.contentRect.width);
+      if (!entry) return;
+      const next = Math.round(entry.contentRect.width);
+      if (next === lastWidth) return;
+      lastWidth = next;
+
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWidth(next));
     });
+
     observer.observe(element);
-    setWidth(element.getBoundingClientRect().width);
-    return () => observer.disconnect();
+    const initial = Math.round(element.getBoundingClientRect().width);
+    lastWidth = initial;
+    setWidth(initial);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   const innerWidth = Math.max(0, width - PAD.left - PAD.right);
@@ -90,7 +114,7 @@ function SparkArea({
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative overflow-hidden"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         // 减去左侧 padding，得到绘图区内的坐标
@@ -108,7 +132,7 @@ function SparkArea({
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} />
+      <ChartTooltip state={tip} containerWidth={innerWidth} />
 
       {/*
         十字准线：悬浮时在对应采样点画一条竖线 + 圆点，
@@ -239,13 +263,37 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   React.useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
+
+    /*
+     * 宽度变化才更新。
+     *
+     * 1. 取整到 px：滚动条出现/消失会带来亚像素抖动（如 512.3 → 511.8），
+     *    不取整会触发无意义的重绘。
+     * 2. 用 rAF 合并同一帧内的多次回调，避免 ResizeObserver 循环。
+     */
+    let frame = 0;
+    let lastWidth = -1;
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) setWidth(entry.contentRect.width);
+      if (!entry) return;
+      const next = Math.round(entry.contentRect.width);
+      if (next === lastWidth) return;
+      lastWidth = next;
+
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWidth(next));
     });
+
     observer.observe(element);
-    setWidth(element.getBoundingClientRect().width);
-    return () => observer.disconnect();
+    const initial = Math.round(element.getBoundingClientRect().width);
+    lastWidth = initial;
+    setWidth(initial);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   const height = 96;
@@ -285,7 +333,7 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative overflow-hidden"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
@@ -311,7 +359,7 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} />
+      <ChartTooltip state={tip} containerWidth={innerWidth} />
 
       <div className="mb-1 flex items-baseline gap-3 text-[11px]">
         <span className="text-[var(--chart-3)]">
@@ -421,13 +469,37 @@ export function GpuChart({
   React.useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
+
+    /*
+     * 宽度变化才更新。
+     *
+     * 1. 取整到 px：滚动条出现/消失会带来亚像素抖动（如 512.3 → 511.8），
+     *    不取整会触发无意义的重绘。
+     * 2. 用 rAF 合并同一帧内的多次回调，避免 ResizeObserver 循环。
+     */
+    let frame = 0;
+    let lastWidth = -1;
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) setWidth(entry.contentRect.width);
+      if (!entry) return;
+      const next = Math.round(entry.contentRect.width);
+      if (next === lastWidth) return;
+      lastWidth = next;
+
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWidth(next));
     });
+
     observer.observe(element);
-    setWidth(element.getBoundingClientRect().width);
-    return () => observer.disconnect();
+    const initial = Math.round(element.getBoundingClientRect().width);
+    lastWidth = initial;
+    setWidth(initial);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   const meta = GPU_METRIC_META[metric];
@@ -474,7 +546,7 @@ export function GpuChart({
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative overflow-hidden"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
@@ -493,7 +565,7 @@ export function GpuChart({
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} />
+      <ChartTooltip state={tip} containerWidth={innerWidth} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"
@@ -622,13 +694,37 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
   React.useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
+
+    /*
+     * 宽度变化才更新。
+     *
+     * 1. 取整到 px：滚动条出现/消失会带来亚像素抖动（如 512.3 → 511.8），
+     *    不取整会触发无意义的重绘。
+     * 2. 用 rAF 合并同一帧内的多次回调，避免 ResizeObserver 循环。
+     */
+    let frame = 0;
+    let lastWidth = -1;
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) setWidth(entry.contentRect.width);
+      if (!entry) return;
+      const next = Math.round(entry.contentRect.width);
+      if (next === lastWidth) return;
+      lastWidth = next;
+
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWidth(next));
     });
+
     observer.observe(element);
-    setWidth(element.getBoundingClientRect().width);
-    return () => observer.disconnect();
+    const initial = Math.round(element.getBoundingClientRect().width);
+    lastWidth = initial;
+    setWidth(initial);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   const meta = NPU_METRIC_META[metric];
@@ -676,7 +772,7 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative overflow-hidden"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
@@ -695,7 +791,7 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} />
+      <ChartTooltip state={tip} containerWidth={innerWidth} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"
