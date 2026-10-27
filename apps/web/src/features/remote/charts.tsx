@@ -126,13 +126,16 @@ function SparkArea({
         setTip({
           x: event.clientX - rect.left,
           y: PAD.top + (yScale(getValue(point)) ?? 0),
+          // 视口坐标供 portal 定位（浮层挂在 body 上）
+          clientX: event.clientX,
+          clientY: rect.top + PAD.top + (yScale(getValue(point)) ?? 0),
           label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
           rows: [{ color, name: "值", value: formatValue(getValue(point)) }],
         });
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} containerWidth={innerWidth} />
+      <ChartTooltip state={tip} />
 
       {/*
         十字准线：悬浮时在对应采样点画一条竖线 + 圆点，
@@ -342,6 +345,8 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
         setTip({
           x: event.clientX - rect.left,
           y: PAD.top + 20,
+          clientX: event.clientX,
+          clientY: rect.top + PAD.top + 20,
           label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
           rows: [
             {
@@ -359,7 +364,7 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} containerWidth={innerWidth} />
+      <ChartTooltip state={tip} />
 
       <div className="mb-1 flex items-baseline gap-3 text-[11px]">
         <span className="text-[var(--chart-3)]">
@@ -555,6 +560,8 @@ export function GpuChart({
         setTip({
           x: event.clientX - rect.left,
           y: PAD.top + 18,
+          clientX: event.clientX,
+          clientY: rect.top + PAD.top + 18,
           label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
           rows: point.gpus.map((gpu, i) => ({
             color: meta.color,
@@ -565,7 +572,7 @@ export function GpuChart({
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} containerWidth={innerWidth} />
+      <ChartTooltip state={tip} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"
@@ -781,6 +788,8 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
         setTip({
           x: event.clientX - rect.left,
           y: PAD.top + 18,
+          clientX: event.clientX,
+          clientY: rect.top + PAD.top + 18,
           label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
           rows: point.npus.map((npu, i) => ({
             color: meta.color,
@@ -791,7 +800,7 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
       }}
       onMouseLeave={() => setTip(null)}
     >
-      <ChartTooltip state={tip} containerWidth={innerWidth} />
+      <ChartTooltip state={tip} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"

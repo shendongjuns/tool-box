@@ -1,51 +1,63 @@
+import { createPortal } from "react-dom";
+
 /**
  * 图表悬浮提示。
  *
- * visx 只提供原语，tooltip 要自己画。做法：
- * - 用 SVG 的 mousemove 拿到相对坐标
- * - 二分/线性找到最近的时间点
- * - 用 HTML 绝对定位的浮层展示（比 SVG text 更容易做样式）
+ * 关键决策：用 **position: fixed + portal 到 body**，而不是容器内 absolute。
+ *
+ * 原因：图表容器为了防横向滚动条加了 overflow 裁剪，
+ * absolute 浮层只要超出容器边界（比如落在最上方的数据点上方）就会被裁掉，
+ * 信息展示不全。fixed + portal 完全脱离祖先的 overflow 影响，
+ * 同时用视口坐标自己处理贴边，不会撑出滚动条。
  */
-/** 判定为「贴近边缘」的阈值（像素）。 */
-const EDGE_PX = 96;
+
+/** 浮层与鼠标点的间距。 */
+const OFFSET = 12;
+/** 估算浮层高度，用于判断上方是否放得下。 */
+const ESTIMATED_HEIGHT = 72;
+/** 贴边留白。 */
+const MARGIN = 8;
 
 export interface TooltipState {
+  /** 容器内坐标 —— 画竖向准线用 */
   x: number;
   y: number;
+  /** 视口坐标 —— 浮层定位用 */
+  clientX: number;
+  clientY: number;
   label: string;
   rows: { color: string; name: string; value: string }[];
 }
 
-export function ChartTooltip({
-  state,
-  containerWidth,
-}: {
-  state: TooltipState | null;
-  /** 容器宽度，用于判断浮层是否贴边 */
-  containerWidth: number;
-}) {
-  if (!state) return null;
+export function ChartTooltip({ state }: { state: TooltipState | null }) {
+  if (!state || typeof document === "undefined") return null;
 
-  // 靠近左右边缘时改为贴边对齐，避免半个浮层探出容器撑出滚动条
-  const nearLeft = state.x < EDGE_PX;
-  const nearRight = state.x > containerWidth - EDGE_PX;
+  const { clientX, clientY } = state;
+  const viewportWidth = window.innerWidth;
+
+  /*
+   * 垂直方向：默认放在点的上方；上方空间不够就翻到下方。
+   * 这样即使数据点在图表最顶部，浮层也不会跑出视口。
+   */
+  const showBelow = clientY - ESTIMATED_HEIGHT - OFFSET < MARGIN;
+  const top = showBelow ? clientY + OFFSET : clientY - ESTIMATED_HEIGHT - OFFSET;
+
+  /*
+   * 水平方向：按剩余空间切换对齐，
+   * 保证浮层左右边缘都不超出视口。
+   */
+  const nearLeft = clientX < 110;
+  const nearRight = clientX > viewportWidth - 110;
   const shift = nearLeft ? "0" : nearRight ? "-100%" : "-50%";
+  const left = Math.min(Math.max(clientX, MARGIN), viewportWidth - MARGIN);
 
-  return (
-    /*
-     * 定位说明（避免溢出导致横向滚动条）：
-     * - 不用 translate(-50%)：那会让浮层左半边探出容器，
-     *   图表容器又是 relative 无裁剪，鼠标靠右时就会撑出滚动条；
-     * - 改为 clamp：把 left 限制在 [0, 100%] 并用 max-width 收窄，
-     *   浮层永远落在容器内部；
-     * - clamp 用 CSS 变量 + calc 实现，不依赖测量 DOM。
-     */
+  return createPortal(
     <div
-      className="pointer-events-none absolute z-20 w-max max-w-[12rem] rounded-md border border-border bg-card/95 px-2 py-1.5 text-[10px] shadow-lg backdrop-blur-sm"
+      className="pointer-events-none fixed z-[9999] w-max max-w-[14rem] rounded-md border border-border bg-card px-2 py-1.5 text-[10px] shadow-xl"
       style={{
-        left: `clamp(0px, ${state.x}px, 100%)`,
-        top: state.y,
-        transform: `translateY(-115%) translateX(${shift})`,
+        left,
+        top,
+        transform: `translateX(${shift})`,
       }}
     >
       <div className="mb-1 font-medium text-muted-foreground">{state.label}</div>
@@ -63,6 +75,7 @@ export function ChartTooltip({
           </div>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
