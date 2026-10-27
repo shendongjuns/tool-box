@@ -193,8 +193,10 @@ export async function sftpChmod(sessionId: string, path: string, mode: number): 
 
 /** 取当前工作目录（绝对路径），用于文件浏览器的起始路径。 */
 export async function remoteHomeDir(sessionId: string): Promise<string> {
-  const { sshExec } = await import("./ssh");
   try {
+    // 注意：这里直接调用同文件的 sshExec。
+    // 之前写成 await import("./ssh") 是自我导入，会触发 Rollup 警告，
+    // 而且动态导入自己这个模块没有意义（模块早就在加载中）。
     const raw = await sshExec(sessionId, "pwd 2>/dev/null || echo /", 5000);
     const line = raw.trim().split("\n")[0] ?? "/";
     return line.startsWith("/") ? line : "/";

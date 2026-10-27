@@ -1,4 +1,5 @@
 import { isTauriRuntime } from "./platform";
+import { setTauriInvoke } from "./tauri-invoke";
 
 /**
  * 桌面端桥接层。
@@ -98,8 +99,7 @@ export async function initDesktopBridge(): Promise<void> {
    */
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    const { setTauriInvoke } = await import("./api-context.js");
-    setTauriInvoke(invoke);
+    setTauriInvoke(invoke as <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>);
   } catch (error) {
     console.warn("注入 Tauri invoke 失败", error);
   }

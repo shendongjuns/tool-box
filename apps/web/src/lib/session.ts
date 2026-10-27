@@ -1,6 +1,7 @@
 import { invalidateApiCache } from "./api-context";
 import { useAuth } from "./auth-session";
 import { useDataSource } from "./data-source";
+import { getApi } from "./api-context";
 import { ensureLocalApi, getToken, setToken } from "./desktop";
 import { isTauriRuntime } from "./platform";
 import type { PublicUser, SessionInfo } from "@toolbox/contracts";
@@ -35,7 +36,6 @@ export async function applySession(input: {
  */
 export async function logoutCurrent(): Promise<void> {
   try {
-    const { getApi } = await import("./api-context");
     await getApi().logout();
   } catch {
     // 网络问题 / 令牌已失效：继续清理本地状态

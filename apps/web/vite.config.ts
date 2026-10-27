@@ -36,5 +36,24 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
     target: "es2022",
+    /*
+     * 抑制两类第三方噪声：
+     * 1. zod 源码里的注释位置不符合 Rollup 的 annotation 规则
+     *    （"contains an annotation that Rollup cannot interpret"）
+     *    —— 这是 zod 4.6.7 自身写法问题，等上游修复
+     * 2. rollup 的 chunk 划分建议
+     */
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // zod 内部注释位置告警
+        if (
+          warning.code === "INVALID_ANNOTATION" ||
+          (warning.message ?? "").includes("contains an annotation that Rollup cannot interpret")
+        ) {
+          return;
+        }
+        warn(warning);
+      },
+    },
   },
 });

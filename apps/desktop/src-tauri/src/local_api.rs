@@ -748,7 +748,7 @@ fn handle(state: &AppState, mut request: Request) {
         }
 
         (Method::Delete, path) if path.starts_with("/api/auth/sessions/") => {
-            let Some((user_id, current_id)) = current_session(state, &request) else {
+            let Some((user_id, _)) = current_session(state, &request) else {
                 respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
                 return;
             };

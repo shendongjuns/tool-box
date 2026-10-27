@@ -57,7 +57,7 @@ impl client::Handler for ClientHandler {
     /// 当前优先保证可用性，界面上会提示「首次连接请自行确认主机身份」。
     fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::ssh_key::PublicKey,
+        _server_public_key: &russh::keys::PublicKeyOrCertificate,
     ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
         async { Ok(true) }
     }

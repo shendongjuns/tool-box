@@ -2,26 +2,12 @@ import * as React from "react";
 import { createApi, createFetchTransport, createTauriTransport, type Api } from "@toolbox/api-client";
 import { useDataSource } from "./data-source";
 import { authHeaderFor, getLocalBaseUrl } from "./desktop";
+import { getTauriInvoke, setTauriInvoke } from "./tauri-invoke";
+
+export { setTauriInvoke };
 import { isTauriRuntime } from "./platform";
 
 const ApiContext = React.createContext<Api | null>(null);
-
-/**
- * Tauri 的 invoke 引用。
- *
- * 在 initDesktopBridge() 里一次性拿到（await import 后赋值），
- * 之后 getApi() 同步可用。网页端为 null，走 fetch 分支。
- */
-let tauriInvoke:
-  | ((command: string, args?: Record<string, unknown>) => Promise<unknown>)
-  | null = null;
-
-/** 供 desktop.ts 在启动时注入 invoke。 */
-export function setTauriInvoke(
-  fn: ((command: string, args?: Record<string, unknown>) => Promise<unknown>) | null,
-): void {
-  tauriInvoke = fn;
-}
 
 /**
  * API 实例按「数据源 + 地址 + 令牌」缓存。
@@ -77,7 +63,7 @@ export function getApi(): Api {
    * 此时若退回 fetch，请求会被 CSP 拦下且可能永不 settle ——
    * 界面就会一直「正在连接」。这里直接返回一个必定失败的传输层。
    */
-  if (tauri && type === "cloud" && !tauriInvoke) {
+  if (tauri && type === "cloud" && !getTauriInvoke()) {
     cachedApi = createApi(
       {
         credentials: "omit",
@@ -93,13 +79,15 @@ export function getApi(): Api {
     return cachedApi;
   }
 
-  if (tauri && type === "cloud" && tauriInvoke) {
+  const invoke = getTauriInvoke();
+
+  if (tauri && type === "cloud" && invoke) {
     // 云端请求经 Rust http_request 转发：渲染进程的 CSP 不允许直连 https:，
     // 统一由 Rust 侧出网后，即使前端被注入脚本也偷不走令牌。
     cachedApi = createApi(
       createTauriTransport({
         baseUrl,
-        invoke: tauriInvoke,
+        invoke,
         headers: () => authHeaderFor(type, cloudBaseUrl),
       }),
       { desktop: true },
