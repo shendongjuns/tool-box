@@ -31,7 +31,10 @@ import {
   readMonitor,
   readRefreshInterval,
   REFRESH_OPTIONS,
+  notifyMonitor,
   saveRefreshInterval,
+  startMonitor,
+  subscribeMonitor,
   writeMonitor,
   type RefreshInterval,
 } from "./monitor-store";
@@ -394,93 +397,95 @@ function TerminalHost({
   );
 }
 
-/** 监控标签页：按用户选择的间隔采集，支持暂停与手动刷新。 */
+/**
+ * 监控标签页。
+ *
+ * 只负责「读 store 快照 + 触发采集配置」，定时器在 monitor-store 里，
+ * 因此切到终端/文件或切走会话都不会停止后台记录。
+ */
 function MonitorTab({ sessionId }: { sessionId: string }) {
+  /*
+   * 组件状态只是 store 的「镜像」。
+   *
+   * 唯一写入方是后台引擎（写 cache 后 notifyMonitor）；
+   * 组件只读，不反向覆盖 —— 否则切走再切回时，
+   * 组件里过期的 state 会把后台刚采到的新数据冲掉。
+   */
   const cached = readMonitor(sessionId);
 
   const [metrics, setMetrics] = React.useState<MonitorMetrics | null>(cached?.metrics ?? null);
   const [info, setInfo] = React.useState<ServerInfo | null>(cached?.info ?? null);
   const [error, setError] = React.useState<string | null>(cached?.error ?? null);
-  const [loading, setLoading] = React.useState(!cached);
+  const [loading, setLoading] = React.useState(!cached?.metrics);
   const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
   const [interval, setIntervalValue] = React.useState<RefreshInterval>(() =>
     readRefreshInterval(),
   );
-  /** 手动刷新计数：自增即触发一次采集 */
-  const [refreshTick, setRefreshTick] = React.useState(0);
 
-  // 数据变化写回缓存，切换会话再切回来不丢
+  /** 从 store 同步到组件 state（单向） */
+  const syncFromStore = React.useCallback(() => {
+    const snapshot = readMonitor(sessionId);
+    if (!snapshot) return;
+    setMetrics(snapshot.metrics);
+    setInfo(snapshot.info);
+    setHistory(snapshot.history);
+    setError(snapshot.error);
+    if (snapshot.metrics) setLoading(false);
+  }, [sessionId]);
+
+  // 订阅后台引擎的更新
   React.useEffect(() => {
-    writeMonitor(sessionId, { metrics, info, history, error });
-  }, [sessionId, metrics, info, history, error]);
+    return subscribeMonitor((changedId) => {
+      if (changedId === sessionId) syncFromStore();
+    });
+  }, [sessionId, syncFromStore]);
 
-  const collectorRef = React.useRef<MonitorCollector | null>(null);
-
+  // 启动/更新后台采集（引擎本身不随组件卸载停止）
   React.useEffect(() => {
-    if (!collectorRef.current) collectorRef.current = new MonitorCollector();
-    const collector = collectorRef.current;
+    const collector = collectorFor(sessionId);
 
-    let stopped = false;
-    let timer: number | undefined;
-
-    void (async () => {
-      // 有缓存且非手动刷新时，直接展示缓存，不再重新采集
-      const resumed = Boolean(readMonitor(sessionId)?.metrics) && refreshTick === 0;
-
-      if (!resumed) {
-        const next = await collector.collect(sessionId);
-        if (stopped) return;
-        if (next) {
-          setMetrics(next);
-          setError(null);
-          setHistory((prev) => [...prev.slice(-59), next]);
-        } else if (collector.lastError) {
-          setError(collector.lastError);
-        }
-        setLoading(false);
-      } else {
-        await Promise.resolve();
-        setLoading(false);
+    const runOnce = async () => {
+      // 首次先取一次服务器信息
+      const before = readMonitor(sessionId);
+      if (!before?.info) {
+        const serverInfo = await collector.fetchServerInfo(sessionId);
+        const current = readMonitor(sessionId) ?? {
+          metrics: null,
+          info: null,
+          history: [],
+          error: null,
+        };
+        writeMonitor(sessionId, { ...current, info: serverInfo });
       }
 
-      if (!resumed && !info) {
-        setInfo(await collector.fetchServerInfo(sessionId));
-      }
-
-      // 暂停（0）时不排下一轮
-      if (interval === 0) return;
-
-      const schedule = () => {
-        if (stopped) return;
-        timer = window.setTimeout(() => {
-          void (async () => {
-            const next = await collector.collect(sessionId);
-            if (stopped) return;
-            if (next) {
-              setMetrics(next);
-              setError(null);
-              setHistory((prev) => [...prev.slice(-59), next]);
-            } else if (collector.lastError) {
-              setError(collector.lastError);
-            }
-            schedule();
-          })();
-        }, interval);
+      const next = await collector.collect(sessionId);
+      const current = readMonitor(sessionId) ?? {
+        metrics: null,
+        info: null,
+        history: [],
+        error: null,
       };
-      schedule();
-    })();
 
-    return () => {
-      stopped = true;
-      if (timer) window.clearTimeout(timer);
+      if (next) {
+        writeMonitor(sessionId, {
+          ...current,
+          metrics: next,
+          history: [...current.history.slice(-59), next],
+          error: null,
+        });
+      } else if (collector.lastError) {
+        writeMonitor(sessionId, { ...current, error: collector.lastError });
+      }
+
+      notifyMonitor(sessionId);
     };
-  }, [sessionId, interval, refreshTick, info]);
+
+    startMonitor(sessionId, interval, runOnce);
+  }, [sessionId, interval]);
 
   function changeInterval(value: RefreshInterval) {
     setIntervalValue(value);
     saveRefreshInterval(value);
-    // 从暂停切到自动时，立即补一次数据
-    if (value !== 0) setRefreshTick((n) => n + 1);
   }
 
   return (
@@ -509,8 +514,24 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
           size="sm"
           variant="ghost"
           className="h-7 px-2 text-[11px]"
-          onClick={() => setRefreshTick((n) => n + 1)}
-          disabled={loading}
+          onClick={() => {
+            // 手动刷新：立即触发一次（不改变后台节奏）
+            const collector = collectorFor(sessionId);
+            void (async () => {
+              const next = await collector.collect(sessionId);
+              const current = readMonitor(sessionId);
+              if (!current) return;
+              if (next) {
+                writeMonitor(sessionId, {
+                  ...current,
+                  metrics: next,
+                  history: [...current.history.slice(-59), next],
+                  error: null,
+                });
+              }
+              notifyMonitor(sessionId);
+            })();
+          }}
         >
           <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
           手动刷新
@@ -526,7 +547,8 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
 
         {metrics ? (
           <span className="ml-auto text-[10px] text-muted-foreground">
-            最近更新 {new Date(metrics.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
+            最近更新{" "}
+            {new Date(metrics.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
           </span>
         ) : null}
       </div>
@@ -540,4 +562,15 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
       />
     </div>
   );
+}
+
+/** 每个会话复用同一个 collector（保留 CPU/网络的采样基线）。 */
+const collectors = new Map<string, MonitorCollector>();
+
+function collectorFor(sessionId: string): MonitorCollector {
+  const existing = collectors.get(sessionId);
+  if (existing) return existing;
+  const created = new MonitorCollector();
+  collectors.set(sessionId, created);
+  return created;
 }

@@ -140,8 +140,20 @@ export async function subscribeSsh(
   });
 
   return () => {
-    unlistenData();
-    unlistenClosed();
+    /*
+     * listen() 返回的是 async 闭包。
+     * 窗口销毁 / 页面重载后，内部的 unregisterListener 可能已不存在，
+     * 会抛 TypeError 或产生 unhandled rejection，所以统一吞掉。
+     */
+    for (const fn of [unlistenData, unlistenClosed]) {
+      try {
+        // 返回类型是 void，但实现里是 async 闭包，所以按 unknown 处理
+        const result: unknown = fn();
+        if (result instanceof Promise) result.catch(() => {});
+      } catch {
+        /* 已失效，忽略 */
+      }
+    }
   };
 }
 

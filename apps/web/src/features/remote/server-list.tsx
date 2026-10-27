@@ -25,6 +25,25 @@ export function ServerList({
   const sourceKey = useCurrentSourceKey();
   const [editing, setEditing] = React.useState<Server | null>(null);
   const [creating, setCreating] = React.useState(false);
+  /**
+   * 表单实例计数器。
+   *
+   * 每次打开表单自增，作为 key 的一部分 —— 保证「编辑 A → 关闭 → 新建」
+   * 这类操作一定拿到全新实例，避免残留上一次的输入。
+   */
+  const [formSeq, setFormSeq] = React.useState(0);
+
+  const openCreate = React.useCallback(() => {
+    setEditing(null);
+    setCreating(true);
+    setFormSeq((n) => n + 1);
+  }, []);
+
+  const openEdit = React.useCallback((server: Server) => {
+    setCreating(false);
+    setEditing(server);
+    setFormSeq((n) => n + 1);
+  }, []);
 
   const servers = useQuery({
     queryKey: queryKeys.servers(sourceKey),
@@ -81,7 +100,7 @@ export function ServerList({
                 添加一台服务器，即可使用 SSH 终端、SFTP 与系统监控
               </p>
             </div>
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button size="sm" onClick={() => openCreate()}>
               <Plus className="h-3.5 w-3.5" />
               添加服务器
             </Button>
@@ -123,7 +142,7 @@ export function ServerList({
               />
 
               <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                <Button size="sm" variant="ghost" onClick={() => setEditing(server)}>
+                <Button size="sm" variant="ghost" onClick={() => openEdit(server)}>
                   编辑
                 </Button>
                 <button
@@ -138,15 +157,20 @@ export function ServerList({
             </div>
           ))}
 
-          <Button size="sm" variant="ghost" className="w-full" onClick={() => setCreating(true)}>
+          <Button size="sm" variant="ghost" className="w-full" onClick={() => openCreate()}>
             <Plus className="h-3.5 w-3.5" />
             添加服务器
           </Button>
         </>
       )}
 
+      {/*
+        key 要同时反映「新建/编辑」与「哪一条」。
+        只用 editing?.id 的话，"编辑 A 后关掉再点新建" 仍是同一个 key，
+        React 复用实例，表单里残留 A 的内容。
+      */}
       <ServerFormDialog
-        key={editing?.id ?? "new"}
+        key={`form-${formSeq}`}
         open={creating || editing !== null}
         server={editing}
         onClose={() => {

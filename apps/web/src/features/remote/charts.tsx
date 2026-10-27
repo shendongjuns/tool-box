@@ -7,6 +7,8 @@ import { GridRows } from "@visx/grid";
 import type { MonitorMetrics } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "./format";
+import { ChartTooltip, type TooltipState } from "./chart-tooltip";
+import { nearestIndex } from "./chart-utils";
 
 /**
  * 轻量趋势图。
@@ -38,6 +40,8 @@ function SparkArea({
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
+  /** 鼠标悬浮时的提示内容；移出为 null */
+  const [tip, setTip] = React.useState<TooltipState | null>(null);
 
   React.useEffect(() => {
     const element = containerRef.current;
@@ -84,7 +88,51 @@ function SparkArea({
   const latest = data[data.length - 1]!;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        // 减去左侧 padding，得到绘图区内的坐标
+        const localX = event.clientX - rect.left - PAD.left;
+        const index = nearestIndex(localX, innerWidth, data.length);
+        const point = index >= 0 ? data[index] : undefined;
+        if (!point) return setTip(null);
+
+        setTip({
+          x: event.clientX - rect.left,
+          y: PAD.top + (yScale(getValue(point)) ?? 0),
+          label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
+          rows: [{ color, name: "值", value: formatValue(getValue(point)) }],
+        });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <ChartTooltip state={tip} />
+
+      {/*
+        十字准线：悬浮时在对应采样点画一条竖线 + 圆点，
+        让用户能精确看到「这个值是哪个时刻的」。
+      */}
+      {tip && innerWidth > 0 ? (
+        <svg
+          width={width}
+          height={height}
+          className="pointer-events-none absolute left-0 top-0"
+          style={{ marginTop: 0 }}
+        >
+          <line
+            x1={PAD.left + (tip.x - PAD.left)}
+            y1={PAD.top}
+            x2={PAD.left + (tip.x - PAD.left)}
+            y2={PAD.top + innerHeight}
+            stroke={color}
+            strokeOpacity={0.25}
+            strokeDasharray="2,2"
+          />
+        </svg>
+      ) : null}
+
       <div className="mb-1 flex items-baseline justify-between">
         <span className="font-mono text-lg font-semibold tabular-nums">
           {formatValue(getValue(latest))}
@@ -186,6 +234,7 @@ export function MemoryChart({ data }: { data: MonitorMetrics[] }) {
 export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
+  const [tip, setTip] = React.useState<TooltipState | null>(null);
 
   React.useEffect(() => {
     const element = containerRef.current;
@@ -234,7 +283,36 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   const latest = data[data.length - 1]!;
 
   return (
-    <div ref={containerRef}>
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
+        const point = index >= 0 ? data[index] : undefined;
+        if (!point) return setTip(null);
+        setTip({
+          x: event.clientX - rect.left,
+          y: PAD.top + 20,
+          label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
+          rows: [
+            {
+              color: "var(--chart-3)",
+              name: "下行",
+              value: toMiB(point.netRxBytesPerSec).toFixed(2) + " MiB/s",
+            },
+            {
+              color: "var(--chart-4)",
+              name: "上行",
+              value: toMiB(point.netTxBytesPerSec).toFixed(2) + " MiB/s",
+            },
+          ],
+        });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <ChartTooltip state={tip} />
+
       <div className="mb-1 flex items-baseline gap-3 text-[11px]">
         <span className="text-[var(--chart-3)]">
           ↓ {toMiB(latest.netRxBytesPerSec).toFixed(2)} MiB/s
@@ -353,6 +431,7 @@ export function GpuChart({
   }, []);
 
   const meta = GPU_METRIC_META[metric];
+  const [tip, setTip] = React.useState<TooltipState | null>(null);
   const height = 72;
   const innerWidth = Math.max(0, width - PAD.left - PAD.right);
   const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
@@ -393,7 +472,28 @@ export function GpuChart({
   const latest = data[data.length - 1]!;
 
   return (
-    <div ref={containerRef}>
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
+        const point = index >= 0 ? data[index] : undefined;
+        if (!point) return setTip(null);
+        setTip({
+          x: event.clientX - rect.left,
+          y: PAD.top + 18,
+          label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
+          rows: point.gpus.map((gpu, i) => ({
+            color: meta.color,
+            name: `#${gpu.index}`,
+            value: `${gpuValue(point, i, metric).toFixed(0)}${meta.unit}`,
+          })),
+        });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <ChartTooltip state={tip} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"
@@ -532,6 +632,7 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
   }, []);
 
   const meta = NPU_METRIC_META[metric];
+  const [tip, setTip] = React.useState<TooltipState | null>(null);
   const height = 72;
   const innerWidth = Math.max(0, width - PAD.left - PAD.right);
   const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
@@ -573,7 +674,28 @@ function NpuChart({ data, metric }: { data: MonitorMetrics[]; metric: NpuMetric 
   const latest = data[data.length - 1]!;
 
   return (
-    <div ref={containerRef}>
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const index = nearestIndex(event.clientX - rect.left - PAD.left, innerWidth, data.length);
+        const point = index >= 0 ? data[index] : undefined;
+        if (!point) return setTip(null);
+        setTip({
+          x: event.clientX - rect.left,
+          y: PAD.top + 18,
+          label: new Date(point.timestamp).toLocaleTimeString("zh-CN", { hour12: false }),
+          rows: point.npus.map((npu, i) => ({
+            color: meta.color,
+            name: `#${npu.index}`,
+            value: `${npuValue(point, i, metric).toFixed(0)}${meta.unit}`,
+          })),
+        });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <ChartTooltip state={tip} />
       <div className="mb-0.5 flex items-baseline justify-between">
         <span
           className="flex items-center gap-1 text-[10px] font-medium"

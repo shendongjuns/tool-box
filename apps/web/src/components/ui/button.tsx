@@ -49,9 +49,24 @@ export interface ButtonProps
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, type, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
+    /*
+     * 默认 type="button"。
+     *
+     * HTML 里 button 的默认 type 是 `submit`，放进 <form> 后
+     * 任何按钮（比如「测试连接」「取消」）点击都会触发提交，
+     * 表现为「点了没反应」或页面莫名刷新。
+     * 显式传 type="submit" 的按钮不受影响。
+     */
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        type={asChild ? type : (type ?? "button")}
+        {...props}
+      />
+    );
   },
 );
 Button.displayName = "Button";
