@@ -20,6 +20,65 @@ export interface ConnectConfig {
   passphrase?: string;
   cols: number;
   rows: number;
+  /** known_hosts.json 的绝对路径（Rust 侧 data 目录） */
+  knownHostsPath?: string;
+  /** 用户已确认信任新指纹（指纹变化后手动确认时为 true） */
+  trustNewHost?: boolean;
+}
+
+/** 已知主机指纹记录。 */
+export interface KnownHostRecord {
+  algorithm: string;
+  fingerprint: string;
+}
+
+/**
+ * 取 known_hosts.json 的绝对路径。
+ *
+ * 由 Rust 侧计算（数据目录跟着 exe 走），前端只负责传递。
+ */
+export async function getKnownHostsPath(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    const invoke = await getInvoke();
+    return await invoke<string>("known_hosts_path");
+  } catch {
+    return null;
+  }
+}
+
+/** 查询某主机已保存的指纹。 */
+export async function getKnownHost(
+  host: string,
+  port: number,
+): Promise<KnownHostRecord | null> {
+  const path = await getKnownHostsPath();
+  if (!path) return null;
+  const invoke = await getInvoke();
+  return invoke<KnownHostRecord | null>("ssh_known_host", {
+    knownHostsPath: path,
+    host,
+    port,
+  });
+}
+
+/** 显式信任某主机的新指纹（用户手动确认后调用）。 */
+export async function trustKnownHost(
+  host: string,
+  port: number,
+  algorithm: string,
+  fingerprint: string,
+): Promise<void> {
+  const path = await getKnownHostsPath();
+  if (!path) return;
+  const invoke = await getInvoke();
+  await invoke("ssh_trust_host", {
+    knownHostsPath: path,
+    host,
+    port,
+    algorithm,
+    fingerprint,
+  });
 }
 
 export interface SftpEntry {

@@ -1,3 +1,4 @@
+pub mod known_hosts;
 mod local_api;
 mod sftp;
 mod ssh;
@@ -99,6 +100,13 @@ async fn tcp_ping(host: String, port: u16, timeout_ms: Option<u64>) -> Result<u6
         Ok(Err(error)) => Err(format!("连接失败：{error}")),
         Err(_) => Err("连接超时".to_string()),
     }
+}
+
+/// 返回 known_hosts.json 的绝对路径（前端传给 ssh_connect）。
+#[tauri::command]
+fn known_hosts_path() -> String {
+    let path = data_dir().join("known_hosts.json");
+    path.to_string_lossy().to_string()
 }
 
 #[tauri::command]
@@ -315,6 +323,9 @@ pub fn run() {
             http_request,
             reload_webview,
             tcp_ping,
+            known_hosts_path,
+            ssh::ssh_known_host,
+            ssh::ssh_trust_host,
             ssh::ssh_test,
             ssh::ssh_connect,
             ssh::ssh_write,

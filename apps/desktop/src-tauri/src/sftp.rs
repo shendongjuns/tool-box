@@ -54,6 +54,33 @@ async fn open_sftp(
 /// 分块大小：64KB。足够小以更新进度，足够大以保证吞吐。
 const CHUNK_SIZE: usize = 64 * 1024;
 
+/// 进度事件的节流间隔。
+///
+/// 64KB 一块意味着 1GB 文件会产生 16000 次 emit ——
+/// 每次 emit 都要跨 IPC 序列化 + 唤醒渲染层，
+/// 会明显拖慢传输并造成界面卡顿（与终端输出洪泛是同类问题）。
+/// 按 100ms 节流后，1GB 传输只剩约 10-20 次进度事件。
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// 判断是否该发下一次进度。
+///
+/// 同时兼顾时间与百分比：时间到了就发（保证慢速网络也有反馈），
+/// 进度满 100% 时必发（让 UI 能收到终态）。
+fn should_emit(last: &mut std::time::Instant, percent: u8, last_percent: &mut u8) -> bool {
+    let now = std::time::Instant::now();
+    if percent >= 100 && *last_percent < 100 {
+        *last = now;
+        *last_percent = percent;
+        return true;
+    }
+    if now.duration_since(*last) >= PROGRESS_INTERVAL {
+        *last = now;
+        *last_percent = percent;
+        return true;
+    }
+    false
+}
+
 /// 下载到本地文件（Rust 直连，不经过 JS）。
 ///
 /// 为什么不复用 `sftp_read` + JS 保存：
@@ -91,6 +118,8 @@ pub async fn sftp_download(
 
     let mut buffer = vec![0u8; CHUNK_SIZE];
     let mut transferred: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    let mut last_percent: u8 = 0;
 
     loop {
         let read = remote
@@ -111,15 +140,19 @@ pub async fn sftp_download(
         } else {
             0
         };
-        let _ = app.emit(
-            "sftp://progress",
-            serde_json::json!({
-                "taskId": task_id,
-                "transferred": transferred,
-                "total": total,
-                "percent": percent
-            }),
-        );
+
+        // 节流：不是每块都发事件
+        if should_emit(&mut last_emit, percent, &mut last_percent) {
+            let _ = app.emit(
+                "sftp://progress",
+                serde_json::json!({
+                    "taskId": task_id,
+                    "transferred": transferred,
+                    "total": total,
+                    "percent": percent
+                }),
+            );
+        }
     }
 
     local
@@ -159,6 +192,8 @@ pub async fn sftp_upload(
 
     let mut buffer = vec![0u8; CHUNK_SIZE];
     let mut transferred: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    let mut last_percent: u8 = 0;
 
     loop {
         let read = local
@@ -179,15 +214,18 @@ pub async fn sftp_upload(
         } else {
             0
         };
-        let _ = app.emit(
-            "sftp://progress",
-            serde_json::json!({
-                "taskId": task_id,
-                "transferred": transferred,
-                "total": total,
-                "percent": percent
-            }),
-        );
+
+        if should_emit(&mut last_emit, percent, &mut last_percent) {
+            let _ = app.emit(
+                "sftp://progress",
+                serde_json::json!({
+                    "taskId": task_id,
+                    "transferred": transferred,
+                    "total": total,
+                    "percent": percent
+                }),
+            );
+        }
     }
 
     remote

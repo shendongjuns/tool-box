@@ -17,6 +17,8 @@ use russh::client::{self, Handle};
 use russh::keys::PrivateKeyWithHashAlg;
 use russh::ChannelMsg;
 use serde::{Deserialize, Serialize};
+
+use crate::known_hosts::{fingerprint_of, public_key_of, HostRecord, KnownHosts};
 use tauri::Emitter;
 use tokio::sync::{mpsc, Mutex};
 
@@ -46,20 +48,57 @@ impl SshState {
     }
 }
 
-pub struct ClientHandler;
+/// SSH 客户端回调。
+///
+/// 关键职责：**校验主机密钥**（防中间人）。
+/// 之前这里无条件 `Ok(true)`，等于把 SSH 的加密优势完全浪费掉 ——
+/// 能劫持网络的人可以直接冒充目标服务器拿到密码。
+pub struct ClientHandler {
+    /// host:port，作为 known_hosts 的键
+    host_key: String,
+    /// 校验结果：None 表示首次见到的指纹（需要在连接后告知用户）
+    observed: Arc<Mutex<Option<HostRecord>>>,
+    known_hosts: Arc<KnownHosts>,
+    /// 用户已确认信任新指纹（跳过校验）
+    trust_new: bool,
+}
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    /// 接受任意主机密钥。
-    ///
-    /// TODO(严格模式)：持久化 known_hosts 并在指纹变化时告警。
-    /// 当前优先保证可用性，界面上会提示「首次连接请自行确认主机身份」。
     fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::PublicKeyOrCertificate,
+        server_public_key: &russh::keys::PublicKeyOrCertificate,
     ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
-        async { Ok(true) }
+        /*
+         * 证书模式当前不支持：拒绝比放行安全。
+         * 所有分支都必须返回同一个 async block 类型，所以统一在块内判断。
+         */
+        let record = public_key_of(server_public_key).map(fingerprint_of);
+        let host_key = self.host_key.clone();
+        let known_hosts = self.known_hosts.clone();
+        let trust_new = self.trust_new;
+
+        if let Some(ref value) = record {
+            if let Ok(mut slot) = self.observed.try_lock() {
+                *slot = Some(value.clone());
+            }
+        }
+
+        async move {
+            let Some(record) = record else {
+                return Ok(false);
+            };
+
+            // 用户显式信任时直接覆盖旧记录
+            if trust_new {
+                known_hosts.trust(&host_key, record);
+                return Ok(true);
+            }
+
+            // verify：首次记录放行、一致放行、变化拒绝
+            Ok(known_hosts.verify(&host_key, &record))
+        }
     }
 }
 
@@ -76,6 +115,10 @@ pub struct ConnectConfig {
     pub passphrase: Option<String>,
     pub cols: u32,
     pub rows: u32,
+    /// known_hosts.json 的绝对路径（由前端从 Rust 侧拿到 data 目录后传入）
+    pub known_hosts_path: Option<String>,
+    /// 用户已确认信任新指纹（仅当服务端指纹变化、用户手动确认时为 true）
+    pub trust_new_host: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,13 +140,30 @@ pub async fn connect(
         ..Default::default()
     });
 
-    let mut handle = client::connect(
-        ssh_config,
-        (config.host.as_str(), config.port),
-        ClientHandler,
-    )
-    .await
-    .map_err(|e| format!("连接失败：{e}"))?;
+    /*
+     * 主机密钥校验（TOFU）。
+     *
+     * 未传 known_hosts_path 时退化为「仅本次会话内存校验」——
+     * 仍然会拦住同一进程内的指纹变化，但重启后重新信任。
+     * 正常路径由前端传 data/known_hosts.json。
+     */
+    let known_hosts = Arc::new(match config.known_hosts_path.as_deref() {
+        Some(path) => KnownHosts::load(std::path::PathBuf::from(path)),
+        None => KnownHosts::load(std::path::PathBuf::new()),
+    });
+    let observed: Arc<Mutex<Option<HostRecord>>> = Arc::new(Mutex::new(None));
+    let host_key = format!("{}:{}", config.host, config.port);
+
+    let handler = ClientHandler {
+        host_key: host_key.clone(),
+        observed: observed.clone(),
+        known_hosts: known_hosts.clone(),
+        trust_new: config.trust_new_host.unwrap_or(false),
+    };
+
+    let mut handle = client::connect(ssh_config, (config.host.as_str(), config.port), handler)
+        .await
+        .map_err(|e| format!("连接失败：{e}"))?;
 
     let auth_ok = match config.auth_type.as_str() {
         "password" => handle
@@ -277,6 +337,37 @@ fn emit_data(app: &tauri::AppHandle, session_id: &str, pending: &mut Vec<u8>) {
 
 // ---------------- Tauri commands ----------------
 
+/// 查询某主机的已知指纹（供 UI 展示 / 排查用）。
+#[tauri::command]
+pub async fn ssh_known_host(
+    known_hosts_path: String,
+    host: String,
+    port: u16,
+) -> Result<Option<HostRecord>, String> {
+    let store = KnownHosts::load(std::path::PathBuf::from(known_hosts_path));
+    Ok(store.get(&format!("{host}:{port}")))
+}
+
+/// 显式信任某主机的新指纹（用户手动确认后调用）。
+#[tauri::command]
+pub async fn ssh_trust_host(
+    known_hosts_path: String,
+    host: String,
+    port: u16,
+    algorithm: String,
+    fingerprint: String,
+) -> Result<(), String> {
+    let store = KnownHosts::load(std::path::PathBuf::from(known_hosts_path));
+    store.trust(
+        &format!("{host}:{port}"),
+        HostRecord {
+            algorithm,
+            fingerprint,
+        },
+    );
+    Ok(())
+}
+
 /// 测试连接（不建立持久会话）。
 ///
 /// 用于设置页「测试」按钮：验证 TCP 可达、SSH 握手成功、凭据有效。
@@ -290,13 +381,23 @@ pub async fn ssh_test(config: ConnectConfig) -> Result<TestResult, String> {
         ..Default::default()
     });
 
-    let mut handle = client::connect(
-        ssh_config,
-        (config.host.as_str(), config.port),
-        ClientHandler,
-    )
-    .await
-    .map_err(|e| format!("无法连接：{e}"))?;
+    // 测试连接同样要走主机密钥校验，否则「测试通过」但真实连接被拒会误导用户
+    let known_hosts = Arc::new(match config.known_hosts_path.as_deref() {
+        Some(path) => KnownHosts::load(std::path::PathBuf::from(path)),
+        None => KnownHosts::load(std::path::PathBuf::new()),
+    });
+    let observed: Arc<Mutex<Option<HostRecord>>> = Arc::new(Mutex::new(None));
+
+    let handler = ClientHandler {
+        host_key: format!("{}:{}", config.host, config.port),
+        observed,
+        known_hosts,
+        trust_new: config.trust_new_host.unwrap_or(false),
+    };
+
+    let mut handle = client::connect(ssh_config, (config.host.as_str(), config.port), handler)
+        .await
+        .map_err(|e| format!("无法连接：{e}"))?;
 
     let handshake_ms = started.elapsed().as_millis() as u64;
 

@@ -12,7 +12,13 @@ import { toast } from "sonner";
 import type { MonitorMetrics, Server, ServerInfo } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { isDesktop } from "@/lib/platform";
-import { sshConnect, sshDisconnect, subscribeSsh } from "@/lib/ssh";
+import {
+  getKnownHostsPath,
+  sshConnect,
+  sshDisconnect,
+  subscribeSsh,
+  trustKnownHost,
+} from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -112,18 +118,64 @@ export function RemotePage() {
         .toString(36)
         .slice(2, 6)}`;
 
-      await sshConnect({
-        sessionId: sshSessionId,
-        host: credential.host,
-        port: credential.port,
-        username: credential.username,
-        authType: credential.authType,
-        password: credential.password ?? undefined,
-        privateKey: credential.privateKey ?? undefined,
-        passphrase: credential.passphrase ?? undefined,
-        cols: 100,
-        rows: 30,
-      });
+      const knownHostsPath = (await getKnownHostsPath()) ?? undefined;
+
+      const connectOnce = (trustNewHost: boolean) =>
+        sshConnect({
+          sessionId: sshSessionId,
+          host: credential.host,
+          port: credential.port,
+          username: credential.username,
+          authType: credential.authType,
+          password: credential.password ?? undefined,
+          privateKey: credential.privateKey ?? undefined,
+          passphrase: credential.passphrase ?? undefined,
+          cols: 100,
+          rows: 30,
+          knownHostsPath,
+          trustNewHost,
+        });
+
+      try {
+        await connectOnce(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        /*
+         * 主机密钥变化：可能是服务器重装，也可能是中间人攻击。
+         * 不自动信任，交给用户显式决定 —— 这是 TOFU 的核心。
+         */
+        if (!message.includes("主机密钥") && !message.includes("HOST_KEY")) {
+          throw error;
+        }
+
+        const confirmed = window.confirm(
+          `${credential.host}:${credential.port} 的主机密钥与上次记录不一致。\n\n` +
+            "可能是服务器重装或更换，也可能是中间人攻击。\n" +
+            "确认信任新指纹并继续连接吗？",
+        );
+        if (!confirmed) {
+          throw new Error("已取消连接：主机密钥校验未通过");
+        }
+
+        // 拉取当前指纹并显式信任
+        try {
+          const { getKnownHost } = await import("@/lib/ssh");
+          const observed = await getKnownHost(credential.host, credential.port);
+          if (observed) {
+            await trustKnownHost(
+              credential.host,
+              credential.port,
+              observed.algorithm,
+              observed.fingerprint,
+            );
+          }
+        } catch {
+          /* 拿不到就靠 trustNewHost 覆盖 */
+        }
+
+        await connectOnce(true);
+      }
 
       const label = nextLabel(
         server.name,

@@ -13,7 +13,7 @@
     "dev:web": "pnpm --filter @toolbox/web dev",
     "build": "pnpm --filter @toolbox/contracts build --if-present && pnpm --filter @toolbox/data build --if-present && pnpm --filter @toolbox/web build && pnpm --filter @toolbox/server build",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm --filter @toolbox/server test",
+    "test": "pnpm -r --if-present test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "db:generate": "pnpm --filter @toolbox/data db:generate",

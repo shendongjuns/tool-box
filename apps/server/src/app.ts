@@ -6,7 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createNodeDatabase, type NodeDatabase } from "@toolbox/data";
+import { createNodeDatabase, purgeExpiredSessions, type NodeDatabase } from "@toolbox/data";
 import { AuthService } from "./auth/service.js";
 import { extractToken } from "./plugins/auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
@@ -109,6 +109,39 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
 
   registerErrorHandler(app);
   registerOriginGuard(app);
+
+  /*
+   * 过期会话清理。
+   *
+   * purgeExpiredSessions() 之前定义了却没人调用 ——
+   * 会话表会随着每次登录无限增长（一年轻松上千行），
+   * 既拖慢查询也浪费空间。
+   *
+   * 策略：启动时清一次 + 每 6 小时一次，保留 7 天宽限期
+   * （宽限期让「刚过期就想不起密码」的用户还有机会排查日志）。
+   */
+  const PURGE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const PURGE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  const purge = async () => {
+    try {
+      const removed = await purgeExpiredSessions(app.db, Date.now(), PURGE_GRACE_MS);
+      if (removed > 0) app.log.info(`清理了 ${removed} 条过期会话`);
+    } catch (error) {
+      app.log.warn({ error }, "清理过期会话失败");
+    }
+  };
+
+  // 启动时清一次（不阻塞启动）
+  void purge();
+
+  const timer = setInterval(() => void purge(), PURGE_INTERVAL_MS);
+  // 不阻止进程退出
+  timer.unref?.();
+
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+  });
 
   await app.register(async (scope) => {
     await scope.register(rateLimit, {

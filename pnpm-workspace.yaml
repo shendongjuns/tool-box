@@ -22,3 +22,10 @@ minimumReleaseAgeExclude:
   - '@typescript-eslint/visitor-keys@8.72.0'
   - lucide-react@1.60.0
   - typescript-eslint@8.72.0
+
+# 依赖覆盖（pnpm 11 起从 package.json 迁到此处）
+#
+# fast-uri 3.x 有 4 个中危漏洞（URI scheme 伪造 / 主机混淆），
+# 经 fastify -> ajv 传递引入。4.2.2 已修复，此处强制提升。
+overrides:
+  fast-uri: ^4.2.3
