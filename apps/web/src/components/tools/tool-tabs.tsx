@@ -1,6 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { X } from "lucide-react";
-import { findTool } from "@toolbox/contracts";
+import { findTool } from "@toolbox/contracts/catalog";
 import { cn } from "@/lib/utils";
 import { useToolTabs } from "@/features/tools/tool-tabs-store";
 

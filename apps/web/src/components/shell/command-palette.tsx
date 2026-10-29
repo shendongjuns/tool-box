@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { useMemo, useRef, useState } from "react";
 import { ArrowRight, LayoutDashboard, Settings } from "lucide-react";
-import { toolCatalog } from "@toolbox/contracts";
+import { toolCatalog } from "@toolbox/contracts/catalog";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 /** Ctrl/Cmd+K 命令面板：搜索并跳转工具与页面。 */

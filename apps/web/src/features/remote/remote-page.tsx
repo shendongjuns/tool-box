@@ -13,6 +13,7 @@ import type { MonitorMetrics, Server, ServerInfo } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { isDesktop } from "@/lib/platform";
 import {
+  getKnownHost,
   getKnownHostsPath,
   sshConnect,
   sshDisconnect,
@@ -160,7 +161,6 @@ export function RemotePage() {
 
         // 拉取当前指纹并显式信任
         try {
-          const { getKnownHost } = await import("@/lib/ssh");
           const observed = await getKnownHost(credential.host, credential.port);
           if (observed) {
             await trustKnownHost(

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { findTool } from "@toolbox/contracts";
+import { findTool } from "@toolbox/contracts/catalog";
 import { useApi } from "@/lib/api-context";
 import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
 import { useToolTabs } from "@/features/tools/tool-tabs-store";

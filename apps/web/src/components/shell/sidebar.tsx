@@ -15,7 +15,8 @@ import {
   Server,
   Settings,
 } from "lucide-react";
-import { toolCatalog, toolGroupMeta, type ToolGroup } from "@toolbox/contracts";
+import { toolCatalog, toolGroupMeta } from "@toolbox/contracts/catalog";
+import type { ToolGroup } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { SourceBadge } from "./source-badge";
 import { BrandLogo } from "@/components/brand-logo";
