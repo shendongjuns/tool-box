@@ -150,8 +150,12 @@ export function MonitorPanel({
       <MetricCard
         label="网络"
         icon={Network}
-        value={`${(metrics.netRxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
-        sub={`上行 ${(metrics.netTxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
+        /*
+         * 上下行都放在右上角（卡片标题栏），格式与其它卡片一致：
+         * 主值是下行，副值补上行。图表内部不再重复显示。
+         */
+        value={`↓ ${(metrics.netRxBytesPerSec / 1048576).toFixed(2)}`}
+        sub={`↑ ${(metrics.netTxBytesPerSec / 1048576).toFixed(2)} MiB/s`}
       >
         <NetworkChart data={history} />
       </MetricCard>

@@ -71,7 +71,7 @@ export function ToolTabs() {
                */
               isActive
                 ? "border-primary/40 bg-primary/[0.06] font-medium text-foreground"
-                : "border-border/40 text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground",
+                : "border-border text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground",
             )}
           >
             <span className="max-w-[7rem] truncate">{tab.name}</span>
