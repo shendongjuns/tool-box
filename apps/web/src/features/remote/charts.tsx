@@ -331,8 +331,6 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
     );
   }
 
-  const latest = data[data.length - 1]!;
-
   return (
     <div
       ref={containerRef}
@@ -365,15 +363,6 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
       onMouseLeave={() => setTip(null)}
     >
       <ChartTooltip state={tip} />
-
-      <div className="mb-1 flex items-baseline gap-3 text-[11px]">
-        <span className="text-[var(--chart-3)]">
-          ↓ {toMiB(latest.netRxBytesPerSec).toFixed(2)} MiB/s
-        </span>
-        <span className="text-[var(--chart-4)]">
-          ↑ {toMiB(latest.netTxBytesPerSec).toFixed(2)} MiB/s
-        </span>
-      </div>
 
       {innerWidth > 0 ? (
         <svg width={width} height={height} role="img" aria-label="网络趋势">

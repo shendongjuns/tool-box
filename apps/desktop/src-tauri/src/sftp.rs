@@ -51,8 +51,21 @@ async fn open_sftp(
         .map_err(|e| format!("初始化 SFTP 失败：{e}"))
 }
 
-/// 分块大小：64KB。足够小以更新进度，足够大以保证吞吐。
-const CHUNK_SIZE: usize = 64 * 1024;
+/*
+ * 分块大小。
+ *
+ * 为什么从 64KB 提到 256KB：
+ *
+ * SFTP 的读取是**串行请求-响应**的 —— 每次 read 都要等一个完整 RTT。
+ * 64KB 块在 100Mbps 链路上理论吞吐只有
+ *    64KB / RTT(假设 20ms) = 3.2 MB/s
+ * 与带宽完全无关，纯粹被往返延迟卡住。上传则不同：库内置
+ * max_concurrent_writes = 8 的自动并发，所以上传一直正常。
+ *
+ * 259KB 是服务端协商的 max_packet_len 默认值（256KiB 减去协议开销），
+ * 正好让每次请求装下最大的单包数据。
+ */
+const CHUNK_SIZE: usize = 256 * 1024;
 
 /// 同时进行的传输上限。
 ///
@@ -111,7 +124,7 @@ pub async fn sftp_download(
     task_id: String,
 ) -> Result<(), String> {
     use tauri::Emitter;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
     // 排队等一个传输槽位：超出并发上限时等待，而不是直接失败
     let _permit = transfer_slots()
@@ -132,36 +145,80 @@ pub async fn sftp_download(
         .map(|meta| meta.size.unwrap_or(0))
         .unwrap_or(0);
 
-    let mut local = tokio::fs::File::create(&local_path)
-        .await
-        .map_err(|e| format!("创建本地文件失败：{e}"))?;
-
-    let mut buffer = vec![0u8; CHUNK_SIZE];
-    let mut transferred: u64 = 0;
+    /*
+     * 大块 + seek 顺序读取。
+     *
+     * 关于「并行」的取舍：
+     * 试过同时挂多个读请求（每个请求 seek 到各自偏移），
+     * 但 SFTP 每次 open 都会在服务端占一个文件句柄，
+     * 部分服务器默认只允许少量句柄（如 OpenSSH 的 MaxSessions 会影响），
+     * 并发开同一个文件反而容易触发 "too many open files"。
+     *
+     * 真正的问题是块太小：64KB 时每次 read 都要等一个完整 RTT，
+     * 有效吞吐被延迟锁死（与带宽无关）。把块提到 256KB（服务端
+     * 单包上限）后，同样的 RTT 能搬 4 倍数据 —— 这是最安全有效的一步。
+     *
+     * 再加一层：写盘用带缓冲的 BufWriter，减少小写入次数。
+     */
+    let mut transferred: u64;
     let mut last_emit = std::time::Instant::now();
     let mut last_percent: u8 = 0;
+    let mut offset: u64 = 0;
+
+    // 本地写盘用大缓冲，避免每个 256KB 块都触发一次系统调用
+    let mut writer = tokio::io::BufWriter::with_capacity(
+        CHUNK_SIZE,
+        tokio::fs::File::create(&local_path)
+            .await
+            .map_err(|e| format!("创建本地文件失败：{e}"))?,
+    );
 
     loop {
-        let read = remote
-            .read(&mut buffer)
-            .await
-            .map_err(|e| format!("读取远端数据失败：{e}"))?;
-        if read == 0 {
+        // 顺序读：先 seek 到当前偏移（第一次是 0，可直接跳）
+        if offset > 0 {
+            remote
+                .seek(std::io::SeekFrom::Start(offset))
+                .await
+                .map_err(|e| format!("定位远端文件失败：{e}"))?;
+        }
+
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        let mut filled = 0usize;
+        // 单次 read 可能不满一块（网络分片），循环读满
+        while filled < buffer.len() {
+            let read = remote
+                .read(&mut buffer[filled..])
+                .await
+                .map_err(|e| format!("读取远端数据失败：{e}"))?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+
+            // 已经知道总大小且读够了就停，避免多余的一次 EOF 往返
+            if total > 0 && offset + filled as u64 >= total {
+                break;
+            }
+        }
+
+        if filled == 0 {
             break;
         }
-        local
-            .write_all(&buffer[..read])
+
+        writer
+            .write_all(&buffer[..filled])
             .await
             .map_err(|e| format!("写入本地文件失败：{e}"))?;
 
-        transferred += read as u64;
+        offset += filled as u64;
+        transferred = offset;
+
         let percent = if total > 0 {
             ((transferred as f64 / total as f64) * 100.0).min(100.0) as u8
         } else {
             0
         };
 
-        // 节流：不是每块都发事件
         if should_emit(&mut last_emit, percent, &mut last_percent) {
             let _ = app.emit(
                 "sftp://progress",
@@ -173,9 +230,14 @@ pub async fn sftp_download(
                 }),
             );
         }
+
+        // 读满了整个文件就结束
+        if total > 0 && offset >= total {
+            break;
+        }
     }
 
-    local
+    writer
         .flush()
         .await
         .map_err(|e| format!("保存失败：{e}"))?;

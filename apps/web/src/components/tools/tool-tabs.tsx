@@ -63,9 +63,15 @@ export function ToolTabs() {
             className={cn(
               // shrink-0 + max-w：单个标签不会被压扁，也不会无限变宽
               "group flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
+              /*
+               * hover 时边框与背景保持稳定。
+               * 之前非活动标签是 border-transparent，hover 才变 border-border，
+               * 鼠标移入/移出时边框会「闪现」，配合叉号的出现显得跳动。
+               * 现在非活动标签也有边框（只是更淡），hover 加强，过渡连续。
+               */
               isActive
                 ? "border-primary/40 bg-primary/[0.06] font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:border-border hover:bg-accent/60",
+                : "border-border/40 text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground",
             )}
           >
             <span className="max-w-[7rem] truncate">{tab.name}</span>
@@ -89,8 +95,13 @@ export function ToolTabs() {
               title={`关闭 ${tab.name}`}
               aria-label={`关闭 ${tab.name}`}
               className={cn(
-                "-mr-0.5 shrink-0 rounded p-0.5 transition-opacity hover:bg-destructive/10 hover:text-destructive",
-                isActive ? "opacity-60 hover:opacity-100" : "opacity-0 group-hover:opacity-100",
+                "-mr-0.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
+                /*
+                 * 叉号常驻显示，只是非活动时更淡。
+                 * 原来用 opacity-0 + group-hover 才出现，鼠标扫过时
+                 * 一整排标签会此起彼伏地冒叉号，很晃眼。
+                 */
+                isActive ? "opacity-60" : "opacity-35 group-hover:opacity-80",
               )}
             >
               <X className="h-3 w-3" />
