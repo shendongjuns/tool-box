@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 /**
  * 工具标签。
@@ -14,6 +13,10 @@ import { persist } from "zustand/middleware";
  *
  * 「初步不允许多开」：同一个工具只保留一个标签，
  * 再次打开时只切换而不新建。
+ *
+ * **不做持久化**：标签只活在当前会话里。
+ * 重新打开应用时从空开始 —— 恢复上一次的标签列表
+ * 反而会让人困惑（"我没打开这些啊"）。
  */
 
 export interface ToolTab {
@@ -42,59 +45,50 @@ interface ToolTabsState {
 /** 标签数量上限。打开太多会占用大量内存（每个工具都是常驻 DOM）。 */
 const MAX_TABS = 8;
 
-export const useToolTabs = create<ToolTabsState>()(
-  persist(
-    (set) => ({
-      tabs: [],
-      activeId: null,
+export const useToolTabs = create<ToolTabsState>()((set) => ({
+  tabs: [],
+  activeId: null,
 
-      open: (toolId, name) =>
-        set((state) => {
-          const existing = state.tabs.find((tab) => tab.toolId === toolId);
+  open: (toolId, name) =>
+    set((state) => {
+      const existing = state.tabs.find((tab) => tab.toolId === toolId);
 
-          if (existing) {
-            // 已打开：只切换并更新活跃时间
-            return {
-              activeId: toolId,
-              tabs: state.tabs.map((tab) =>
-                tab.toolId === toolId ? { ...tab, lastActiveAt: Date.now() } : tab,
-              ),
-            };
-          }
-
-          const next: ToolTab = { toolId, name, lastActiveAt: Date.now() };
-          // 超出上限时挤掉最久未用的（但不挤掉刚打开的）
-          const trimmed =
-            state.tabs.length >= MAX_TABS
-              ? [...state.tabs]
-                  .sort((a, b) => a.lastActiveAt - b.lastActiveAt)
-                  .slice(state.tabs.length - MAX_TABS + 1)
-              : state.tabs;
-
-          return { tabs: [...trimmed, next], activeId: toolId };
-        }),
-
-      close: (toolId) =>
-        set((state) => {
-          const tabs = state.tabs.filter((tab) => tab.toolId !== toolId);
-          // 关掉当前标签时，活动项转到最后一个
-          const activeId =
-            state.activeId === toolId ? (tabs[tabs.length - 1]?.toolId ?? null) : state.activeId;
-          return { tabs, activeId };
-        }),
-
-      closeOthers: (toolId) =>
-        set((state) => ({
-          tabs: state.tabs.filter((tab) => tab.toolId === toolId),
+      if (existing) {
+        // 已打开：只切换并更新活跃时间
+        return {
           activeId: toolId,
-        })),
+          tabs: state.tabs.map((tab) =>
+            tab.toolId === toolId ? { ...tab, lastActiveAt: Date.now() } : tab,
+          ),
+        };
+      }
 
-      setActive: (toolId) => set({ activeId: toolId }),
+      const next: ToolTab = { toolId, name, lastActiveAt: Date.now() };
+      // 超出上限时挤掉最久未用的（但不挤掉刚打开的）
+      const trimmed =
+        state.tabs.length >= MAX_TABS
+          ? [...state.tabs]
+              .sort((a, b) => a.lastActiveAt - b.lastActiveAt)
+              .slice(state.tabs.length - MAX_TABS + 1)
+          : state.tabs;
+
+      return { tabs: [...trimmed, next], activeId: toolId };
     }),
-    {
-      name: "toolbox.toolTabs",
-      // 持久化标签列表，刷新页面后仍在（只存 id 与名称）
-      partialize: (state) => ({ tabs: state.tabs, activeId: state.activeId }),
-    },
-  ),
-);
+
+  close: (toolId) =>
+    set((state) => {
+      const tabs = state.tabs.filter((tab) => tab.toolId !== toolId);
+      // 关掉当前标签时，活动项转到最后一个
+      const activeId =
+        state.activeId === toolId ? (tabs[tabs.length - 1]?.toolId ?? null) : state.activeId;
+      return { tabs, activeId };
+    }),
+
+  closeOthers: (toolId) =>
+    set((state) => ({
+      tabs: state.tabs.filter((tab) => tab.toolId === toolId),
+      activeId: toolId,
+    })),
+
+  setActive: (toolId) => set({ activeId: toolId }),
+}));
