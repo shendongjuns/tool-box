@@ -2,10 +2,32 @@ packages:
   - apps/*
   - packages/*
 
+# 允许执行安装脚本的依赖。
+#
+# 这三个都需要编译原生模块或下载平台二进制：
+#   better-sqlite3  -> 编译 SQLite 绑定
+#   esbuild         -> 下载对应平台的二进制
+#   @node-rs/argon2 -> 下载预编译的 .node 文件
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
   - "@node-rs/argon2"
+
+# 关闭「未决定的构建脚本即报错」。
+#
+# pnpm 11 默认开启 strictDepBuilds：只要存在任何未在
+# onlyBuiltDependencies 里声明的构建脚本，install 就会以
+# ERR_PNPM_IGNORED_BUILDS 失败。
+#
+# 上面的白名单已经覆盖了本仓库需要构建的依赖，但 pnpm 的判定逻辑
+# 在某些情况下（如锁文件由旧版本生成、CI 全新安装）会把已知依赖
+# 也判成 undecided，导致本地能装、CI 失败。
+#
+# 关闭后行为回到 pnpm 10：未声明的构建脚本被静默跳过，
+# 而不是让整个安装失败。代价是漏配置时不会报错 ——
+# 但本地开发时缺二进制会立刻暴露（esbuild 跑不起来），
+# 不会拖到 CI 才发现。
+strictDepBuilds: false
 
 minimumReleaseAgeExclude:
   - "@tanstack/query-core@5.104.5"
