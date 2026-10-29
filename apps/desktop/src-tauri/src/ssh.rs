@@ -25,6 +25,12 @@ use tokio::sync::{mpsc, Mutex};
 /// 输出合并窗口。终端刷屏时把这段时间内的数据攒成一帧。
 const FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 
+/// 并发会话上限。
+///
+/// 每个会话占一条 TCP 连接 + 一个远端 PTY + 若干 tokio 任务。
+/// 没有上限时，程序异常重试或用户连开几十个会把文件句柄和内存耗光。
+const MAX_SESSIONS: usize = 10;
+
 pub struct SshSession {
     /// 保持连接存活；drop 后连接关闭
     pub handle: Arc<Handle<ClientHandler>>,
@@ -133,6 +139,16 @@ pub async fn connect(
     config: ConnectConfig,
     app: tauri::AppHandle,
 ) -> Result<ConnectResult, String> {
+    // 先查上限，避免连上了才拒绝（浪费一次握手）
+    {
+        let sessions = state.sessions.lock().await;
+        if sessions.len() >= MAX_SESSIONS {
+            return Err(format!(
+                "同时最多打开 {MAX_SESSIONS} 个会话，请先关闭一些再连",
+            ));
+        }
+    }
+
     let ssh_config = Arc::new(client::Config {
         inactivity_timeout: None,
         keepalive_interval: Some(Duration::from_secs(15)),

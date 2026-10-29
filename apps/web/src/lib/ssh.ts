@@ -223,20 +223,6 @@ export async function sftpList(sessionId: string, path: string): Promise<SftpEnt
   return invoke<SftpEntry[]>("sftp_list", { sessionId, path });
 }
 
-export async function sftpRead(sessionId: string, path: string): Promise<string> {
-  const invoke = await getInvoke();
-  return invoke<string>("sftp_read", { sessionId, path });
-}
-
-export async function sftpWrite(
-  sessionId: string,
-  path: string,
-  contentBase64: string,
-): Promise<void> {
-  const invoke = await getInvoke();
-  await invoke("sftp_write", { sessionId, path, content: contentBase64 });
-}
-
 export async function sftpRemove(
   sessionId: string,
   path: string,

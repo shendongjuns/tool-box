@@ -54,6 +54,20 @@ async fn open_sftp(
 /// 分块大小：64KB。足够小以更新进度，足够大以保证吞吐。
 const CHUNK_SIZE: usize = 64 * 1024;
 
+/// 同时进行的传输上限。
+///
+/// 每个传输独占一条 SFTP 通道。并发过多时各自抢带宽，
+/// 总吞吐反而低于串行；服务器侧也可能限流。
+/// 2 个并发是「肉眼可见的并行」与「不过度抢占」的折中。
+const MAX_CONCURRENT_TRANSFERS: usize = 2;
+
+/// 传输槽位。超出上限的任务在这里排队，而不是失败。
+static TRANSFER_SLOTS: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+
+fn transfer_slots() -> &'static tokio::sync::Semaphore {
+    TRANSFER_SLOTS.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_TRANSFERS))
+}
+
 /// 进度事件的节流间隔。
 ///
 /// 64KB 一块意味着 1GB 文件会产生 16000 次 emit ——
@@ -83,7 +97,7 @@ fn should_emit(last: &mut std::time::Instant, percent: u8, last_percent: &mut u8
 
 /// 下载到本地文件（Rust 直连，不经过 JS）。
 ///
-/// 为什么不复用 `sftp_read` + JS 保存：
+/// 为什么不走「读全量再传前端」的老路：
 /// base64 编码一个 100MB 文件会让渲染进程主线程卡死好几秒，
 /// 而且字符串要跨 IPC 传两遍。这里直接在 Rust 里读远端、写本地，
 /// 前端只收进度事件。
@@ -98,6 +112,12 @@ pub async fn sftp_download(
 ) -> Result<(), String> {
     use tauri::Emitter;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // 排队等一个传输槽位：超出并发上限时等待，而不是直接失败
+    let _permit = transfer_slots()
+        .acquire()
+        .await
+        .map_err(|_| "传输队列不可用".to_string())?;
 
     let sftp = open_sftp(&state, &session_id).await?;
 
@@ -174,6 +194,12 @@ pub async fn sftp_upload(
 ) -> Result<(), String> {
     use tauri::Emitter;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // 同下载：先占一个传输槽位
+    let _permit = transfer_slots()
+        .acquire()
+        .await
+        .map_err(|_| "传输队列不可用".to_string())?;
 
     let total = tokio::fs::metadata(&local_path)
         .await
@@ -283,60 +309,6 @@ pub async fn sftp_list(
     });
 
     Ok(result)
-}
-
-/// 读取文件内容（返回 base64，避免二进制损坏）。
-#[tauri::command]
-pub async fn sftp_read(
-    state: State<'_, SshState>,
-    session_id: String,
-    path: String,
-) -> Result<String, String> {
-    use base64::Engine as _;
-    use tokio::io::AsyncReadExt;
-
-    let sftp = open_sftp(&state, &session_id).await?;
-    let mut file = sftp
-        .open(&path)
-        .await
-        .map_err(|e| format!("打开文件失败：{e}"))?;
-
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .await
-        .map_err(|e| format!("读取失败：{e}"))?;
-
-    Ok(base64::engine::general_purpose::STANDARD.encode(&buf))
-}
-
-/// 写入文件（内容为 base64）。
-#[tauri::command]
-pub async fn sftp_write(
-    state: State<'_, SshState>,
-    session_id: String,
-    path: String,
-    content: String,
-) -> Result<(), String> {
-    use base64::Engine as _;
-    use tokio::io::AsyncWriteExt;
-
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(content.as_bytes())
-        .map_err(|e| format!("内容编码错误：{e}"))?;
-
-    let sftp = open_sftp(&state, &session_id).await?;
-    let mut file = sftp
-        .create(&path)
-        .await
-        .map_err(|e| format!("创建文件失败：{e}"))?;
-
-    file.write_all(&bytes)
-        .await
-        .map_err(|e| format!("写入失败：{e}"))?;
-    file.flush().await.map_err(|e| format!("刷盘失败：{e}"))?;
-    let _ = file.shutdown().await;
-
-    Ok(())
 }
 
 /// 删除文件或空目录。

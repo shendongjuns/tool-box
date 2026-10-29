@@ -276,8 +276,18 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(
+            /*
+             * 日志配置。
+             *
+             * 加轮转是因为之前日志会无限增长 —— 托盘常驻的程序
+             * 可能几个月不关，能写出几百 MB 的单文件，
+             * 既占空间也让排查变慢。
+             * 5MB 一个文件、保留一个备份，够定位问题又不失控。
+             */
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                .max_file_size(5 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
                 // 日志也放在 <exe>/data/logs，与数据库同处一个可整体带走的目录
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::Folder {
@@ -333,8 +343,6 @@ pub fn run() {
             ssh::ssh_disconnect,
             ssh::ssh_exec,
             sftp::sftp_list,
-            sftp::sftp_read,
-            sftp::sftp_write,
             sftp::sftp_remove,
             sftp::sftp_mkdir,
             sftp::sftp_rename,

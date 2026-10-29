@@ -521,6 +521,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                   <button
                     type="button"
                     title="更多"
+                    aria-label={`${entry.name} 的更多操作`}
                     onClick={(event) => {
                       const rect = event.currentTarget.getBoundingClientRect();
                       setMenu({ x: rect.left, y: rect.bottom + 2, entry });

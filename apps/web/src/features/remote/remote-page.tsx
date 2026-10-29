@@ -248,6 +248,9 @@ export function RemotePage() {
             key={session.id}
             onClick={() => setActive(session.id)}
             role="button"
+            // 自定义 role 会覆盖语义，屏幕阅读器只能靠 aria-label 知道这是什么
+            aria-label={`切换到会话 ${session.label}`}
+            aria-current={session.id === activeId ? "true" : undefined}
             tabIndex={0}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -278,6 +281,7 @@ export function RemotePage() {
                 setPendingClose(session);
               }}
               title="关闭"
+              aria-label={`关闭会话 ${session.label}`}
               className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
             >
               <X className="h-3.5 w-3.5" />

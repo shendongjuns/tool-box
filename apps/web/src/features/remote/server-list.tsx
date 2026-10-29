@@ -124,6 +124,7 @@ export function ServerList({
                 }
               }}
               role="button"
+              aria-label={`连接服务器 ${server.name}（${server.username}@${server.host}:${server.port}）`}
               tabIndex={0}
               className={
                 "group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors " +

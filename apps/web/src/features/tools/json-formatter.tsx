@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { Check, Copy, Minimize2, Sparkles, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +10,15 @@ import { cn } from "@/lib/utils";
 const SAMPLE = `{"name":"ToolBox","version":"2.0.0","features":["web","desktop"],"stable":true}`;
 
 export function JsonFormatterTool() {
+  /** 复制提示的复位定时器，卸载时必须清掉 */
+  const copyTimer = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    };
+  }, []);
+
   const [input, setInput] = useState(SAMPLE);
   const [indent, setIndent] = useState(2);
   const [copied, setCopied] = useState(false);
@@ -34,7 +44,9 @@ export function JsonFormatterTool() {
     await navigator.clipboard.writeText(value);
     setCopied(true);
     toast.success("已复制");
-    setTimeout(() => setCopied(false), 1500);
+    // 保存 timer 并在卸载时清理，避免组件已卸载还 setState
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
   }
 
   return (
