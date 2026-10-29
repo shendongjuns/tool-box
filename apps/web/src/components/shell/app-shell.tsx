@@ -1,6 +1,8 @@
 import * as React from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { ToolWorkspace } from "@/components/tools/tool-workspace";
 import { CommandPalette } from "./command-palette";
 import { useSettingsQuery } from "@/lib/hooks";
 import { useThemeSync } from "@/lib/theme-sync";
@@ -85,6 +87,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             但 vh 会把浏览器 chrome 算进去，导致内容溢出或留白。
           */}
           <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-7">
+            {/*
+              工具工作区常驻在这里，而不是在工具路由里。
+
+              原因：工具路由切换会卸载组件，输入内容与滚动位置全丢。
+              放在 AppShell 层后，只要还在 /tools/* 下，
+              ToolWorkspace 就一直挂着，只有离开整个工具区才卸载。
+
+              {children} 在工具页时渲染 null（路由组件只登记标签），
+              所以不会重复渲染。
+            */}
+            <ToolArea />
             {children}
           </div>
         </main>
@@ -92,4 +105,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
+}
+/**
+ * 工具区。
+ *
+ * 仅在 /tools/* 路由下显示工作区；其余页面显示 children。
+ * 用一个判断避免「仪表盘和工具同时出现」。
+ */
+function ToolArea() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const inTools = pathname.startsWith("/tools/");
+  if (!inTools) return null;
+  return <ToolWorkspace />;
 }

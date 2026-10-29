@@ -1,13 +1,10 @@
 import * as React from "react";
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { findTool } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
 import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
-import { ToolRunner } from "@/components/tools/tool-runner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useToolTabs } from "@/features/tools/tool-tabs-store";
 
 export const Route = createFileRoute("/_app/tools/$toolId")({
   loader: ({ params }) => {
@@ -18,22 +15,35 @@ export const Route = createFileRoute("/_app/tools/$toolId")({
   component: ToolPage,
 });
 
-/** 自带完整布局的工具，不渲染默认标题区。 */
-const SELF_LAYOUT = new Set(["servers"]);
-
+/**
+ * 工具页路由。
+ *
+ * 这个组件**不渲染工具本身** —— 工具由 <ToolWorkspace> 统一管理，
+ * 所有打开过的工具都常驻挂载在那里，切换时只改 CSS 可见性。
+ * 这里只负责两件事：
+ * 1. 把当前路由对应的工具登记为活动标签
+ * 2. 上报一次「最近打开」
+ *
+ * 为什么不在这里渲染：路由切换会卸载组件，工具状态（输入内容、
+ * 滚动位置、图表历史）会全部丢失。常驻挂载才能保住这些。
+ */
 function ToolPage() {
   const { tool } = Route.useLoaderData();
-  const selfLayout = SELF_LAYOUT.has(tool.id);
   const api = useApi();
   const queryClient = useQueryClient();
   const sourceKey = useCurrentSourceKey();
+  const open = useToolTabs((state) => state.open);
+
+  // 登记标签：同名工具不重复开（初步不允许多开）
+  React.useEffect(() => {
+    open(tool.id, tool.name);
+  }, [open, tool.id, tool.name]);
 
   /*
    * 打开工具时记录一次使用时间。
    *
-   * 之前这个接口（POST /api/tools/:id/touch）从来没被调用过，
-   * 所以 lastOpenedAt 永远是 null，仪表盘的「最近使用」拿不到数据。
-   * 这里在挂载时上报，并让仪表盘缓存失效，回到首页即可看到最新记录。
+   * 之前这个接口从来没被调用过，导致 lastOpenedAt 恒为 null，
+   * 仪表盘的「最近使用」拿不到数据。
    */
   React.useEffect(() => {
     let cancelled = false;
@@ -51,32 +61,6 @@ function ToolPage() {
     };
   }, [api, tool.id, queryClient, sourceKey]);
 
-  if (selfLayout) {
-    // 自带布局的工具需要撑满可用高度（终端/文件/监控都是全高界面）
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ToolRunner toolId={tool.id} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <Button variant="ghost" size="sm" asChild className="-ml-2 mb-1">
-            <Link to="/dashboard">
-              <ArrowLeft className="h-4 w-4" />
-              返回仪表盘
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-semibold tracking-tight">{tool.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{tool.description}</p>
-        </div>
-        <Badge variant="outline">{tool.id}</Badge>
-      </div>
-
-      <ToolRunner toolId={tool.id} />
-    </div>
-  );
+  // 实际内容由 AppShell 里的 ToolWorkspace 渲染，这里留空
+  return null;
 }
