@@ -9,7 +9,11 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 
 # 数据（本地 SQLite / 备份）
-data/
+#
+# 注意：data/ 必须写成 /data/（只忽略仓库根目录下的），
+# 不能写成 data/ —— 后者会匹配任意层级的 data 目录，
+# 把 packages/data/ 这样的源码目录也一起忽略掉。
+/data/
 *.db
 *.db-shm
 *.db-wal
