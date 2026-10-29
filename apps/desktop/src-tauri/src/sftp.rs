@@ -503,12 +503,94 @@ pub async fn sftp_remove(
     is_dir: bool,
 ) -> Result<(), String> {
     let sftp = open_sftp(&state, &session_id).await?;
-    let result = if is_dir {
-        sftp.remove_dir(&path).await
-    } else {
-        sftp.remove_file(&path).await
-    };
-    result.map_err(|e| format!("删除失败：{e}"))
+
+    if !is_dir {
+        return sftp
+            .remove_file(&path)
+            .await
+            .map_err(|e| format!("删除失败：{e}"));
+    }
+
+    /*
+     * 目录递归删除。
+     *
+     * SFTP 的 remove_dir 只能删空目录 —— 直接对非空目录调用会返回
+     * FAILURE，用户看到的就是「删除失败」但不知道原因。
+     *
+     * 这里做深度优先遍历：先清空子项，再删自己。
+     * 用显式栈而不是递归，避免目录层级过深时栈溢出。
+     *
+     * 限制深度与条目数：防止误操作删掉一个巨大的目录树时
+     * 卡住界面（SFTP 是逐个请求，几万个文件会非常慢）。
+     */
+    const MAX_DEPTH: usize = 32;
+    const MAX_ENTRIES: usize = 50_000;
+
+    /*
+     * 两阶段：先广度优先收集所有路径（带深度），
+     * 再按「深度从大到小」删除 —— 深层先删，父目录自然变空。
+     *
+     * 这样每个目录只会被 remove_dir 一次，
+     * 不会出现「重复删除已不存在的目录」导致的失败。
+     */
+    let mut dirs: Vec<(String, usize)> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+    let mut queue: std::collections::VecDeque<(String, usize)> =
+        std::collections::VecDeque::new();
+    queue.push_back((path.clone(), 0));
+
+    let mut seen = 0usize;
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > MAX_DEPTH {
+            return Err(format!("目录层级超过 {MAX_DEPTH} 层，已中止"));
+        }
+        dirs.push((dir.clone(), depth));
+
+        let entries = sftp
+            .read_dir(&dir)
+            .await
+            .map_err(|e| format!("读取目录 {dir} 失败：{e}"))?;
+
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let child = if dir.ends_with('/') {
+                format!("{dir}{name}")
+            } else {
+                format!("{dir}/{name}")
+            };
+
+            seen += 1;
+            if seen > MAX_ENTRIES {
+                return Err(format!("目录内条目超过 {MAX_ENTRIES} 个，已中止"));
+            }
+
+            if entry.metadata().is_dir() {
+                queue.push_back((child, depth + 1));
+            } else {
+                files.push(child);
+            }
+        }
+    }
+
+    // 先删所有文件
+    for file in files {
+        sftp.remove_file(&file)
+            .await
+            .map_err(|e| format!("删除 {file} 失败：{e}"))?;
+    }
+
+    // 再按深度倒序删目录（最深的先删）
+    dirs.sort_by(|a, b| b.1.cmp(&a.1));
+    for (dir, _) in dirs {
+        sftp.remove_dir(&dir)
+            .await
+            .map_err(|e| format!("删除目录 {dir} 失败：{e}"))?;
+    }
+
+    Ok(())
 }
 
 /// 创建目录。

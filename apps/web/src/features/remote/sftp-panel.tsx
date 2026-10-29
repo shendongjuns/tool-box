@@ -93,6 +93,8 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [chmod, setChmod] = React.useState<{ path: string; value: string } | null>(null);
   /** 右键菜单位置与目标条目 */
   const [menu, setMenu] = React.useState<{ x: number; y: number; entry: SftpEntry } | null>(null);
+  /** 待确认删除的条目（删除是高危操作，必须二次确认） */
+  const [pendingDelete, setPendingDelete] = React.useState<SftpEntry | null>(null);
   const { tasks: transfers, add, patch, remove, clearFinished } = useTransfers();
   const [showTransfers, setShowTransfers] = React.useState(false);
 
@@ -177,7 +179,22 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
     navigate(next.startsWith("/") ? next : `${path}/${next}`);
   }
 
-  async function handleDelete(entry: SftpEntry) {
+  /**
+   * 请求删除：先弹确认框。
+   *
+   * SFTP 的删除不可撤销（不进回收站），误点一次就没了。
+   * 菜单里「删除」与「重命名」相邻，手滑风险真实存在。
+   */
+  function requestDelete(entry: SftpEntry) {
+    setPendingDelete(entry);
+  }
+
+  /** 用户确认后才真正删除。 */
+  async function confirmDelete() {
+    const entry = pendingDelete;
+    setPendingDelete(null);
+    if (!entry) return;
+
     try {
       await sftpRemove(sessionId, entry.path, entry.isDir);
       toast.success(`已删除 ${entry.name}`);
@@ -566,12 +583,36 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
               label: "删除",
               icon: Trash2,
               destructive: true,
-              onSelect: () => void handleDelete(menu.entry),
+              onSelect: () => requestDelete(menu.entry),
             },
           ]}
           onClose={() => setMenu(null)}
         />
       ) : null}
+
+      {/* 删除确认：SFTP 删除不进回收站，必须二次确认 */}
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>删除{pendingDelete?.isDir ? "文件夹" : "文件"}？</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            将永久删除{" "}
+            <strong className="break-all text-foreground">{pendingDelete?.name}</strong>
+            {pendingDelete?.isDir ? " 及其中所有文件与子目录" : ""}，此操作无法撤销。
+          </p>
+
+          <DialogFooter>
+            <Button size="sm" variant="ghost" onClick={() => setPendingDelete(null)}>
+              取消
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => void confirmDelete()}>
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 传输列表：弹窗，不占用文件列表空间 */}
       <Dialog open={showTransfers} onOpenChange={setShowTransfers}>
