@@ -5,8 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# 同一分支的新推送取消旧运行，省额度也省等待
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
+    name: 检查与测试
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +26,26 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install
+      - name: 安装依赖
         run: pnpm install --frozen-lockfile
+
+      - name: 代码风格
+        run: npx prettier --check .
 
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
+      - name: 类型检查
         run: pnpm -r --if-present typecheck
 
-      - name: Test
+      - name: 测试
         run: pnpm test
 
-      - name: Build
+      - name: 构建
         run: pnpm build
 
   desktop:
+    name: 桌面端编译检查
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,17 +65,18 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      - name: Install
+      - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      - name: Cargo check
+      - name: Cargo 检查
         run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 
-      - name: Build web
+      - name: Rust 测试
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: 构建前端
         run: pnpm --filter @toolbox/web build
 
-      - name: Build desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm --filter @toolbox/desktop build
+      - name: 编译桌面端
+        # 日常 CI 不打安装包：太慢，打包只在 release 时才需要
+        run: cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml
