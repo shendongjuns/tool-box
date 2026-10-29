@@ -1,10 +1,11 @@
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { LogOut, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-session";
 import { logoutCurrent } from "@/lib/session";
 import { useTheme } from "@/lib/theme";
 import { UserAvatar } from "@/components/user-avatar";
+import { ToolTabs } from "@/components/tools/tool-tabs";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,17 +20,6 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
   const navigate = useNavigate();
   const user = useAuth((state) => state.auth?.user);
   const { resolved, setMode, mode } = useTheme();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-
-  const title =
-    pathname === "/dashboard"
-      ? "仪表盘"
-      : pathname === "/settings"
-        ? "设置"
-        : pathname.startsWith("/tools/")
-          ? "工具"
-          : "ToolBox";
-
   async function logout() {
     await logoutCurrent();
     toast.success("已退出登录");
@@ -38,8 +28,16 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur app-drag">
-      <div className="min-w-0 flex-1 app-no-drag">
-        <p className="truncate text-sm font-medium">{title}</p>
+      {/*
+        左侧原本是页面标题（"工具"/"设置"…），删除。
+
+        现在这个位置放工具标签栏：它与搜索框同一行，
+        用 flex-1 + min-w-0 占据剩余空间，但不设 shrink-0，
+        所以永远不会把右侧的搜索/主题/头像挤出去。
+        标签数量多时在容器内横向滚动，而不是撑宽整行。
+      */}
+      <div className="min-w-0 flex-1 overflow-hidden app-no-drag">
+        <ToolTabs />
       </div>
 
       <button
