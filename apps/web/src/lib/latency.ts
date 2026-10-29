@@ -91,7 +91,8 @@ export function describeLatency(result: LatencyResult | null): {
 } {
   if (!result) return { text: "检测中…", tone: "unknown" };
 
-  if (result.kind === "timeout") return { text: `超时（>${PROBE_TIMEOUT_MS / 1000}s）`, tone: "dead" };
+  if (result.kind === "timeout")
+    return { text: `超时（>${PROBE_TIMEOUT_MS / 1000}s）`, tone: "dead" };
   if (result.kind === "offline") return { text: "不可达", tone: "dead" };
 
   const ms = result.ms;

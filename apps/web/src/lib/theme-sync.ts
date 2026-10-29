@@ -24,9 +24,7 @@ export function applyRemoteTheme(
 }
 
 /** 设置数据到达后同步一次远程外观。 */
-export function useThemeSync(
-  values: Record<string, string | number | boolean> | undefined,
-): void {
+export function useThemeSync(values: Record<string, string | number | boolean> | undefined): void {
   useEffect(() => {
     applyRemoteTheme(values);
   }, [values]);

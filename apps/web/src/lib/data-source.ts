@@ -150,9 +150,7 @@ export const useDataSource = create<DataSourceState>((set, get) => ({
 
     const stored = localStorage.getItem(ACTIVE_KEY);
     const active =
-      stored === "local" || sources.some((item) => item.id === stored)
-        ? stored!
-        : "local"; // 桌面端默认本地
+      stored === "local" || sources.some((item) => item.id === stored) ? stored! : "local"; // 桌面端默认本地
     set({ cloudSources: sources, ...resolveState(active, sources) });
   },
 
@@ -208,9 +206,7 @@ export const useDataSource = create<DataSourceState>((set, get) => ({
 
   updateCloud: (id, patch) => {
     const sources = get().cloudSources.map((item) =>
-      item.id === id
-        ? { ...item, name: patch.name.trim(), url: normalizeUrl(patch.url) }
-        : item,
+      item.id === id ? { ...item, name: patch.name.trim(), url: normalizeUrl(patch.url) } : item,
     );
     persistSources(sources);
     // 只改列表数据；如果改的正好是当前源，同步刷新 label / cloudBaseUrl，

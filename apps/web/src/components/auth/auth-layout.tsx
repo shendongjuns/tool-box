@@ -92,9 +92,7 @@ export function AuthLayout({
 
         {/* 页脚：仅在宽屏显示，与左栏对齐 */}
         <footer className="hidden pb-8 lg:block">
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} ToolBox
-          </p>
+          <p className="text-xs text-muted-foreground">© {new Date().getFullYear()} ToolBox</p>
         </footer>
       </div>
     </div>

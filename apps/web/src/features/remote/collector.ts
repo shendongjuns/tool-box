@@ -1,8 +1,4 @@
-import type {
-  MonitorMetrics,
-  ServerInfo,
-  
-} from "@toolbox/contracts";
+import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { sshExec } from "@/lib/ssh";
 
 /**
@@ -18,11 +14,11 @@ import { sshExec } from "@/lib/ssh";
 
 /** 一次性查询服务器基本信息。 */
 const INFO_COMMAND = [
-  "echo \"HOSTNAME=$(hostname 2>/dev/null)\"",
-  "echo \"OS=$(. /etc/os-release 2>/dev/null && echo $PRETTY_NAME)\"",
-  "echo \"KERNEL=$(uname -r 2>/dev/null)\"",
+  'echo "HOSTNAME=$(hostname 2>/dev/null)"',
+  'echo "OS=$(. /etc/os-release 2>/dev/null && echo $PRETTY_NAME)"',
+  'echo "KERNEL=$(uname -r 2>/dev/null)"',
   "echo \"CPU_MODEL=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | xargs)\"",
-  "echo \"CPU_CORES=$(grep -c ^processor /proc/cpuinfo 2>/dev/null)\"",
+  'echo "CPU_CORES=$(grep -c ^processor /proc/cpuinfo 2>/dev/null)"',
   "echo \"MEM_TOTAL_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')\"",
   "echo \"IP=$(hostname -I 2>/dev/null | awk '{print $1}')\"",
 ].join("; ");

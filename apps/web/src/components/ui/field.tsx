@@ -11,7 +11,9 @@ export function FieldLabel({ className, ...props }: React.LabelHTMLAttributes<HT
 }
 
 export function FieldHint({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-xs leading-relaxed text-muted-foreground", className)} {...props} />;
+  return (
+    <p className={cn("text-xs leading-relaxed text-muted-foreground", className)} {...props} />
+  );
 }
 
 export function FieldError({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {

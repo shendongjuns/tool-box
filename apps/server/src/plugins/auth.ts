@@ -10,4 +10,3 @@ export function extractToken(request: FastifyRequest, cookieName: string): strin
   const cookie = request.cookies?.[cookieName];
   return cookie && cookie.length > 0 ? cookie : null;
 }
-

@@ -101,6 +101,7 @@ Windows 上有一个约 3.6MB 的安装包，也有一个解压即用的压缩�
 
 - 桌面端：`data/local.db`
 - 服务端：`docker/data/toolbox.db`
+
 </details>
 
 <details>

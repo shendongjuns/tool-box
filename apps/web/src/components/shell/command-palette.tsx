@@ -108,7 +108,10 @@ export function CommandPalette({
               <p>没有匹配结果</p>
               <button
                 type="button"
-                onClick={() => { const first = items[0]; if (first) go(first); }}
+                onClick={() => {
+                  const first = items[0];
+                  if (first) go(first);
+                }}
                 className="mt-2 text-xs text-primary underline-offset-2 hover:underline"
               >
                 打开仪表盘

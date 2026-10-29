@@ -68,8 +68,7 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
 
     me: () => get<MeResponse>("/api/auth/me"),
 
-    changePassword: (body: ChangePasswordRequest) =>
-      send<void>("/api/auth/password", "POST", body),
+    changePassword: (body: ChangePasswordRequest) => send<void>("/api/auth/password", "POST", body),
 
     listSessions: () => get<SessionListResponse>("/api/auth/sessions"),
 
@@ -107,8 +106,7 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
     updateServer: (id: string, body: UpdateServerRequest) =>
       send<Server>(`/api/servers/${encodeURIComponent(id)}`, "PUT", body),
 
-    deleteServer: (id: string) =>
-      send<void>(`/api/servers/${encodeURIComponent(id)}`, "DELETE"),
+    deleteServer: (id: string) => send<void>(`/api/servers/${encodeURIComponent(id)}`, "DELETE"),
 
     getServerCredential: (id: string) =>
       send<{

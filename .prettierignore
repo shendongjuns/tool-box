@@ -2,3 +2,5 @@ dist
 node_modules
 data
 apps/desktop/src-tauri/target
+# TanStack Router 自动生成
+apps/web/src/routeTree.gen.ts

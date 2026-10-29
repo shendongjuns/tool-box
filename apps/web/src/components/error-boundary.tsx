@@ -15,10 +15,7 @@ interface State {
   info: string;
 }
 
-export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  State
-> {
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
   state: State = { error: null, info: "" };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -54,8 +51,7 @@ export class ErrorBoundary extends React.Component<
           </div>
 
           <p className="mt-2 text-sm text-muted-foreground">
-            某个组件渲染时抛出了异常。你的数据没有丢失，
-            点击「重载界面」通常就能恢复。
+            某个组件渲染时抛出了异常。你的数据没有丢失， 点击「重载界面」通常就能恢复。
           </p>
 
           <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted/60 p-3 font-mono text-[11px] text-muted-foreground">

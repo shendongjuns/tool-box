@@ -14,12 +14,10 @@ async function sha(algorithm: "SHA-1" | "SHA-256", text: string): Promise<string
 function md5(bytes: Uint8Array): string {
   const shifts = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
-    14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15,
-    21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+    14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
   ];
-  const k = Array.from({ length: 64 }, (_, i) =>
-    Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32),
-  );
+  const k = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32));
 
   const padded = new Uint8Array((((bytes.length + 8) >> 6) + 1) << 6);
   padded.set(bytes);

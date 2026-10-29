@@ -83,7 +83,8 @@ function SparkArea({
   const innerHeight = Math.max(0, height - PAD.top - PAD.bottom);
 
   const xScale = React.useMemo(() => {
-    if (data.length === 0) return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
+    if (data.length === 0)
+      return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
     const first = data[0]!.timestamp;
     const last = data[data.length - 1]!.timestamp;
     return scaleTime({
@@ -164,9 +165,7 @@ function SparkArea({
         <span className="font-mono text-lg font-semibold tabular-nums">
           {formatValue(getValue(latest))}
         </span>
-        <span className="text-[10px] text-muted-foreground">
-          {data.length} 个采样点
-        </span>
+        <span className="text-[10px] text-muted-foreground">{data.length} 个采样点</span>
       </div>
 
       {innerWidth > 0 ? (
@@ -306,7 +305,8 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   const toMiB = (bytes: number) => bytes / 1024 / 1024;
 
   const xScale = React.useMemo(() => {
-    if (data.length === 0) return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
+    if (data.length === 0)
+      return scaleTime({ domain: [new Date(0), new Date(1)], range: [0, innerWidth] });
     const first = data[0]!.timestamp;
     const last = data[data.length - 1]!.timestamp;
     return scaleTime({
@@ -318,14 +318,20 @@ export function NetworkChart({ data }: { data: MonitorMetrics[] }) {
   const yScale = React.useMemo(() => {
     const max = Math.max(
       0.1,
-      ...data.map((point) => Math.max(toMiB(point.netRxBytesPerSec), toMiB(point.netTxBytesPerSec))),
+      ...data.map((point) =>
+        Math.max(toMiB(point.netRxBytesPerSec), toMiB(point.netTxBytesPerSec)),
+      ),
     );
     return scaleLinear({ domain: [0, max * 1.2], range: [innerHeight, 0], nice: true });
   }, [data, innerHeight]);
 
   if (!data.length) {
     return (
-      <div ref={containerRef} className="grid place-items-center text-xs text-muted-foreground" style={{ height }}>
+      <div
+        ref={containerRef}
+        className="grid place-items-center text-xs text-muted-foreground"
+        style={{ height }}
+      >
         等待数据…
       </div>
     );
@@ -430,11 +436,7 @@ const GPU_METRIC_META: Record<
   power: { label: "功耗", unit: "W", color: "var(--chart-5)", fill: "gpu-power" },
 };
 
-function gpuValue(
-  point: MonitorMetrics,
-  gpuIndex: number,
-  metric: GpuMetric,
-): number {
+function gpuValue(point: MonitorMetrics, gpuIndex: number, metric: GpuMetric): number {
   const gpu = point.gpus[gpuIndex];
   if (!gpu) return 0;
   switch (metric) {
@@ -450,13 +452,7 @@ function gpuValue(
 }
 
 /** 单个 GPU 指标的趋势图（多卡各一条线）。 */
-export function GpuChart({
-  data,
-  metric,
-}: {
-  data: MonitorMetrics[];
-  metric: GpuMetric;
-}) {
+export function GpuChart({ data, metric }: { data: MonitorMetrics[]; metric: GpuMetric }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
 
@@ -516,9 +512,10 @@ export function GpuChart({
   }, [data, innerWidth]);
 
   const yScale = React.useMemo(() => {
-    const peak = Math.max(1, ...data.flatMap((point) =>
-      point.gpus.map((_, index) => gpuValue(point, index, metric)),
-    ));
+    const peak = Math.max(
+      1,
+      ...data.flatMap((point) => point.gpus.map((_, index) => gpuValue(point, index, metric))),
+    );
     const max = meta.max ?? Math.max(1, peak * 1.15);
     return scaleLinear({ domain: [0, max], range: [innerHeight, 0] });
   }, [data, metric, meta.max, innerHeight]);
@@ -567,10 +564,7 @@ export function GpuChart({
           className="flex items-center gap-1 text-[10px] font-medium"
           style={{ color: meta.color }}
         >
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: meta.color }}
-          />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
           {meta.label}
         </span>
         <span className="font-mono text-[9px] tabular-nums" style={{ color: meta.color }}>
@@ -893,8 +887,7 @@ export function DiskBars({ disks }: { disks: MonitorMetrics["disks"] }) {
       {disks.map((disk) => {
         const percent = disk.totalBytes ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
         const free = Math.max(0, disk.totalBytes - disk.usedBytes);
-        const level =
-          percent >= 90 ? "critical" : percent >= 75 ? "warning" : "normal";
+        const level = percent >= 90 ? "critical" : percent >= 75 ? "warning" : "normal";
 
         return (
           <div key={disk.mount} className="space-y-1">
@@ -936,9 +929,7 @@ export function DiskBars({ disks }: { disks: MonitorMetrics["disks"] }) {
               />
             </div>
 
-            <p className="text-[10px] text-muted-foreground/70">
-              剩余 {formatBytes(free)}
-            </p>
+            <p className="text-[10px] text-muted-foreground/70">剩余 {formatBytes(free)}</p>
           </div>
         );
       })}

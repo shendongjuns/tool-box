@@ -2,7 +2,19 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Database, LogOut, Monitor, Moon, Palette, Pencil, Plus, Sun, Trash2 } from "lucide-react";
+import {
+  Check,
+  Cloud,
+  Database,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Pencil,
+  Plus,
+  Sun,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { Accent, ThemeMode } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -181,7 +193,7 @@ function AppearanceTab() {
 function AccountTab() {
   const api = useApi();
   const user = useAuth((state) => state.auth?.user);
-    const session = useAuth((state) => state.auth?.session);
+  const session = useAuth((state) => state.auth?.session);
   const sourceKey = useCurrentSourceKey();
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -578,7 +590,6 @@ function SourceLine({
     </div>
   );
 }
-
 
 function AboutTab() {
   return (

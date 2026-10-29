@@ -48,10 +48,7 @@ export async function getKnownHostsPath(): Promise<string | null> {
 }
 
 /** 查询某主机已保存的指纹。 */
-export async function getKnownHost(
-  host: string,
-  port: number,
-): Promise<KnownHostRecord | null> {
+export async function getKnownHost(host: string, port: number): Promise<KnownHostRecord | null> {
   const path = await getKnownHostsPath();
   if (!path) return null;
   const invoke = await getInvoke();
@@ -174,25 +171,20 @@ export async function probeServerLatency(
 }
 
 /** 订阅终端输出与关闭事件。返回取消订阅函数。 */
-export async function subscribeSsh(
-  handlers: {
-    onData: (sessionId: string, bytes: Uint8Array) => void;
-    onClosed: (sessionId: string) => void;
-  },
-): Promise<() => void> {
+export async function subscribeSsh(handlers: {
+  onData: (sessionId: string, bytes: Uint8Array) => void;
+  onClosed: (sessionId: string) => void;
+}): Promise<() => void> {
   if (!isTauriRuntime()) return () => {};
 
   const { listen } = await import("@tauri-apps/api/event");
 
-  const unlistenData = await listen<{ sessionId: string; data: string }>(
-    "ssh://data",
-    (event) => {
-      const binary = atob(event.payload.data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-      handlers.onData(event.payload.sessionId, bytes);
-    },
-  );
+  const unlistenData = await listen<{ sessionId: string; data: string }>("ssh://data", (event) => {
+    const binary = atob(event.payload.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    handlers.onData(event.payload.sessionId, bytes);
+  });
 
   const unlistenClosed = await listen<{ sessionId: string }>("ssh://closed", (event) => {
     handlers.onClosed(event.payload.sessionId);
@@ -223,11 +215,7 @@ export async function sftpList(sessionId: string, path: string): Promise<SftpEnt
   return invoke<SftpEntry[]>("sftp_list", { sessionId, path });
 }
 
-export async function sftpRemove(
-  sessionId: string,
-  path: string,
-  isDir: boolean,
-): Promise<void> {
+export async function sftpRemove(sessionId: string, path: string, isDir: boolean): Promise<void> {
   const invoke = await getInvoke();
   await invoke("sftp_remove", { sessionId, path, isDir });
 }
@@ -290,7 +278,12 @@ export async function sftpUpload(
 
 /** 订阅传输进度。 */
 export async function subscribeTransferProgress(
-  handler: (payload: { taskId: string; transferred: number; total: number; percent: number }) => void,
+  handler: (payload: {
+    taskId: string;
+    transferred: number;
+    total: number;
+    percent: number;
+  }) => void,
 ): Promise<() => void> {
   if (!isTauriRuntime()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");

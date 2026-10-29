@@ -76,15 +76,12 @@ export function Sidebar({
    * 当前路由所在的分组/分类总是展开（渲染时判断，不写 state），
    * 避免用户从深层页面回来时路径被折叠。
    */
-  const currentToolId = pathname.startsWith("/tools/")
-    ? pathname.replace("/tools/", "")
-    : null;
+  const currentToolId = pathname.startsWith("/tools/") ? pathname.replace("/tools/", "") : null;
   const current = currentToolId ? toolCatalog.find((tool) => tool.id === currentToolId) : null;
 
   const [closedGroups, setClosedGroups] = React.useState<Set<string>>(() => new Set());
 
-  const isGroupOpen = (group: string) =>
-    !closedGroups.has(group) || current?.group === group;
+  const isGroupOpen = (group: string) => !closedGroups.has(group) || current?.group === group;
 
   const toggleGroup = (group: string) =>
     setClosedGroups((prev) => {

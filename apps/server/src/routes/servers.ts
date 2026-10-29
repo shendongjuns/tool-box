@@ -29,9 +29,7 @@ function toPublic(row: ServerRow): Server {
     port: row.port,
     username: row.username,
     authType: row.authType,
-    hasCredential: Boolean(
-      row.authType === "password" ? row.passwordCipher : row.privateKeyCipher,
-    ),
+    hasCredential: Boolean(row.authType === "password" ? row.passwordCipher : row.privateKeyCipher),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     lastConnectedAt: row.lastConnectedAt,

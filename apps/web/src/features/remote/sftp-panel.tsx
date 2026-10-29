@@ -76,7 +76,6 @@ function modeToRwx(mode: string): string {
   return `${triple(6)}${triple(3)}${triple(0)}`;
 }
 
-
 /** SFTP 文件浏览器。 */
 export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [path, setPath] = React.useState("");
@@ -258,37 +257,40 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   }
 
   /** 下载：先选保存路径，再由 Rust 直连传输。 */
-  const handleDownload = React.useCallback(async (entry: SftpEntry) => {
-    const localPath = await pickSavePath(entry.name);
-    if (!localPath) return;
+  const handleDownload = React.useCallback(
+    async (entry: SftpEntry) => {
+      const localPath = await pickSavePath(entry.name);
+      if (!localPath) return;
 
-    const now = Date.now();
-    const taskId = `dl-${now.toString(36)}`;
-    add({
-      id: taskId,
-      name: entry.name,
-      direction: "download",
-      remoteDir: path,
-      localPath,
-      transferred: 0,
-      total: entry.size,
-      percent: 0,
-      status: "running",
-      createdAt: now,
-    });
-    // 不自动弹窗：用户需要时自己打开传输列表
-    toast.info(`开始下载 ${entry.name}`, { description: `保存到 ${localPath}` });
+      const now = Date.now();
+      const taskId = `dl-${now.toString(36)}`;
+      add({
+        id: taskId,
+        name: entry.name,
+        direction: "download",
+        remoteDir: path,
+        localPath,
+        transferred: 0,
+        total: entry.size,
+        percent: 0,
+        status: "running",
+        createdAt: now,
+      });
+      // 不自动弹窗：用户需要时自己打开传输列表
+      toast.info(`开始下载 ${entry.name}`, { description: `保存到 ${localPath}` });
 
-    try {
-      await sftpDownload(sessionId, entry.path, localPath, taskId);
-      patch(taskId, { status: "done", percent: 100 });
-      toast.success(`已下载 ${entry.name}`, { description: `保存到 ${localPath}` });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "下载失败";
-      patch(taskId, { status: "failed", error: message });
-      toast.error(message);
-    }
-  }, [add, patch, path, sessionId]);
+      try {
+        await sftpDownload(sessionId, entry.path, localPath, taskId);
+        patch(taskId, { status: "done", percent: 100 });
+        toast.success(`已下载 ${entry.name}`, { description: `保存到 ${localPath}` });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "下载失败";
+        patch(taskId, { status: "failed", error: message });
+        toast.error(message);
+      }
+    },
+    [add, patch, path, sessionId],
+  );
 
   /** 上传：先选本地文件，再由 Rust 直连传输。 */
   const handleUpload = React.useCallback(async () => {
@@ -503,7 +505,9 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                   <span className="flex w-28 shrink-0 items-center gap-1">
                     <input
                       value={chmod.value}
-                      onChange={(event) => setChmod({ path: entry.path, value: event.target.value })}
+                      onChange={(event) =>
+                        setChmod({ path: entry.path, value: event.target.value })
+                      }
                       onBlur={() => void submitChmod()}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") void submitChmod();
@@ -591,15 +595,17 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
       ) : null}
 
       {/* 删除确认：SFTP 删除不进回收站，必须二次确认 */}
-      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>删除{pendingDelete?.isDir ? "文件夹" : "文件"}？</DialogTitle>
           </DialogHeader>
 
           <p className="text-sm text-muted-foreground">
-            将永久删除{" "}
-            <strong className="break-all text-foreground">{pendingDelete?.name}</strong>
+            将永久删除 <strong className="break-all text-foreground">{pendingDelete?.name}</strong>
             {pendingDelete?.isDir ? " 及其中所有文件与子目录" : ""}，此操作无法撤销。
           </p>
 
@@ -680,9 +686,7 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                       ? `→ ${task.localPath ?? "—"}`
                       : `→ ${task.remoteDir}/${task.name}`}
                   </p>
-                  {task.error ? (
-                    <p className="text-[10px] text-destructive">{task.error}</p>
-                  ) : null}
+                  {task.error ? <p className="text-[10px] text-destructive">{task.error}</p> : null}
                 </div>
               ))}
             </div>

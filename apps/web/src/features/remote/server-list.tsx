@@ -56,8 +56,7 @@ export function ServerList({
       void queryClient.invalidateQueries({ queryKey: queryKeys.servers(sourceKey) });
       toast.success("已删除");
     },
-    onError: (error: unknown) =>
-      toast.error(error instanceof Error ? error.message : "删除失败"),
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : "删除失败"),
   });
 
   const items = React.useMemo(() => servers.data?.items ?? [], [servers.data]);
@@ -141,16 +140,11 @@ export function ServerList({
                 <span className="block truncate text-sm font-medium">{server.name}</span>
                 <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">
                   {server.username}@{server.host}:{server.port}
-                  {server.lastConnectedAt
-                    ? ` · ${relativeTime(server.lastConnectedAt)}`
-                    : ""}
+                  {server.lastConnectedAt ? ` · ${relativeTime(server.lastConnectedAt)}` : ""}
                 </span>
               </div>
 
-              <LatencyPill
-                state={latency[server.id]}
-                onRetry={() => void measure(server)}
-              />
+              <LatencyPill state={latency[server.id]} onRetry={() => void measure(server)} />
 
               <span
                 className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
@@ -208,11 +202,7 @@ function LatencyPill({
   }
 
   if (state.loading) {
-    return (
-      <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground/60">
-        …
-      </span>
-    );
+    return <span className="w-14 shrink-0 text-right text-[10px] text-muted-foreground/60">…</span>;
   }
 
   const tone =

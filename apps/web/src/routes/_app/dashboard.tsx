@@ -106,9 +106,7 @@ function DashboardPage() {
             <Row label="版本" value={dashboard.data?.server.version ?? "—"} />
             <Row
               label="运行时长"
-              value={
-                dashboard.data ? `${Math.floor(dashboard.data.server.uptime / 60)} 分钟` : "—"
-              }
+              value={dashboard.data ? `${Math.floor(dashboard.data.server.uptime / 60)} 分钟` : "—"}
             />
             <Row
               label="最近活动"
@@ -147,7 +145,9 @@ function StatCard({
         <div className="mt-2 h-7 text-2xl font-semibold tracking-tight">
           {loading ? <Skeleton className="h-7 w-12" /> : (value ?? "—")}
         </div>
-        {hint ? <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{hint}</p> : null}
+        {hint ? (
+          <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{hint}</p>
+        ) : null}
       </CardContent>
     </Card>
   );

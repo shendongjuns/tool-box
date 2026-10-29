@@ -47,7 +47,8 @@ export function LatencyBadge({
     };
   }, [url, autoProbe]);
 
-  const { text, tone } = probing && !result ? { text: "检测中…", tone: "unknown" as const } : describeLatency(result);
+  const { text, tone } =
+    probing && !result ? { text: "检测中…", tone: "unknown" as const } : describeLatency(result);
 
   const toneClass = {
     good: "text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10",

@@ -87,10 +87,7 @@ export function decryptCredential(cipherText: string | null | undefined): string
     const [, ivHex, tagHex, dataHex] = parts;
     const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex!, "hex"));
     decipher.setAuthTag(Buffer.from(tagHex!, "hex"));
-    const out = Buffer.concat([
-      decipher.update(Buffer.from(dataHex!, "hex")),
-      decipher.final(),
-    ]);
+    const out = Buffer.concat([decipher.update(Buffer.from(dataHex!, "hex")), decipher.final()]);
     return out.toString("utf8");
   } catch {
     return null;

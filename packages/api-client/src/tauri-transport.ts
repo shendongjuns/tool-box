@@ -23,10 +23,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  * 不直接在 packages 里 import Tauri API —— packages 不依赖它，
  * 构建时 Rollup 也无法解析。由调用方（apps/web）注入真实实现。
  */
-export type TauriInvoke = (
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<unknown>;
+export type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 export function createTauriTransport(
   options: TauriTransportOptions & { invoke: TauriInvoke },
@@ -74,7 +71,9 @@ export function createTauriTransport(
         throw new ApiError(
           0,
           "NETWORK_ERROR",
-          error instanceof Error ? `无法连接服务器：${error.message}` : "无法连接服务器，请检查地址与网络",
+          error instanceof Error
+            ? `无法连接服务器：${error.message}`
+            : "无法连接服务器，请检查地址与网络",
         );
       }
 

@@ -6,13 +6,7 @@ import { cn } from "@/lib/utils";
  * 目前所有账号都用同一张默认头像（`public/default_profile.png`）。
  * 将来支持上传头像时，只需在这里替换 src。
  */
-export function UserAvatar({
-  size = 32,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
+export function UserAvatar({ size = 32, className }: { size?: number; className?: string }) {
   return (
     <img
       src="/default_profile.png"

@@ -1,13 +1,5 @@
 import * as React from "react";
-import {
-  Activity,
-  FolderOpen,
-  Plus,
-  RefreshCw,
-  TerminalSquare,
-  Unplug,
-  X,
-} from "lucide-react";
+import { Activity, FolderOpen, Plus, RefreshCw, TerminalSquare, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
 import type { MonitorMetrics, Server, ServerInfo } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -416,10 +408,7 @@ function SessionWorkspace({
 
       {/* 终端始终挂载，切走时用 CSS 隐藏（不卸载） */}
       <div className={cn("min-h-0 flex-1", session.tab !== "terminal" && "hidden")}>
-        <TerminalHost
-          sshSessionId={session.sshSessionId}
-          registerWriter={registerWriter}
-        />
+        <TerminalHost sshSessionId={session.sshSessionId} registerWriter={registerWriter} />
       </div>
 
       {session.tab === "files" ? (
@@ -500,9 +489,7 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
   const [error, setError] = React.useState<string | null>(cached?.error ?? null);
   const [loading, setLoading] = React.useState(!cached?.metrics);
   const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
-  const [interval, setIntervalValue] = React.useState<RefreshInterval>(() =>
-    readRefreshInterval(),
-  );
+  const [interval, setIntervalValue] = React.useState<RefreshInterval>(() => readRefreshInterval());
 
   /** 从 store 同步到组件 state（单向） */
   const syncFromStore = React.useCallback(() => {
@@ -629,8 +616,7 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
 
         {metrics ? (
           <span className="ml-auto text-[10px] text-muted-foreground">
-            最近更新{" "}
-            {new Date(metrics.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
+            最近更新 {new Date(metrics.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
           </span>
         ) : null}
       </div>

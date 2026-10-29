@@ -1,5 +1,10 @@
 import * as React from "react";
-import { createApi, createFetchTransport, createTauriTransport, type Api } from "@toolbox/api-client";
+import {
+  createApi,
+  createFetchTransport,
+  createTauriTransport,
+  type Api,
+} from "@toolbox/api-client";
 import { useDataSource } from "./data-source";
 import { authHeaderFor, getLocalBaseUrl } from "./desktop";
 import { getTauriInvoke, setTauriInvoke } from "./tauri-invoke";
@@ -69,9 +74,7 @@ export function getApi(): Api {
         credentials: "omit",
         source: "cloud",
         request: () =>
-          Promise.reject(
-            new Error("桌面端云端请求未就绪（Tauri 桥接未初始化），请重启应用"),
-          ),
+          Promise.reject(new Error("桌面端云端请求未就绪（Tauri 桥接未初始化），请重启应用")),
       },
       { desktop: true },
     );

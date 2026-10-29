@@ -1,14 +1,5 @@
 import * as React from "react";
-import {
-  Cpu,
-  HardDrive,
-  MemoryStick,
-  Network,
-  Search,
-  Server,
-  Thermometer,
-  X,
-} from "lucide-react";
+import { Cpu, HardDrive, MemoryStick, Network, Search, Server, Thermometer, X } from "lucide-react";
 import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,7 +98,9 @@ export function MonitorPanel({
             </span>
             {info.ip ? <span className="text-muted-foreground">{info.ip}</span> : null}
             {info.os ? <span className="text-muted-foreground">{info.os}</span> : null}
-            {info.kernel ? <span className="text-muted-foreground">kernel {info.kernel}</span> : null}
+            {info.kernel ? (
+              <span className="text-muted-foreground">kernel {info.kernel}</span>
+            ) : null}
             {info.cpuModel ? (
               <span className="max-w-[20rem] truncate text-muted-foreground">
                 {info.cpuModel} · {info.cpuCores} 核
@@ -201,9 +194,7 @@ export function MonitorPanel({
               {metrics.npus.map((npu) => (
                 <div key={npu.index} className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="shrink-0 font-mono text-muted-foreground">
-                      #{npu.index}
-                    </span>
+                    <span className="shrink-0 font-mono text-muted-foreground">#{npu.index}</span>
                     <span className="truncate text-muted-foreground">{npu.name}</span>
                   </span>
                   <span
@@ -224,9 +215,7 @@ export function MonitorPanel({
       ) : null}
 
       {/* 进程（带关键字过滤） */}
-      {metrics.processes.length > 0 ? (
-        <ProcessTable processes={metrics.processes} />
-      ) : null}
+      {metrics.processes.length > 0 ? <ProcessTable processes={metrics.processes} /> : null}
 
       {/* 磁盘：放最下 */}
       {metrics.disks.length > 0 ? (

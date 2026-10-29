@@ -184,7 +184,6 @@ export function LoginForm({
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {pending ? "请稍候…" : isSetup ? "创建账号并登录" : "登录"}
       </Button>
-
     </form>
   );
 }

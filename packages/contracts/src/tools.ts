@@ -16,11 +16,7 @@ export type ToolGroup = z.infer<typeof toolGroupSchema>;
  * 编码分组不再细分子类，所有工具直接挂在分组下（category 统一为 default）；
  * 远程分组下的服务器也直接挂在分组下。
  */
-export const toolCategorySchema = z.enum([
-  "default",
-  "servers",
-  "other",
-]);
+export const toolCategorySchema = z.enum(["default", "servers", "other"]);
 export type ToolCategory = z.infer<typeof toolCategorySchema>;
 
 export const toolDescriptorSchema = z.object({

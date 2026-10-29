@@ -44,7 +44,9 @@ export function ServerFormDialog({
   const [error, setError] = React.useState<string | null>(null);
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<
-    { ok: true; handshakeMs: number; authMs: number; totalMs: number } | { ok: false; message: string } | null
+    | { ok: true; handshakeMs: number; authMs: number; totalMs: number }
+    | { ok: false; message: string }
+    | null
   >(null);
 
   const save = useMutation({
@@ -193,9 +195,7 @@ export function ServerFormDialog({
 
           {authType === "password" ? (
             <Field>
-              <FieldLabel htmlFor="srv-pass">
-                密码{server ? "（留空不修改）" : ""}
-              </FieldLabel>
+              <FieldLabel htmlFor="srv-pass">密码{server ? "（留空不修改）" : ""}</FieldLabel>
               <Input
                 id="srv-pass"
                 type="password"
@@ -206,9 +206,7 @@ export function ServerFormDialog({
             </Field>
           ) : (
             <Field>
-              <FieldLabel htmlFor="srv-key">
-                私钥{server ? "（留空不修改）" : ""}
-              </FieldLabel>
+              <FieldLabel htmlFor="srv-key">私钥{server ? "（留空不修改）" : ""}</FieldLabel>
               <textarea
                 id="srv-key"
                 value={privateKey}
@@ -238,22 +236,17 @@ export function ServerFormDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void runTest()}
-            disabled={testing}
-          >
+          <Button variant="outline" size="sm" onClick={() => void runTest()} disabled={testing}>
             {testing ? "测试中…" : "测试连接"}
           </Button>
 
           <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            取消
-          </Button>
-          <Button size="sm" onClick={submit} disabled={save.isPending}>
-            {save.isPending ? "保存中…" : "保存"}
-          </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              取消
+            </Button>
+            <Button size="sm" onClick={submit} disabled={save.isPending}>
+              {save.isPending ? "保存中…" : "保存"}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

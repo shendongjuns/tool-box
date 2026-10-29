@@ -31,11 +31,7 @@ function toNetworkError(error: unknown): ApiError {
   if (error instanceof DOMException && error.name === "AbortError") {
     return new ApiError(0, "ABORTED", "请求已取消");
   }
-  return new ApiError(
-    0,
-    "NETWORK_ERROR",
-    "无法连接服务器，请检查地址与网络后重试",
-  );
+  return new ApiError(0, "NETWORK_ERROR", "无法连接服务器，请检查地址与网络后重试");
 }
 
 export function createFetchTransport(options: FetchTransportOptions): ApiTransport {

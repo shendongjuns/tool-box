@@ -182,7 +182,10 @@ export async function setToken(
 }
 
 /** 当前数据源应带的 Authorization 头。 */
-export function authHeaderFor(source: "local" | "cloud", cloudBaseUrl: string): Record<string, string> {
+export function authHeaderFor(
+  source: "local" | "cloud",
+  cloudBaseUrl: string,
+): Record<string, string> {
   const token = getToken(source, cloudBaseUrl);
   return token ? { authorization: `Bearer ${token}` } : {};
 }
