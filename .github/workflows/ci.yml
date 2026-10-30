@@ -36,7 +36,11 @@ jobs:
         run: pnpm lint
 
       - name: 类型检查
-        run: pnpm -r --if-present typecheck
+        # 排除 apps/desktop：它的 typecheck 是 cargo check，
+        # 而 Tauri 在 Linux 上需要 GTK/glib 等 GUI 系统库，
+        # ubuntu runner 默认没有。桌面端由下面的 windows job 单独检查，
+        # 那里能真正跑通 Rust 编译。
+        run: pnpm -r --if-present --filter '!@toolbox/desktop' typecheck
 
       - name: 测试
         run: pnpm test

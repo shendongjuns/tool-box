@@ -28,7 +28,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm -r --if-present typecheck
+      # 排除桌面端：cargo check 在 Linux 上需要 GTK/glib 系统库，
+      # ubuntu runner 没有。桌面端由 desktop job 在 Windows 上检查。
+      - run: pnpm -r --if-present --filter '!@toolbox/desktop' typecheck
       - run: pnpm test
 
   desktop:
