@@ -29,6 +29,15 @@ onlyBuiltDependencies:
 # 不会拖到 CI 才发现。
 strictDepBuilds: false
 
+# 重装 node_modules 时不再询问是否清空旧目录。
+#
+# Docker 构建没有 TTY，pnpm 默认会中止并报
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY。
+# 这个键只能写在 pnpm-workspace.yaml，
+# 用 pnpm config set 写全局配置会报
+# ERR_PNPM_CONFIG_SET_UNSUPPORTED_YAML_CONFIG_KEY。
+confirmModulesPurge: false
+
 minimumReleaseAgeExclude:
   - "@tanstack/query-core@5.104.5"
   - "@tanstack/react-query@5.104.5"

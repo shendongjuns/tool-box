@@ -35,11 +35,14 @@ RUN pnpm --filter @toolbox/web build \
 
 # 只保留生产依赖
 #
-# 这一步会重写 node_modules（删掉 devDependencies），
-# pnpm 需要确认才肯删除已有目录。ENV CI=true 已在上方设置，
-# 这里再显式关闭 confirmModulesPurge 作为双保险。
-RUN pnpm config set confirmModulesPurge false \
- && pnpm install --frozen-lockfile --prod --filter @toolbox/server...
+# 这一步会重写 node_modules（删掉 devDependencies）。
+# pnpm 删除已有目录前需要确认，而 Docker 构建没有 TTY ——
+# 上方的 ENV CI=true 让 pnpm 走非交互模式，直接清理不再询问。
+#
+# 不要在这里加 pnpm config set confirmModulesPurge false：
+# 该键只接受 pnpm-workspace.yaml，写全局 config.yaml 会报
+# ERR_PNPM_CONFIG_SET_UNSUPPORTED_YAML_CONFIG_KEY。
+RUN pnpm install --frozen-lockfile --prod --filter @toolbox/server...
 
 # ---------- 运行阶段 ----------
 FROM node:24-bookworm-slim AS runtime
