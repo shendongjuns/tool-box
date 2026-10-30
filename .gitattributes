@@ -1,1 +1,51 @@
-# 统一行尾符为 LF。\n#\n# 为什么需要这个文件：\n# Windows 上 git 常被配置成 core.autocrlf=true，\n# 提交时 CRLF -> LF，检出时 LF -> CRLF。\n# 结果是同一份代码在不同机器上行尾不一致，\n# 而 prettier 默认 endOfLine: "lf"，CI 上一检查就报几百个文件。\n#\n# 用 .gitattributes 显式声明，覆盖本地 autocrlf 设置，\n# 保证任何人、任何平台检出的都是 LF。\n\n* text=auto eol=lf\n\n# 明确是文本的源文件\n*.ts text eol=lf\n*.tsx text eol=lf\n*.js text eol=lf\n*.mjs text eol=lf\n*.cjs text eol=lf\n*.json text eol=lf\n*.md text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n*.css text eol=lf\n*.html text eol=lf\n*.rs text eol=lf\n*.toml text eol=lf\n*.sql text eol=lf\n*.sh text eol=lf\n*.nsh text eol=lf\n*.editorconfig text eol=lf\n*.gitignore text eol=lf\n*.gitattributes text eol=lf\n*.npmrc text eol=lf\n*.nvmrc text eol=lf\nDockerfile text eol=lf\nLICENSE text eol=lf\n\n# 二进制文件不要动行尾\n*.png binary\n*.jpg binary\n*.jpeg binary\n*.gif binary\n*.ico binary\n*.woff binary\n*.woff2 binary\n*.ttf binary\n*.eot binary\n*.pdf binary\n*.zip binary\n*.db binary\n
+# 统一行尾符为 LF。
+#
+# 为什么需要这个文件：
+# Windows 上 git 常被配置成 core.autocrlf=true，
+# 提交时 CRLF -> LF，检出时 LF -> CRLF。
+# 结果是同一份代码在不同机器上行尾不一致，
+# 而 prettier 默认 endOfLine: "lf"，CI 上一检查就报几百个文件。
+#
+# 用 .gitattributes 显式声明，覆盖本地 autocrlf 设置，
+# 保证任何人、任何平台检出的都是 LF。
+
+* text=auto eol=lf
+
+# 明确是文本的源文件
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.sql text eol=lf
+*.sh text eol=lf
+*.nsh text eol=lf
+*.editorconfig text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+*.npmrc text eol=lf
+*.nvmrc text eol=lf
+Dockerfile text eol=lf
+LICENSE text eol=lf
+
+# 二进制文件不要动行尾
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.db binary
