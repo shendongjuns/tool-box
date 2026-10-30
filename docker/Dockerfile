@@ -2,6 +2,14 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /repo
 
+# CI=true 让 pnpm 走非交互模式。
+#
+# 没有它，下面「只保留生产依赖」那步重装 node_modules 时会报：
+#   ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY
+# 因为 pnpm 要删除已有的 modules 目录，需要用户确认，
+# 而 Docker 构建过程没有 TTY 可供确认。
+ENV CI=true
+
 RUN corepack enable && corepack prepare pnpm@11.28.5 --activate
 
 # 先复制清单，命中依赖缓存
@@ -26,7 +34,12 @@ RUN pnpm --filter @toolbox/web build \
  && pnpm --filter @toolbox/server build
 
 # 只保留生产依赖
-RUN pnpm install --frozen-lockfile --prod --filter @toolbox/server...
+#
+# 这一步会重写 node_modules（删掉 devDependencies），
+# pnpm 需要确认才肯删除已有目录。ENV CI=true 已在上方设置，
+# 这里再显式关闭 confirmModulesPurge 作为双保险。
+RUN pnpm config set confirmModulesPurge false \
+ && pnpm install --frozen-lockfile --prod --filter @toolbox/server...
 
 # ---------- 运行阶段 ----------
 FROM node:24-bookworm-slim AS runtime
