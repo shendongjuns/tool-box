@@ -11,6 +11,9 @@ COPY packages/data/package.json packages/data/
 COPY packages/api-client/package.json packages/api-client/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+# 桌面端不在镜像里，但 pnpm-workspace.yaml 声明了 apps/* ——
+# 目录存在而清单缺失会让安装失败，所以清单也要复制。
+COPY apps/desktop/package.json apps/desktop/
 
 RUN pnpm install --frozen-lockfile
 
