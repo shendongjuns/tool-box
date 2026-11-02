@@ -1,20 +1,23 @@
 # 快速开始
 
-五分钟内跑起来。
+从零到跑起来。
 
 ## 你需要什么
 
 - **Node.js** 22.12 或更新
-- **pnpm** 11 或更新（`corepack enable` 即可获得）
+- **pnpm** 11 或更新 —— 没装的话执行 `corepack enable`
 
 桌面端额外需要：
 
 - **Rust** stable（[rustup.rs](https://rustup.rs)）
-- **MSVC 工具链**（安装 Visual Studio 时勾选「使用 C++ 的桌面开发」）
+- **MSVC 工具链** —— 安装 Visual Studio 时勾选「使用 C++ 的桌面开发」
 
 ## 网页端
 
 ```bash
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box
+
 pnpm install
 pnpm dev
 ```
@@ -26,6 +29,8 @@ pnpm dev
 > 密码没有格式限制，非空即可。忘了只能重来，见[常见问题](./faq.md#忘记密码了)。
 
 ## 桌面端
+
+确保已装 Rust 与 MSVC 工具链，然后：
 
 ```bash
 pnpm desktop:dev      # 开发模式（热重载）
@@ -53,6 +58,20 @@ PORT=8080 pnpm dev
 这个变量服务端和前端代理都读，所以不用改两处。
 
 > **为什么默认是 7788？** Windows 的 Hyper-V / WSL 会保留一段动态端口，常用的 3000 经常落在保留区里，导致启动时 `EACCES`。7788 远离这些区间。
+
+## 用 Docker 跑服务端
+
+不想装 Node 的话，直接跑容器：
+
+```bash
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box/docker
+docker compose up -d --build
+```
+
+访问 **http://127.0.0.1:7788**。数据落在宿主机的 `docker/data/`。
+
+细节见[部署](./deploy.md)。
 
 ## 下一步
 

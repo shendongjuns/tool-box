@@ -24,25 +24,44 @@
 
 ## 快速开始
 
+需要 Node.js 22.12+ 和 pnpm 11+（没有 pnpm 就 `corepack enable`）。
+
 ```bash
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box
+
 pnpm install
 pnpm dev
 ```
 
-打开 http://127.0.0.1:5173，首次进入会要求注册。
+打开 <http://127.0.0.1:5173>，首次进入会要求注册。
 
-桌面端：
+### 桌面端
+
+另需 Rust stable 与 MSVC 工具链，然后：
 
 ```bash
 pnpm desktop:dev      # 开发
-pnpm desktop:build    # 打包
+pnpm desktop:build    # 打包成安装程序
 ```
+
+产物在 `apps/desktop/src-tauri/target/release/bundle/`。
+
+### 用 Docker 跑服务端
+
+```bash
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box/docker
+docker compose up -d --build
+```
+
+访问 <http://127.0.0.1:7788>。
 
 ## 文档
 
 |                                |                                |
 | ------------------------------ | ------------------------------ |
-| [快速开始](docs/quickstart.md) | 环境要求、端口配置、开发模式   |
+| [快速开始](docs/quickstart.md) | 环境要求、开发模式、端口配置   |
 | [部署](docs/deploy.md)         | Docker、反向代理、环境变量     |
 | [升级与备份](docs/upgrade.md)  | 数据迁移、自动备份、回滚       |
 | [常见问题](docs/faq.md)        | 忘记密码、SSH 指纹、疑难排查   |

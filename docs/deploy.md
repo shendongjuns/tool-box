@@ -16,7 +16,8 @@
 ## Docker
 
 ```bash
-cd docker
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box/docker
 docker compose up -d --build
 ```
 
@@ -41,7 +42,12 @@ docker compose logs -f toolbox
 
 ## 直接运行
 
+需要 Node.js 22.12+ 与 pnpm 11+。
+
 ```bash
+git clone https://github.com/shendongjuns/tool-box.git
+cd tool-box
+
 pnpm install
 pnpm build
 cd apps/server
