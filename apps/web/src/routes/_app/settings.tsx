@@ -31,8 +31,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BackupPanel } from "@/features/settings/backup-panel";
 
-const tabSchema = z.enum(["general", "appearance", "account", "about"]).catch("general");
+const tabSchema = z.enum(["general", "appearance", "data", "account", "about"]).catch("general");
 type SettingsTab = z.infer<typeof tabSchema>;
 
 export const Route = createFileRoute("/_app/settings")({
@@ -71,6 +72,7 @@ function SettingsPage() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="general">通用</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
+          <TabsTrigger value="data">数据</TabsTrigger>
           <TabsTrigger value="account">账户</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
@@ -80,6 +82,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="appearance">
           <AppearanceTab />
+        </TabsContent>
+        <TabsContent value="data">
+          <BackupPanel />
         </TabsContent>
         <TabsContent value="account">
           <AccountTab />

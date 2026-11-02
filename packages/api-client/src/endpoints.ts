@@ -14,6 +14,10 @@ import type {
   UpdateServerRequest,
   SessionListResponse,
   ToolListResponse,
+  ListBackupsResponse,
+  CreateBackupResponse,
+  DeleteBackupResponse,
+  RestoreBackupResponse,
 } from "@toolbox/contracts";
 import type { ApiTransport } from "./types.js";
 
@@ -88,6 +92,31 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
         "PUT",
         body,
       ),
+
+    /*
+     * 数据库备份。
+     *
+     * 恢复会整体替换数据库，成功后当前会话立即失效 ——
+     * 调用方需要引导用户重新登录。
+     */
+    listBackups: () => get<ListBackupsResponse>("/api/backup"),
+
+    /**
+     * 备份下载地址。
+     *
+     * 网页端直接用 <a href> 或 window.open 触发浏览器下载；
+     * 桌面端没有这个能力（WebView 里不能直接下文件到磁盘），
+     * 需要走 Rust 的导出命令 —— 所以这里返回 null 让前端分支处理。
+     */
+    backupDownloadUrl: (name: string) => `/api/backup/${encodeURIComponent(name)}`,
+
+    createBackup: () => send<CreateBackupResponse>("/api/backup", "POST"),
+
+    deleteBackup: (name: string) =>
+      send<DeleteBackupResponse>(`/api/backup/${encodeURIComponent(name)}`, "DELETE"),
+
+    restoreBackup: (name: string) =>
+      send<RestoreBackupResponse>(`/api/backup/${encodeURIComponent(name)}/restore`, "POST"),
 
     listTools: () => get<ToolListResponse>("/api/tools"),
 

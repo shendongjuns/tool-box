@@ -18,6 +18,8 @@ const SESSION_TTL_MS: i64 = 30 * 24 * 3600 * 1000;
 #[derive(Clone)]
 struct AppState {
     conn: Arc<Mutex<Connection>>,
+    /// 数据库文件路径，备份与恢复需要
+    db_path: PathBuf,
 }
 
 struct LocalUser {
@@ -517,47 +519,95 @@ fn issue_session(state: &AppState, user_id: &str) -> Option<(String, i64)> {
     Some((token, expires_at))
 }
 
-fn init_db(path: &PathBuf) -> rusqlite::Result<Connection> {
+/// 当前 schema 版本号，与 packages/data/src/migrations.ts 的 SCHEMA_VERSION 保持一致。
+pub const SCHEMA_VERSION: i64 = 2;
+
+/// 迁移 SQL。idx 必须与服务端 migrations.ts 一一对应。
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (0, "0000_init", include_str!("../migrations/0000_init.sql")),
+    (1, "0001_servers", include_str!("../migrations/0001_servers.sql")),
+];
+
+/// 打开数据库并按版本执行迁移。
+///
+/// 与服务端 createNodeDatabase 同一套规则：
+/// - 版本号存在 PRAGMA user_version
+/// - 单个迁移一个事务，失败回滚
+/// - 升级前自动备份，备份永久保留
+/// - 库版本高于程序时拒绝启动
+fn init_db(path: &PathBuf) -> Result<Connection, String> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let conn = Connection::open(path)?;
-    conn.pragma_update(None, "journal_mode", "WAL")?;
-    conn.pragma_update(None, "busy_timeout", 5000)?;
-    conn.pragma_update(None, "foreign_keys", "ON")?;
-    conn.execute_batch(include_str!("../migrations/0000_init.sql"))?;
+    let conn = Connection::open(path).map_err(|e| format!("打开数据库失败：{e}"))?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| format!("设置 WAL 失败：{e}"))?;
+    conn.pragma_update(None, "busy_timeout", 5000)
+        .map_err(|e| format!("设置 busy_timeout 失败：{e}"))?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| format!("启用外键失败：{e}"))?;
+
+    let applied: i64 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|e| format!("读取数据库版本失败：{e}"))?;
 
     /*
-     * 已有数据库的增量升级。
-     *
-     * 0000_init.sql 里的建表都带 IF NOT EXISTS，但老版本创建的库不会自动
-     * 补上后来新增的表。这里用一条幂等语句兜底，保证升级后能直接用。
+     * 2.0.0 时期的库 user_version 是 0，但表已建好。
+     * 项目不支持从 2.0.0 之前的版本升级，这里只处理
+     * 「有表但没版本号」这一种情况。
      */
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS servers (
-           id text PRIMARY KEY NOT NULL,
-           name text NOT NULL,
-           host text NOT NULL,
-           port integer DEFAULT 22 NOT NULL,
-           username text NOT NULL,
-           auth_type text NOT NULL,
-           password_cipher text,
-           private_key_cipher text,
-           passphrase_cipher text,
-           created_at integer NOT NULL,
-           updated_at integer NOT NULL,
-           last_connected_at integer
-         );",
-    )?;
+    let has_existing_schema = applied == 0
+        && conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            .and_then(|mut s| s.exists([]))
+            .unwrap_or(false);
+
+    let starting = if has_existing_schema {
+        SCHEMA_VERSION.min(2)
+    } else {
+        applied
+    };
+
+    if has_existing_schema {
+        conn.pragma_update(None, "user_version", starting)
+            .map_err(|e| format!("写入数据库版本失败：{e}"))?;
+    }
+
+    // 降级保护：库比程序新
+    if starting > SCHEMA_VERSION {
+        return Err(format!(
+            "数据库版本为 {starting}，高于当前程序支持的 {SCHEMA_VERSION}。             这通常是安装了旧版本导致的，请安装更新的版本；             或从 data 目录下的 .bak 备份文件恢复后重试。"
+        ));
+    }
+
+    if starting == SCHEMA_VERSION {
+        return Ok(conn);
+    }
+
+    // 升级前备份（永久保留，不自动删除）
+    crate::backup::create_backup(path, starting)
+        .map_err(|e| format!("升级前备份失败，已中止升级：{e}"))?;
+
+    for (idx, tag, sql) in MIGRATIONS.iter().filter(|(idx, _, _)| *idx >= starting) {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("开启事务失败：{e}"))?;
+        tx.execute_batch(sql)
+            .map_err(|e| format!("迁移 {tag} 失败：{e}"))?;
+        tx.pragma_update(None, "user_version", idx + 1)
+            .map_err(|e| format!("写入版本号失败：{e}"))?;
+        tx.commit().map_err(|e| format!("提交迁移 {tag} 失败：{e}"))?;
+    }
 
     Ok(conn)
 }
 
 /// 启动本地服务，返回实际端口。
 pub fn start(db_path: PathBuf) -> Result<u16, String> {
-    let conn = init_db(&db_path).map_err(|error| format!("初始化本地数据库失败: {error}"))?;
+    let conn = init_db(&db_path)?;
     let state = AppState {
         conn: Arc::new(Mutex::new(conn)),
+        db_path: db_path.clone(),
     };
 
     let server =
@@ -1323,6 +1373,137 @@ fn handle(state: &AppState, mut request: Request) {
                     .unwrap_or_default()
             };
             respond_json(request, 200, &serde_json::json!({ "items": items }));
+        }
+
+        // ---------- 数据库备份 ----------
+        (Method::Get, "/api/backup") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let files = crate::backup::list_backups(&state.db_path);
+            let total: u64 = files.iter().map(|f| f.size).sum();
+            let db_size = std::fs::metadata(&state.db_path).map(|m| m.len()).unwrap_or(0);
+            respond_json(
+                request,
+                200,
+                &serde_json::json!({
+                    "files": files,
+                    "totalSize": total,
+                    "databaseSize": db_size,
+                    "schemaVersion": SCHEMA_VERSION,
+                }),
+            );
+        }
+
+        (Method::Post, "/api/backup") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            match crate::backup::create_backup(&state.db_path, SCHEMA_VERSION) {
+                Ok(file) => {
+                    respond_json(request, 201, &serde_json::json!({ "file": file }))
+                }
+                Err(error) => {
+                    respond_json(request, 500, &error_body("BACKUP_FAILED", &error))
+                }
+            }
+        }
+
+        (Method::Delete, path) if path.starts_with("/api/backup/") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let name = path.trim_start_matches("/api/backup/").to_string();
+            match crate::backup::delete_backup(&state.db_path, &name) {
+                Ok(()) => respond_json(request, 200, &serde_json::json!({ "ok": true })),
+                Err(error) => {
+                    respond_json(request, 404, &error_body("NOT_FOUND", &error))
+                }
+            }
+        }
+
+        (Method::Post, path) if path.starts_with("/api/backup/") && path.ends_with("/restore") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let name = path
+                .trim_start_matches("/api/backup/")
+                .trim_end_matches("/restore")
+                .trim_end_matches('/')
+                .to_string();
+
+            /*
+             * 恢复会整体替换数据库文件。
+             *
+             * 必须先把连接释放掉 —— Windows 上文件被占用时无法覆盖。
+             * 用一个临时连接占位，避免其他请求访问已关闭的连接。
+             */
+            let placeholder = match Connection::open(&state.db_path) {
+                Ok(conn) => conn,
+                Err(error) => {
+                    respond_json(
+                        request,
+                        500,
+                        &error_body("INTERNAL_ERROR", &format!("打开数据库失败：{error}")),
+                    );
+                    return;
+                }
+            };
+            {
+                let mut guard = match state.conn.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        respond_json(
+                            request,
+                            500,
+                            &error_body("INTERNAL_ERROR", "本地数据库不可用"),
+                        );
+                        return;
+                    }
+                };
+                *guard = placeholder;
+            }
+
+            let safety = {
+                let _guard = state.conn.lock().ok();
+                crate::backup::restore_backup(&state.db_path, &name, SCHEMA_VERSION)
+            };
+
+            // 恢复完成后重新打开数据库
+            match init_db(&state.db_path) {
+                Ok(conn) => {
+                    if let Ok(mut guard) = state.conn.lock() {
+                        *guard = conn;
+                    }
+                }
+                Err(error) => {
+                    respond_json(
+                        request,
+                        500,
+                        &error_body("RESTORE_FAILED", &format!("恢复后重新打开失败：{error}")),
+                    );
+                    return;
+                }
+            }
+
+            match safety {
+                Ok(safety_copy) => respond_json(
+                    request,
+                    200,
+                    &serde_json::json!({
+                        "ok": true,
+                        "safetyCopy": safety_copy,
+                        "requiresRelogin": true,
+                    }),
+                ),
+                Err(error) => {
+                    respond_json(request, 400, &error_body("RESTORE_FAILED", &error))
+                }
+            }
         }
 
         (Method::Get, "/api/dashboard") => {

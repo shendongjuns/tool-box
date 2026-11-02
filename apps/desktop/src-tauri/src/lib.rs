@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod known_hosts;
 mod local_api;
 mod sftp;

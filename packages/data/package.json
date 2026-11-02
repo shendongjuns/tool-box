@@ -12,7 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "echo 'source package, no build needed'"
+    "build": "echo 'source package, no build needed'",
+    "test": "vitest run"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

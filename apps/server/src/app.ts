@@ -13,6 +13,7 @@ import { loadConfig, type AppConfig } from "./config.js";
 import { registerOriginGuard } from "./csrf.js";
 import { registerErrorHandler, unauthorized } from "./plugins/errors.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerBackupRoutes } from "./routes/backup.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerServerRoutes } from "./routes/servers.js";
@@ -50,7 +51,15 @@ function findWebDist(explicit?: string): string | null {
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp> {
   const config = options.config ?? loadConfig();
-  const db = createNodeDatabase(options.databasePath ?? config.DATABASE_PATH);
+  /*
+   * 记住实际使用的库路径。
+   *
+   * 测试和部分部署会通过 options.databasePath 覆盖配置里的路径，
+   * 重新打开时必须用同一个 —— 否则恢复后连到的是另一个文件，
+   * 表现为「恢复成功但数据没变」或直接报连接已关闭。
+   */
+  const resolvedDatabasePath = options.databasePath ?? config.DATABASE_PATH;
+  const db = createNodeDatabase(resolvedDatabasePath);
 
   const app = Fastify({
     logger: config.LOG_LEVEL === "silent" ? false : { level: config.LOG_LEVEL },
@@ -59,8 +68,40 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
   });
 
   app.decorate("config", config);
-  app.decorate("db", db.db);
-  app.decorate("authService", new AuthService(db.db, config));
+
+  /*
+   * 数据库句柄用**可变容器**持有，而不是直接 decorate 实例本身。
+   *
+   * 原因：Fastify 的 decorate 是一次性写入，之后改写
+   * app.db = ... 会抛 "already been added" 或静默失效。
+   * 而恢复备份时整个数据库文件被替换，所有引用都必须指向新连接 ——
+   * 用一个可变的 holder 就能让所有持有者自然看到新值。
+   */
+  const holder: { value: NodeDatabase } = { value: db };
+  Object.defineProperty(app, "db", {
+    get: () => holder.value.db,
+    configurable: true,
+  });
+
+  app.decorate("database", {
+    get raw() {
+      return holder.value.raw;
+    },
+    close: () => holder.value.close(),
+  });
+
+  app.decorate("reopenDatabase", () => {
+    holder.value = createNodeDatabase(resolvedDatabasePath);
+  });
+
+  const authHolder: { value: AuthService } = { value: new AuthService(db.db, config) };
+  Object.defineProperty(app, "authService", {
+    get: () => authHolder.value,
+    configurable: true,
+  });
+  app.decorate("reopenAuthService", () => {
+    authHolder.value = new AuthService(holder.value.db, config);
+  });
   app.decorateRequest("auth");
 
   await app.register(cookie);
@@ -153,6 +194,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
   });
 
   await registerServerRoutes(app);
+  await registerBackupRoutes(app);
   await registerSettingsRoutes(app);
   await registerToolsRoutes(app);
   await registerDashboardRoutes(app);

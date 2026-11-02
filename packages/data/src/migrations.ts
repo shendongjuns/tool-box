@@ -11,6 +11,15 @@ export interface Migration {
   sql: string;
 }
 
+/**
+ * 当前 schema 版本号 = 迁移条目数量。
+ *
+ * 存在 SQLite 的 `PRAGMA user_version` 里。
+ * 新增迁移时只追加条目，不要修改已发布的条目 ——
+ * 已发布的迁移可能已经在用户机器上执行过了。
+ */
+export const SCHEMA_VERSION = 2;
+
 export const migrations: Migration[] = [
   {
     idx: 0,

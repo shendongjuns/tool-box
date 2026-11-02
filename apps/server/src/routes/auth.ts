@@ -29,7 +29,17 @@ function loginMeta(request: FastifyRequest, deviceName?: string) {
 }
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
-  const { config, authService } = app;
+  const { config } = app;
+
+  /*
+   * 不要解构 authService。
+   *
+   * 恢复备份后整个数据库文件被替换，app 上会挂一个新的 AuthService。
+   * 如果在这里解构捕获旧实例，恢复后所有认证都会失败
+   * （"The database connection is not open"）。
+   * 用函数读取，每次请求都拿到最新的那个。
+   */
+  const authService = () => app.authService;
 
   const setSessionCookie = (reply: FastifyReply, token: string) => {
     reply.setCookie(config.cookieName, token, {
@@ -50,8 +60,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
    * 系统里不会再出现任何创建用户的入口。
    */
   app.get("/api/auth/bootstrap", async () => {
-    const initialized = await authService.isInitialized();
-    const owner = initialized ? await authService.findOwner() : undefined;
+    const initialized = await authService().isInitialized();
+    const owner = initialized ? await authService().findOwner() : undefined;
     return {
       initialized,
       username: owner?.username ?? null,
@@ -67,14 +77,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const body = bootstrapRequestSchema.parse(request.body);
 
-      if (await authService.isInitialized()) {
+      if (await authService().isInitialized()) {
         throw conflict("ALREADY_INITIALIZED", "管理员已创建，请直接登录");
       }
 
       const passwordHash = await hashPassword(body.password);
       let user;
       try {
-        user = await authService.createFirstUser({
+        user = await authService().createFirstUser({
           username: body.username,
           passwordHash,
           displayName: body.displayName ?? body.username,
@@ -88,7 +98,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const now = Date.now();
-      const session = await authService.issueSession(user.id, loginMeta(request), now);
+      const session = await authService().issueSession(user.id, loginMeta(request), now);
       setSessionCookie(reply, session.token);
 
       const kind = sessionKindFor(request);
@@ -105,14 +115,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const body = loginRequestSchema.parse(request.body);
-      const user = await authService.findByUsername(body.username);
+      const user = await authService().findByUsername(body.username);
       if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
         throw unauthorized("用户名或密码不正确");
       }
 
       const now = Date.now();
-      await authService.markLogin(user.id, now);
-      const session = await authService.issueSession(
+      await authService().markLogin(user.id, now);
+      const session = await authService().issueSession(
         user.id,
         loginMeta(request, body.deviceName),
         now,
@@ -134,14 +144,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request) => {
       const body = loginRequestSchema.parse(request.body);
-      const user = await authService.findByUsername(body.username);
+      const user = await authService().findByUsername(body.username);
       if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
         throw unauthorized("用户名或密码不正确");
       }
 
       const now = Date.now();
-      await authService.markLogin(user.id, now);
-      const session = await authService.issueSession(
+      await authService().markLogin(user.id, now);
+      const session = await authService().issueSession(
         user.id,
         {
           kind: "desktop",
@@ -189,7 +199,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const now = Date.now();
-    await authService.changePassword(auth.user.id, await hashPassword(body.newPassword), now);
+    await authService().changePassword(auth.user.id, await hashPassword(body.newPassword), now);
     // 改密后撤销其他设备，保留当前会话
     await revokeUserSessions(app.db, auth.user.id, now, auth.sessionId);
     // 保留当前会话的同时把它的有效期重新算满 30 天 ——

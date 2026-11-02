@@ -5,3 +5,4 @@ export * from "./tools.js";
 export * from "./dashboard.js";
 export * from "./tool-catalog.js";
 export * from "./servers.js";
+export * from "./backup.js";
