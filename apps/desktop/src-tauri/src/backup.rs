@@ -239,6 +239,33 @@ fn looks_like_sqlite(path: &Path) -> bool {
     }
 }
 
+/// 把备份复制到指定位置（用于「另存为」）。
+pub fn export_backup(db_path: &Path, name: &str, dest: &Path) -> Result<(), String> {
+    if !is_valid_name(name) || !belongs_to(db_path, name) {
+        return Err("备份文件名不合法".to_string());
+    }
+    let dir = db_path.parent().ok_or("数据库路径无效")?;
+    let source = dir.join(name);
+    if !source.exists() {
+        return Err("备份文件不存在".to_string());
+    }
+    fs::copy(&source, dest).map_err(|e| format!("导出失败：{e}"))?;
+    Ok(())
+}
+
+/// 读取备份文件内容（用于下载）。
+pub fn read_backup(db_path: &Path, name: &str) -> Result<Vec<u8>, String> {
+    if !is_valid_name(name) || !belongs_to(db_path, name) {
+        return Err("备份文件名不合法".to_string());
+    }
+    let dir = db_path.parent().ok_or("数据库路径无效")?;
+    let path = dir.join(name);
+    if !path.exists() {
+        return Err("备份文件不存在".to_string());
+    }
+    fs::read(&path).map_err(|e| format!("读取失败：{e}"))
+}
+
 /// 从备份恢复。返回安全副本的文件名。
 ///
 /// 调用方必须先关闭数据库连接 —— 文件被占用时无法覆盖。
@@ -276,20 +303,6 @@ pub fn restore_backup(db_path: &Path, name: &str, current_version: i64) -> Resul
     }
 
     Ok(safety.name)
-}
-
-/// 导出一个备份到指定位置（用于「另存为」）。
-pub fn export_backup(db_path: &Path, name: &str, dest: &Path) -> Result<(), String> {
-    if !is_valid_name(name) || !belongs_to(db_path, name) {
-        return Err("备份文件名不合法".to_string());
-    }
-    let dir = db_path.parent().ok_or("数据库路径无效")?;
-    let source = dir.join(name);
-    if !source.exists() {
-        return Err("备份文件不存在".to_string());
-    }
-    fs::copy(&source, dest).map_err(|e| format!("导出失败：{e}"))?;
-    Ok(())
 }
 
 #[cfg(test)]

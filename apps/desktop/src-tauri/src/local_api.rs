@@ -434,6 +434,24 @@ fn respond_json<T: Serialize>(request: Request, status: u16, body: &T) {
     let _ = request.respond(response);
 }
 
+/// 返回二进制内容（备份下载用）。需要自定义 Content-Type 与文件名。
+fn respond_bytes(request: Request, bytes: Vec<u8>, filename: &str) {
+    let mut response = Response::from_data(bytes).with_status_code(StatusCode(200));
+    let origin = origin_of(&request);
+    for item in base_headers(origin.as_deref()) {
+        response.add_header(item);
+    }
+    let _ = response.add_header(Header::from_bytes(
+        &b"Content-Type"[..],
+        &b"application/octet-stream"[..],
+    ).unwrap());
+    let disposition = format!("attachment; filename=\"{filename}\"");
+    if let Ok(header) = Header::from_bytes(&b"Content-Disposition"[..], disposition.as_bytes()) {
+        let _ = response.add_header(header);
+    }
+    let _ = request.respond(response);
+}
+
 fn respond_empty(request: Request, status: u16) {
     let mut response = Response::empty(StatusCode(status));
     let origin = origin_of(&request);
@@ -1407,6 +1425,28 @@ fn handle(state: &AppState, mut request: Request) {
                 }
                 Err(error) => {
                     respond_json(request, 500, &error_body("BACKUP_FAILED", &error))
+                }
+            }
+        }
+
+        (Method::Get, path) if path.starts_with("/api/backup/") => {
+            if current_user(state, &request).is_none() {
+                respond_json(request, 401, &error_body("UNAUTHENTICATED", "请先登录"));
+                return;
+            }
+            let name = path.trim_start_matches("/api/backup/").to_string();
+
+            /*
+             * 下载备份文件。
+             *
+             * WebView 里 window.open("/api/backup/xxx") 会解析成
+             * tauri:// 下的相对路径，根本到不了这里 —— 所以前端在
+             * 桌面端不能走浏览器下载，必须由 Rust 直接返回字节流。
+             */
+            match crate::backup::read_backup(&state.db_path, &name) {
+                Ok(bytes) => respond_bytes(request, bytes, &name),
+                Err(error) => {
+                    respond_json(request, 404, &error_body("NOT_FOUND", &error))
                 }
             }
         }

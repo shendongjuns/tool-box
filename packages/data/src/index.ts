@@ -9,7 +9,6 @@ export {
   backupExists,
   createBackup,
   deleteBackup,
-  exportBackup,
   listBackups,
   restoreBackup,
   type BackupFile,

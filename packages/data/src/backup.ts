@@ -24,7 +24,6 @@ import {
   readFileSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -271,22 +270,4 @@ export function restoreBackup(
   }
 
   return { safetyCopy: safety.name };
-}
-
-/** 读取数据库的 schema 版本（PRAGMA user_version）。 */
-export function readUserVersion(raw: { pragma: (s: string, o?: unknown) => unknown }): number {
-  const value = raw.pragma("user_version", { simple: true });
-  return typeof value === "number" ? value : 0;
-}
-
-/** 把 SQLite 文件写到指定目标（用于「另存为」导出）。 */
-export function exportBackup(dbPath: string, name: string, dest: string): void {
-  if (!BACKUP_RE.test(name)) {
-    throw new Error("备份文件名不合法");
-  }
-  const source = join(dirname(dbPath), name);
-  if (!existsSync(source)) {
-    throw new Error("备份文件不存在");
-  }
-  writeFileSync(dest, readFileSync(source));
 }

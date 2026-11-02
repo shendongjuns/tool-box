@@ -12,6 +12,8 @@ import {
 import { toast } from "sonner";
 import type { BackupFile } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
+import { hasLocalApi } from "@/lib/desktop";
+import { getTauriInvoke } from "@/lib/tauri-invoke";
 import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
@@ -127,16 +129,35 @@ export function BackupPanel() {
     }
   }
 
-  /** 下载：网页端走 HTTP，桌面端由 Rust 直接写文件。 */
+  /**
+   * 下载备份。
+   *
+   * 两个平台路径不同：
+   * - 网页端：window.open 交给浏览器下载
+   * - 桌面端：WebView 里相对路径会解析成 tauri:// 而 404，
+   *   必须自己取字节流，再让用户选保存位置后由 Rust 写盘
+   */
   async function download(file: BackupFile) {
     setBusy(file.name);
     try {
-      const url = await api.backupDownloadUrl?.(file.name);
-      if (url) {
-        window.open(url, "_blank", "noopener");
-      } else {
-        toast.error("当前环境不支持下载备份");
+      if (!hasLocalApi()) {
+        // 网页端：交给浏览器下载
+        const url = api.backupDownloadUrl?.(file.name);
+        if (url) window.open(url, "_blank", "noopener");
+        else toast.error("当前环境不支持下载备份");
+        return;
       }
+
+      // 桌面端：选路径 -> Rust 直接写盘
+      const invoke = getTauriInvoke();
+      if (!invoke) throw new Error("桌面端能力不可用");
+      const target = await invoke<string | null>("backup_save_dialog", { name: file.name });
+      if (!target) return; // 用户取消
+
+      await invoke("backup_export", { name: file.name, target });
+      toast.success(`已保存到 ${target}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "下载失败");
     } finally {
       setBusy(null);
     }

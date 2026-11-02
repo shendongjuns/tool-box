@@ -327,6 +327,8 @@ pub fn run() {
         })
         .manage(ssh::SshState::new())
         .invoke_handler(tauri::generate_handler![
+            backup_save_dialog,
+            backup_export,
             local_api_port,
             show_main_window,
             hide_to_tray,
@@ -373,4 +375,64 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running ToolBox");
+}
+
+/// 弹出保存对话框，返回用户选择的完整路径。
+///
+/// 备份下载分两步：先让用户选位置，再把文件写过去。
+/// 合在一起做的话，用户取消时无法简单回退已读取的字节。
+#[tauri::command]
+async fn backup_save_dialog(app: tauri::AppHandle, name: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&name)
+        .add_filter("数据库备份", &["bak"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+
+    match rx.await {
+        Ok(Some(path)) => Ok(Some(path.to_string())),
+        Ok(None) => Ok(None),
+        Err(_) => Err("对话框已关闭".to_string()),
+    }
+}
+
+/// 把备份文件写到用户选定的位置。
+///
+/// 安全约束：
+/// - name 必须是本库的合法备份文件名（防路径穿越，见 backup::is_valid_name）
+/// - target 必须带 .bak 后缀，且不能指向程序自己的数据目录 ——
+///   用户通过保存对话框选路径，但这条命令理论上可被渲染层直接调用，
+///   所以在这里再挡一层，避免被诱导覆盖 local.db 或可执行文件。
+#[tauri::command]
+fn backup_export(name: String, target: String) -> Result<(), String> {
+    let destination = std::path::Path::new(&target);
+
+    let has_bak_ext = destination
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("bak"))
+        .unwrap_or(false);
+    if !has_bak_ext {
+        return Err("目标文件必须是 .bak 后缀".to_string());
+    }
+
+    /*
+     * 不能写回 data 目录：那里是程序自己管理的区域，
+     * 误操作可能覆盖 local.db 或正在使用的备份。
+     */
+    let data = data_dir();
+    if let (Some(parent), Ok(data_canon)) = (destination.parent(), data.canonicalize()) {
+        if let Ok(parent_canon) = parent.canonicalize() {
+            if parent_canon == data_canon {
+                return Err("不能保存到程序的数据目录".to_string());
+            }
+        }
+    }
+
+    let db_path = data.join("local.db");
+    crate::backup::export_backup(&db_path, &name, destination)
 }
