@@ -49,6 +49,18 @@ pnpm desktop:build    # 打包成安装程序
 
 ### 用 Docker 跑服务端
 
+两种方式，详见[部署文档](docs/deploy.md)。
+
+**拉预构建镜像**（不用克隆仓库）：
+
+```bash
+mkdir -p toolbox/data && cd toolbox
+curl -O https://raw.githubusercontent.com/shendongjuns/tool-box/main/docker/compose.yml
+docker compose up -d
+```
+
+**从源码构建**：
+
 ```bash
 git clone https://github.com/shendongjuns/tool-box.git
 cd tool-box/docker

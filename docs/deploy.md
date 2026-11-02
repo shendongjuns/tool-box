@@ -1,48 +1,66 @@
 # 部署
 
-两种方式：Docker 或者直接跑 Node 进程。前者省心，后者透明。
+三种方式，按省心程度排序。
 
-## 共同前提
+---
 
-程序只监听 HTTP，**不处理后端域名、证书、HTTPS**。这些交给反向代理。
+## 方式一：拉取预构建镜像（推荐）
 
-它默认绑 `127.0.0.1`，也就是只有本机能连。想让局域网访问，有两个办法：
+不需要克隆仓库，不用装 Node，也不用编译。
 
-- 把 `HOST` 改成 `0.0.0.0`（配合防火墙）
-- 或者用反向代理监听外网，转发到本机的 7788
+```bash
+mkdir -p toolbox && cd toolbox
 
-第二种更安全，推荐。
+# 拉取 docker-compose.yml
+curl -O https://raw.githubusercontent.com/shendongjuns/tool-box/main/docker/compose.yml
+mkdir -p data
 
-## Docker
+# 启动（默认拉 latest）
+docker compose up -d
+```
+
+访问 **http://127.0.0.1:7788**。
+
+### 指定版本
+
+```bash
+# 锁定某个版本，避免 latest 意外升级
+TOOLBOX_IMAGE=ghcr.io/shendongjuns/tool-box:v2.1.0 docker compose up -d
+```
+
+可用版本见 [Releases](https://github.com/shendongjuns/tool-box/releases)。tag 格式为 `v2.1.0`（带 v）。
+
+### 如果拉取失败
+
+镜像默认是**私有**的。需要先登录：
+
+```bash
+# 用 GitHub 用户名 + Personal Access Token（只需 read:packages 权限）
+echo $GITHUB_TOKEN | docker login ghcr.io -u 你的用户名 --password-stdin
+```
+
+> 仓库公开后，镜像可以在 Package 设置里改为 public，之后就能匿名拉取。
+
+---
+
+## 方式二：从源码构建
+
+想自己编译，或者要改代码时用这个。
 
 ```bash
 git clone https://github.com/shendongjuns/tool-box.git
 cd tool-box/docker
+
 docker compose up -d --build
 ```
 
-`compose.yml` 已经配好：
+构建约需 3-5 分钟（首次拉基础镜像会更久）。
 
-| 项       | 值                         |
-| -------- | -------------------------- |
-| 端口映射 | `127.0.0.1:7788:7788`      |
-| 数据卷   | `./data:/app/data`         |
-| 健康检查 | 每 30 秒请求 `/api/health` |
-| 重启策略 | `unless-stopped`           |
+---
 
-**要局域网访问**，把端口映射改成 `"7788:7788"`，然后重启。
+## 方式三：直接运行 Node 进程
 
-数据在宿主机的 `docker/data/` 里，重建容器不影响。
-
-查看日志：
-
-```bash
-docker compose logs -f toolbox
-```
-
-## 直接运行
-
-需要 Node.js 22.12+ 与 pnpm 11+。
+不用容器，最透明的方式。需要 Node.js 22.12+ 与 pnpm 11+。
 
 ```bash
 git clone https://github.com/shendongjuns/tool-box.git
@@ -54,15 +72,17 @@ cd apps/server
 node dist/index.js
 ```
 
-或者用 pnpm：
+或者用 pnpm 脚本：
 
 ```bash
 pnpm --filter @toolbox/server start
 ```
 
+---
+
 ## 配置
 
-复制 `.env.example` 为 `.env`，按需修改。
+复制 `.env.example` 为 `.env` 放在 `docker/` 下（方式一、二）或 `apps/server/` 下（方式三）。
 
 | 变量                         | 默认                | 说明                                                               |
 | ---------------------------- | ------------------- | ------------------------------------------------------------------ |
@@ -79,17 +99,44 @@ pnpm --filter @toolbox/server start
 
 SSH 服务器的密码和私钥在落盘前会用 AES-256-GCM 加密。
 
-不设置这个变量时，程序会在数据库旁边生成 `.credential-key` 文件（权限 0600）并自动使用。**这个文件丢了，已存的凭据就解不开了**，所以备份数据库时请一并备份它。
+不设置时，程序会在数据库旁边生成 `.credential-key` 文件（权限 0600）并自动使用。**这个文件丢了，已存的凭据就解不开了**，备份数据库时请一并备份它。
 
-想自己管理密钥的话：
+想自己管理密钥：
 
 ```bash
 export CREDENTIAL_KEY="至少十六个字符的随机串"
 ```
 
+---
+
+## 数据目录
+
+容器里的 `/app/data` 挂载到 **compose.yml 所在目录**下的 `data/`：
+
+| 部署方式           | 数据位置                                |
+| ------------------ | --------------------------------------- |
+| 方式一（拉镜像）   | `toolbox/data/`                         |
+| 方式二（源码构建） | `tool-box/docker/data/`                 |
+| 方式三（直接运行） | 由 `DATABASE_PATH` 决定，默认 `./data/` |
+
+目录里有什么：
+
+```
+data/
+  toolbox.db                    ← 数据库
+  toolbox.db.v2-*.bak           ← 自动备份
+  .credential-key               ← 加密密钥
+```
+
+**备份这个目录 = 备份全部数据。** 迁移到新机器时整个拷走即可。
+
+---
+
 ## 反向代理
 
-下面是 nginx 的示例。要点是保留原始 Host 与客户端 IP，否则 CSRF 校验会拒绝请求。
+程序只监听 HTTP，域名、证书、HTTPS 都交给反向代理。
+
+nginx 示例，要点是保留原始 Host 与客户端 IP：
 
 ```nginx
 server {
@@ -117,7 +164,9 @@ server {
 }
 ```
 
-`client_max_body_size` 需要放大，因为 SFTP 上传会经过它。`proxy_read_timeout` 同理——大文件传输不能中途断开。
+`client_max_body_size` 要放大，因为 SFTP 上传会经过它。`proxy_read_timeout` 同理——大文件传输不能中途断开。
+
+---
 
 ## 健康检查
 
@@ -126,6 +175,8 @@ curl http://127.0.0.1:7788/api/health
 ```
 
 返回 `{"status":"ok","db":"ok"}` 表示正常。`db` 字段反映数据库是否可读。
+
+---
 
 ## 首次启动
 

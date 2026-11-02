@@ -61,7 +61,17 @@ PORT=8080 pnpm dev
 
 ## 用 Docker 跑服务端
 
-不想装 Node 的话，直接跑容器：
+不想装 Node 的话，直接跑容器。
+
+**拉预构建镜像**（不用克隆仓库）：
+
+```bash
+mkdir -p toolbox/data && cd toolbox
+curl -O https://raw.githubusercontent.com/shendongjuns/tool-box/main/docker/compose.yml
+docker compose up -d
+```
+
+**从源码构建**：
 
 ```bash
 git clone https://github.com/shendongjuns/tool-box.git
@@ -69,7 +79,7 @@ cd tool-box/docker
 docker compose up -d --build
 ```
 
-访问 **http://127.0.0.1:7788**。数据落在宿主机的 `docker/data/`。
+访问 **http://127.0.0.1:7788**。数据落在宿主机的 `data/`。
 
 细节见[部署](./deploy.md)。
 

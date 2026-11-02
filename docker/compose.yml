@@ -1,12 +1,34 @@
-# 只运行应用本身。对外暴露方式（反向代理 / 隧道 / 直连）由部署者决定。
+# ToolBox 服务端
+#
+# 两种部署方式：
+#
+#   1. 用预构建镜像（推荐）
+#      IMAGE_TAG=2.1.0 docker compose up -d
+#
+#   2. 从源码构建
+#      docker compose up -d --build
+#
+# 首次启动前建议先复制 .env.example 为 .env 调整配置。
+# 对外暴露方式（反向代理 / 隧道 / 直连）由部署者决定。
+
 services:
   toolbox:
+    # 默认拉 ghcr.io 上的预构建镜像；
+    # 想本地构建时，下面的 build 段会被 docker compose --build 使用。
+    image: ${TOOLBOX_IMAGE:-ghcr.io/shendongjuns/tool-box:latest}
+
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: toolbox/server:2.0.0
+
     container_name: toolbox
     restart: unless-stopped
+
+    env_file:
+      # 存在就读取，不存在也不报错
+      - path: .env
+        required: false
+
     environment:
       NODE_ENV: production
       PORT: 7788
@@ -15,11 +37,15 @@ services:
       TRUST_PROXY: "true"
       SESSION_TTL_DAYS: 30
       LOG_LEVEL: info
+
     volumes:
+      # 数据库、备份、加密密钥都在这里，务必持久化
       - ./data:/app/data
+
     ports:
-      # 默认只绑定本机；需要局域网访问时改成 "7788:7788"
+      # 默认只绑本机，需要局域网访问改成 "7788:7788"
       - "127.0.0.1:7788:7788"
+
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7788/api/health"]
       interval: 30s
