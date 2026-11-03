@@ -8,6 +8,7 @@
 //! 没有能共用的运行时。规则必须一致，所以两边的测试用例
 //! 也刻意保持对应。
 
+use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -236,6 +237,26 @@ fn belongs_to(db_path: &Path, name: &str) -> bool {
     name.starts_with(&format!("{base}.v"))
 }
 
+/// 把 WAL 内容合并回主数据库文件。
+///
+/// 用独立的连接执行，不干扰主进程持有的那个。
+/// 失败不报错：极端情况（长事务持锁）下拿不到排他锁，
+/// 此时回退到「连 -wal 一起复制」的策略。
+fn checkpoint(db_path: &Path) {
+    let Ok(conn) = Connection::open(db_path) else {
+        return;
+    };
+    /*
+     * PRAGMA wal_checkpoint 返回一行三列（busy, log, checkpointed），
+     * 用 execute 会报「返回了数据行」。这里用 query_row 明确吃掉结果。
+     */
+    let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+        let _busy: i64 = row.get(0)?;
+        Ok(())
+    });
+    drop(conn);
+}
+
 /// 创建备份，返回文件信息。
 ///
 /// 时间戳只到秒，同一秒内连续备份会重名。
@@ -257,9 +278,24 @@ pub fn create_backup(db_path: &Path, version: i64) -> Result<BackupFile, String>
         n += 1;
     }
 
+    /*
+     * 关键：先做 WAL checkpoint。
+     *
+     * SQLite 的 WAL 模式下，最近的写入先落在 -wal 文件里，
+     * 主 .db 文件可能仍是几 KB 的空壳。
+     *
+     * 直接复制主文件会得到一个「能打开但没有数据」的备份 ——
+     * 这个坑极隐蔽：文件存在、大小看起来正常、能读，只是空的。
+     * 用户不会察觉，直到真正需要恢复的那天。
+     *
+     * TRUNCATE 模式把 WAL 全部合并回主文件并清空 -wal。
+     */
+    checkpoint(db_path);
+
     fs::copy(db_path, &path).map_err(|e| format!("复制数据库失败：{e}"))?;
 
-    // -wal / -shm 一并带走，否则恢复后可能缺最后一段数据
+    // checkpoint 后 -wal 通常是空的；万一有残留（比如有长事务挂着），
+    // 一并带走作为兜底
     for suffix in ["-wal", "-shm"] {
         let side = PathBuf::from(format!("{}{suffix}", db_path.display()));
         if side.exists() {
@@ -419,6 +455,64 @@ mod tests {
         assert_eq!(text, "2026-11-02T11-30-00");
         let name = format!("local.db.v2-{text}.bak");
         assert_eq!(parse_stamp(&name), secs as i64);
+    }
+
+    #[test]
+    fn backup_includes_uncheckpointed_wal_data() {
+        /*
+         * 连接保持存活 —— 这是真实场景。
+         *
+         * SQLite 在最后一个连接关闭时会自动 checkpoint，
+         * 所以「写完就 drop 再备份」复现不出问题。
+         *
+         * 断言分两层：
+         * 1. 备份能查到数据（功能正确）
+         * 2. 主文件本身也变大了（说明 checkpoint 真的执行了，
+         *    而不是靠复制 -wal 侥幸通过）
+         */
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("local.db");
+
+        let conn = Connection::open(&db).unwrap();
+        conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE probe (id text PRIMARY KEY, value text);
+             INSERT INTO probe (id, value) VALUES ('k', 'in-wal');",
+        )
+        .unwrap();
+
+        let main_before = fs::metadata(&db).map(|m| m.len()).unwrap_or(0);
+        let wal_before = fs::metadata(format!("{}-wal", db.display()))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        assert!(wal_before > 0, "写入后应有未合并的 -wal");
+
+        let file = create_backup(&db, 2).unwrap();
+
+        // 断言 1：备份里能查到数据
+        let backup_path = dir.path().join(&file.name);
+        let check = Connection::open(&backup_path).unwrap();
+        let value: String = check
+            .query_row("SELECT value FROM probe WHERE id='k'", [], |r| r.get(0))
+            .expect("备份里应该能查到数据");
+        assert_eq!(value, "in-wal");
+        drop(check);
+
+        /*
+         * 断言 2：checkpoint 确实把 WAL 合并进了主文件。
+         *
+         * 没有这一步的话，备份的主文件是空壳、数据只在附带的
+         * -wal 里 —— 一旦那个附属文件丢失（复制失败、用户
+         * 只拷了 .bak 单个文件），数据就没了。
+         * 所以必须验证「主文件自己装得下数据」。
+         */
+        let main_after = fs::metadata(&db).map(|m| m.len()).unwrap_or(0);
+        assert!(
+            main_after > main_before,
+            "checkpoint 应让主文件变大：before={main_before} after={main_after}"
+        );
+
+        drop(conn);
     }
 
     #[test]
