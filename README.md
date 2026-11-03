@@ -53,7 +53,7 @@ pnpm desktop:build    # 打包成安装程序
 
 ### 用 Docker 跑服务端
 
-两种方式，详见[部署文档](docs/deploy.md)。
+两种方式，详见 [Wiki 的部署页面](https://github.com/shendongjuns/tool-box/wiki/Deployment)。
 
 **拉预构建镜像**（不用克隆仓库）：
 
@@ -75,13 +75,16 @@ docker compose up -d --build
 
 ## 文档
 
-|                                |                                |
-| ------------------------------ | ------------------------------ |
-| [快速开始](docs/quickstart.md) | 环境要求、开发模式、端口配置   |
-| [部署](docs/deploy.md)         | Docker、反向代理、环境变量     |
-| [升级与备份](docs/upgrade.md)  | 数据迁移、自动备份、回滚       |
-| [常见问题](docs/faq.md)        | 忘记密码、SSH 指纹、疑难排查   |
-| [更新日志](CHANGELOG.md)       | 每个版本改了什么、能不能直接升 |
+完整文档在 **[Wiki](https://github.com/shendongjuns/tool-box/wiki)**：
+
+| 页面                                                                           | 内容                                |
+| ------------------------------------------------------------------------------ | ----------------------------------- |
+| [快速开始](https://github.com/shendongjuns/tool-box/wiki/Quickstart)           | 环境要求、端口配置、开发模式        |
+| [部署](https://github.com/shendongjuns/tool-box/wiki/Deployment)               | Docker 两种方式、反向代理、环境变量 |
+| [升级与备份](https://github.com/shendongjuns/tool-box/wiki/Upgrade-and-Backup) | 数据迁移、自动备份、回滚            |
+| [常见问题](https://github.com/shendongjuns/tool-box/wiki/FAQ)                  | 忘记密码、SSH 指纹、疑难排查        |
+| [免责声明](DISCLAIMER.md)                                                      | 使用范围与责任界定                  |
+| [更新日志](CHANGELOG.md)                                                       | 每个版本改了什么、能不能直接升      |
 
 ## 一些边界
 
