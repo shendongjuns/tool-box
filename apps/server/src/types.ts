@@ -20,6 +20,8 @@ declare module "fastify" {
     database: { readonly raw: unknown; close: () => void };
     /** 恢复完成后重新打开数据库（db 是 getter，会自动指向新连接） */
     reopenDatabase: () => void;
+    /** 实际使用的数据库文件路径（可能是 options 覆盖后的值） */
+    databasePath: string;
     /** 新建 authService 实例，绑定到重新打开的数据库 */
     reopenAuthService: () => void;
     /** 前置守卫：解析 Cookie/Bearer 令牌，失败直接 401 */

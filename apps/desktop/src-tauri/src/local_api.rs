@@ -602,9 +602,19 @@ fn init_db(path: &PathBuf) -> Result<Connection, String> {
         return Ok(conn);
     }
 
-    // 升级前备份（永久保留，不自动删除）
-    crate::backup::create_backup(path, starting)
-        .map_err(|e| format!("升级前备份失败，已中止升级：{e}"))?;
+    /*
+     * 升级前备份（永久保留，不自动删除）。
+     *
+     * 全新数据库跳过 —— 文件里还没有任何表，备份出来是 4KB 空壳。
+     * 它会在列表里和真实备份混在一起，用户一旦误恢复，
+     * 账号和数据全部消失，看起来就像「需要重新注册」。
+     * 空备份没有任何价值，不生成。
+     */
+    let is_fresh_database = starting == 0 && !has_existing_schema;
+    if !is_fresh_database {
+        crate::backup::create_backup(path, starting)
+            .map_err(|e| format!("升级前备份失败，已中止升级：{e}"))?;
+    }
 
     for (idx, tag, sql) in MIGRATIONS.iter().filter(|(idx, _, _)| *idx >= starting) {
         let tx = conn

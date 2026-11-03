@@ -341,6 +341,21 @@ pub fn list_backups(db_path: &Path) -> Vec<BackupFile> {
                 return None;
             }
             let size = entry.metadata().ok()?.len();
+
+            /*
+             * 过滤掉没有 users 表的空备份。
+             *
+             * 早期版本在全新安装时会生成一个 4KB 的空壳备份，
+             * 里面一张表都没有。用户误恢复它，账号和数据全部消失，
+             * 表现就像「需要重新注册」。这类文件没有价值，藏起来。
+             *
+             * 不删文件 —— 万一判断有误，用户还能手工找回来。
+             */
+            let path = dir.join(&name);
+            if !has_users_table(&path) {
+                return None;
+            }
+
             Some(BackupFile {
                 created_at: parse_stamp(&name),
                 version: parse_version(&name),
@@ -352,6 +367,39 @@ pub fn list_backups(db_path: &Path) -> Vec<BackupFile> {
 
     files.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     files
+}
+
+/// 数据库文件是否完整可读。
+///
+/// 只检查魔数不够 —— 被截断或写坏的文件头部照样正确，
+/// 但打开后所有查询都报 malformed。PRAGMA integrity_check
+/// 会扫描整库结构，返回 ok 才算健康。
+fn is_healthy_sqlite(path: &Path) -> bool {
+    let Ok(conn) = Connection::open(path) else {
+        return false;
+    };
+    let healthy = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+        .map(|v| v == "ok")
+        .unwrap_or(false);
+    drop(conn);
+    healthy
+}
+
+/// 备份里是否有 users 表。
+///
+/// 用来识别「空备份」——全新安装时产生的迁移备份不含任何表，
+/// 恢复它等于清空数据库。打不开或没有该表都返回 false。
+fn has_users_table(path: &Path) -> bool {
+    let Ok(conn) = Connection::open(path) else {
+        return false;
+    };
+    let exists = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        .and_then(|mut s| s.exists([]))
+        .unwrap_or(false);
+    drop(conn);
+    exists
 }
 
 /// 删除一个备份（连同 -wal / -shm）。
@@ -421,6 +469,16 @@ pub fn restore_backup(db_path: &Path, name: &str, current_version: i64) -> Resul
     }
     if !looks_like_sqlite(&source) {
         return Err("该文件不是有效的数据库备份".to_string());
+    }
+    if !is_healthy_sqlite(&source) {
+        return Err("备份文件已损坏，无法恢复".to_string());
+    }
+    if !has_users_table(&source) {
+        return Err(
+            "这份备份里没有任何账号数据，恢复它会让系统回到「未初始化」状态。\
+             如果你确实想重来，请手动清空数据库，而不是恢复这个文件。"
+                .to_string(),
+        );
     }
 
     // 恢复前先保住当前数据，万一选错了还能回来

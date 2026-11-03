@@ -116,12 +116,21 @@ export function createNodeDatabase(filePath: string, options?: { readonly?: bool
   /*
    * 升级前备份（永久保留，不自动删除）。
    *
-   * 内存库（:memory:）没有文件可复制，跳过备份 ——
-   * 它本来就不承载持久数据，丢了也无所谓。
+   * 两种情况跳过：
+   *
+   * 1. **内存库** —— 没有文件可复制。
+   *
+   * 2. **全新数据库** —— 文件里还没有任何表（startingVersion === 0
+   *    且没有已存在的表）。此时备份出来是个 4KB 的空壳，
+   *    它会在备份列表里和真实备份混在一起，用户一旦误恢复，
+   *    账号和数据全部消失，看起来就像「需要重新注册」。
+   *    空备份没有任何价值，不生成。
    */
   const isMemory = filePath === ":memory:";
+  const isFreshDatabase = startingVersion === 0 && !hasExistingSchema;
+
   let backupName: string | null = null;
-  if (!isMemory) {
+  if (!isMemory && !isFreshDatabase) {
     try {
       backupName = createBackup(filePath, startingVersion, "migration").name;
     } catch (error) {

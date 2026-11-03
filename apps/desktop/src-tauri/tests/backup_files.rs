@@ -11,12 +11,20 @@ use tempfile::TempDir;
 // 通过 lib 暴露的函数路径引用
 use toolbox_desktop_lib::backup;
 
+/// 建一个最小的合法 SQLite 库，带 users 表。
+///
+/// 必须是真的 SQLite 文件（不是伪造头部）—— 恢复与列表都会
+/// 做 integrity_check 与 users 表存在性检查。
 fn make_db(dir: &TempDir, marker: &str) -> PathBuf {
     let path = dir.path().join("local.db");
-    // 写一个最小合法 SQLite 文件头 + 内容
-    let mut bytes = b"SQLite format 3\0".to_vec();
-    bytes.extend_from_slice(marker.as_bytes());
-    fs::write(&path, bytes).unwrap();
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(&format!(
+        "CREATE TABLE users (id text PRIMARY KEY, username text);
+         CREATE TABLE probe (id text PRIMARY KEY, value text);
+         INSERT INTO probe (id, value) VALUES ('k', '{marker}');"
+    ))
+    .unwrap();
+    conn.close().ok();
     path
 }
 
@@ -56,13 +64,25 @@ fn restore_roundtrip() {
 
     let file = backup::create_backup(&db, 2).unwrap();
 
-    // 改掉内容
-    fs::write(&db, b"SQLite format 3\0changed").unwrap();
-    assert!(fs::read(&db).unwrap().ends_with(b"changed"));
+    /*
+     * 用真实 SQL 修改数据，而不是伪造字节。
+     *
+     * 伪造一个「头部正确、内容垃圾」的文件会被 restore_backup
+     * 的完整性检查正确拒绝 —— 那是期望行为，不是这个测试要验的。
+     */
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute("UPDATE probe SET value='changed' WHERE id='k'", [])
+            .unwrap();
+    }
 
     backup::restore_backup(&db, &file.name, 2).unwrap();
 
-    assert!(fs::read(&db).unwrap().ends_with(b"original"));
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let value: String = conn
+        .query_row("SELECT value FROM probe WHERE id='k'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(value, "original", "恢复后应回到备份时的数据");
 }
 
 #[test]

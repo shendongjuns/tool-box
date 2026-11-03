@@ -59,6 +59,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
    * 表现为「恢复成功但数据没变」或直接报连接已关闭。
    */
   const resolvedDatabasePath = options.databasePath ?? config.DATABASE_PATH;
+
   const db = createNodeDatabase(resolvedDatabasePath);
 
   const app = Fastify({
@@ -68,6 +69,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
   });
 
   app.decorate("config", config);
+
+  /*
+   * 备份路由需要知道**实际**使用的库路径。
+   * config.DATABASE_PATH 只是默认值，可能被 options 覆盖
+   * （测试、多实例部署都会这么用）。备份/恢复照着 config 走
+   * 会操作到错误的文件。
+   */
+  app.decorate("databasePath", resolvedDatabasePath);
 
   /*
    * 数据库句柄用**可变容器**持有，而不是直接 decorate 实例本身。

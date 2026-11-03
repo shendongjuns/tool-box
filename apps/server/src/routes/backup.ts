@@ -25,7 +25,7 @@ import {
   restoreBackupResponseSchema,
   type BackupFile,
 } from "@toolbox/contracts";
-import { badRequest, notFound } from "../plugins/errors.js";
+import { badRequest, conflict, notFound } from "../plugins/errors.js";
 
 /** 备份文件名白名单，与 @toolbox/data 内部的规则一致。 */
 const NAME_RE = /^[\w.-]+\.v\d+-[\dT-]+(?:-\d+)?\.bak$/;
@@ -53,7 +53,18 @@ function assertName(name: string): void {
  * 所以备份天然落在宿主机上，重建容器不会丢。
  */
 export async function registerBackupRoutes(app: FastifyInstance): Promise<void> {
-  const dbPath = () => app.config.DATABASE_PATH;
+  const dbPath = () => app.databasePath;
+
+  /*
+   * 恢复操作的互斥锁。
+   *
+   * 恢复会关闭数据库连接、替换文件、再重开。这段窗口里
+   * 如果有第二个恢复请求进来，两个流程会交叉操作同一个文件，
+   * 结果是数据库被写坏 —— 而这恰恰是用户最需要数据安全的时刻。
+   *
+   * 用布尔锁挡住并发，第二个请求直接收到 409。
+   */
+  let restoring = false;
 
   /** 列出全部备份。 */
   app.get("/api/backup", { preHandler: app.requireAuth }, async () => {
@@ -114,6 +125,11 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       const { name } = request.params;
       assertName(name);
 
+      if (restoring) {
+        throw conflict("RESTORE_IN_PROGRESS", "已有恢复操作正在进行，请稍候");
+      }
+      restoring = true;
+
       const { reopenDatabase, reopenAuthService } = request.server;
 
       /*
@@ -138,6 +154,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       // 无论成败都立刻重开，保证服务继续可用
       reopenDatabase();
       reopenAuthService();
+      restoring = false;
 
       if (failure !== null) {
         throw badRequest("RESTORE_FAILED", failure);
@@ -176,7 +193,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
    */
   app.addContentTypeParser(
     "application/octet-stream",
-    { parseAs: "buffer", bodyLimit: 512 * 1024 * 1024 },
+    /*
+     * 上限 32MB。
+     *
+     * 之前设了 512MB，但 parseAs: "buffer" 会把**整个文件读进内存** ——
+     * 一次导入就能吃掉 512MB，几个并发直接 OOM。
+     *
+     * 32MB 对单用户的工具箱足够（正常库也就几 MB），
+     * 同时把内存风险压到可接受范围。
+     * 真要导入更大的库，用户可以直接把文件拷进 data 目录。
+     */
+    { parseAs: "buffer", bodyLimit: 32 * 1024 * 1024 },
     (_request, body, done) => done(null, body),
   );
 

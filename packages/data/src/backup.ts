@@ -47,7 +47,25 @@ export interface BackupFile {
 }
 
 /** 备份文件名格式：<库名>.v<版本>-<时间戳>.bak */
-const BACKUP_RE = /^(.+)\.v(\d+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})(?:-\d+)?\.bak$/;
+/**
+ * 备份文件名规则。
+ *
+ * 用 \w 而不是 .+ 是刻意的：.+ 会匹配路径分隔符，
+ * 让 "../../etc/passwd.v2-....bak" 这种名字通过校验。
+ * 虽然上层调用方（HTTP 路由、Rust API）也有各自的白名单，
+ * 但这是最底层的数据模块 —— 它必须自己能挡住，
+ * 不能依赖调用方都做对。
+ */
+const BACKUP_RE = /^([\w.-]+)\.v(\d+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})(?:-\d+)?\.bak$/;
+
+/** 文件名里绝对不能出现的字符（防路径穿越的第二道闸）。 */
+function isSafeName(name: string): boolean {
+  if (!name) return false;
+  if (name.includes("/") || name.includes("\\")) return false;
+  if (name.includes("..")) return false;
+  if (name !== basename(name)) return false;
+  return BACKUP_RE.test(name);
+}
 
 /** 时间戳格式：2026-11-02T11-30-00（冒号换成了横线，Windows 文件名不允许冒号） */
 /**
@@ -115,6 +133,55 @@ function checkpointSqlite(dbPath: string): void {
   }
 }
 
+/**
+ * 数据库文件是否完整可读。
+ *
+ * 只检查魔数是不够的 —— 一个被截断或写坏的 SQLite 文件
+ * 头部照样正确，但打开后所有查询都会报 malformed。
+ * 恢复这种文件等于把程序搞崩。
+ *
+ * PRAGMA integrity_check 会扫描整库的 B 树结构，
+ * 返回 "ok" 才算健康。大库可能要几百毫秒，但恢复是
+ * 低频操作，这点开销值得。
+ */
+function isHealthySqlite(path: string): boolean {
+  try {
+    const conn = new SqliteDatabase(path, { readonly: true });
+    try {
+      const row = conn.pragma("integrity_check", { simple: true });
+      return row === "ok";
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 备份里是否有 users 表。
+ *
+ * 用来识别「空备份」——全新安装时产生的迁移备份不含任何表，
+ * 恢复它等于清空数据库。这类文件不该出现在列表里。
+ *
+ * 打不开或没有该表都返回 false。
+ */
+function hasUsersTable(path: string): boolean {
+  try {
+    const conn = new SqliteDatabase(path, { readonly: true });
+    try {
+      const row = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        .get();
+      return row !== undefined;
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
 /** 校验一个文件是不是 SQLite 数据库。 */
 function looksLikeSqlite(path: string): boolean {
   try {
@@ -128,7 +195,7 @@ function looksLikeSqlite(path: string): boolean {
 
 /** 备份是否存在且文件名合法。 */
 export function backupExists(dbPath: string, name: string): boolean {
-  if (!BACKUP_RE.test(name)) return false;
+  if (!isSafeName(name)) return false;
   return existsSync(join(dirname(dbPath), name));
 }
 
@@ -227,6 +294,19 @@ export function listBackups(dbPath: string): BackupFile[] {
       continue;
     }
 
+    /*
+     * 过滤掉没有 users 表的空备份。
+     *
+     * 早期版本在全新安装时会生成一个 4KB 的迁移备份，
+     * 里面一张表都没有。它看起来和正常备份一样，
+     * 用户一旦误恢复，账号和数据全部消失，
+     * 表现就像「需要重新注册」。
+     *
+     * 这类文件没有恢复价值，直接从列表里藏起来。
+     * 不删除文件本身 —— 万一判断有误，用户还能手工找回来。
+     */
+    if (!hasUsersTable(path)) continue;
+
     const stampPart = match[3];
     const versionPart = match[2];
     if (stampPart === undefined || versionPart === undefined) continue;
@@ -253,11 +333,11 @@ export function listBackups(dbPath: string): BackupFile[] {
 
 /** 删除一个备份（连带它的 -wal / -shm）。 */
 export function deleteBackup(dbPath: string, name: string): void {
-  if (!BACKUP_RE.test(name)) {
+  if (!isSafeName(name)) {
     throw new Error("备份文件名不合法");
   }
   const dir = dirname(dbPath);
-  // 文件名已由正则约束，不含路径分隔符，join 后必然落在 dir 内
+  // 文件名已由 isSafeName 约束，不含路径分隔符，join 后必然落在 dir 内
   const path = join(dir, name);
   if (!existsSync(path)) {
     throw new Error("备份文件不存在");
@@ -363,7 +443,7 @@ export function restoreBackup(
   name: string,
   currentVersion: number,
 ): { safetyCopy: string } {
-  if (!BACKUP_RE.test(name)) {
+  if (!isSafeName(name)) {
     throw new Error("备份文件名不合法");
   }
 
@@ -372,8 +452,25 @@ export function restoreBackup(
   if (!existsSync(source)) {
     throw new Error("备份文件不存在");
   }
+
+  /*
+   * 三道校验，缺一不可：
+   *
+   * 1. SQLite 魔数 —— 挡住"改个后缀的随便什么文件"
+   * 2. 完整性检查 —— 头部对但内容损坏的库照样打不开
+   * 3. 必须有 users 表 —— 空壳备份恢复后等于清空数据
+   */
   if (!looksLikeSqlite(source)) {
     throw new Error("该文件不是有效的数据库备份");
+  }
+  if (!isHealthySqlite(source)) {
+    throw new Error("备份文件已损坏，无法恢复");
+  }
+  if (!hasUsersTable(source)) {
+    throw new Error(
+      "这份备份里没有任何账号数据，恢复它会让系统回到「未初始化」状态。\n" +
+        "如果你确实想重来，请手动清空数据库，而不是恢复这个文件。",
+    );
   }
 
   // 恢复前先保住当前数据

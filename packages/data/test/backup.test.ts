@@ -1,5 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -27,10 +34,16 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** 建一个最小的 SQLite 库，写一条可辨识的数据。 */
+/**
+ * 建一个最小的 SQLite 库，写一条可辨识的数据。
+ *
+ * 必须包含 users 表 —— listBackups 会过滤掉没有该表的备份
+ * （识别「空壳备份」的手段）。
+ */
 function makeDb(marker: string) {
   const raw = new Database(dbPath);
   raw.exec("CREATE TABLE IF NOT EXISTS probe (id text PRIMARY KEY, value text);");
+  raw.exec("CREATE TABLE IF NOT EXISTS users (id text PRIMARY KEY, username text);");
   raw.prepare("INSERT OR REPLACE INTO probe (id, value) VALUES ('k', ?)").run(marker);
   raw.pragma(`user_version = ${SCHEMA_VERSION}`);
   raw.close();
@@ -179,6 +192,7 @@ describe("导入备份", () => {
     const foreignPath = join(foreignDir, fileName);
     const raw = new Database(foreignPath);
     raw.exec("CREATE TABLE IF NOT EXISTS probe (id text PRIMARY KEY, value text);");
+    raw.exec("CREATE TABLE IF NOT EXISTS users (id text PRIMARY KEY, username text);");
     raw.prepare("INSERT OR REPLACE INTO probe (id, value) VALUES ('k', ?)").run(marker);
     raw.pragma(`user_version = ${SCHEMA_VERSION}`);
     raw.close();
@@ -336,6 +350,76 @@ describe("时间戳使用本地时区", () => {
     const drift = Math.abs(Date.now() - file.createdAt);
     // 如果误用 UTC，中国时区下会差 8 小时 = 28_800_000ms
     expect(drift).toBeLessThan(10_000);
+  });
+});
+
+describe("安全：路径穿越", () => {
+  it("拒绝含路径分隔符的文件名", () => {
+    makeDb("x");
+    const attacks = [
+      "../../../etc/passwd.v2-2026-11-03T16-42-50.bak",
+      "..\\..\\windows\\x.v2-2026-11-03T16-42-50.bak",
+      "sub/dir/evil.v2-2026-11-03T16-42-50.bak",
+      "/abs/path.v2-2026-11-03T16-42-50.bak",
+    ];
+    for (const name of attacks) {
+      expect(() => deleteBackup(dbPath, name)).toThrow("不合法");
+      expect(() => restoreBackup(dbPath, name, SCHEMA_VERSION)).toThrow("不合法");
+    }
+  });
+
+  it("底层校验不依赖调用方，自己就能挡住", () => {
+    // backupExists 是更底层的方法，也必须拒绝
+    expect(backupExists(dbPath, "../../evil.bak")).toBe(false);
+    expect(backupExists(dbPath, "sub/x.v2-2026-11-03T16-42-50.bak")).toBe(false);
+  });
+});
+
+describe("安全：恢复前的完整性校验", () => {
+  it("拒绝内容损坏的数据库", () => {
+    makeDb("x");
+    const corrupt = "local.db.v2-2026-11-03T16-42-50.bak";
+    // 头部正确，但后面全是垃圾
+    const bad = Buffer.concat([
+      Buffer.from("SQLite format 3\0", "binary"),
+      Buffer.alloc(4000, 0xff),
+    ]);
+    writeFileSync(join(dir, corrupt), bad);
+
+    expect(() => restoreBackup(dbPath, corrupt, SCHEMA_VERSION)).toThrow("损坏");
+  });
+
+  it("拒绝没有 users 表的空备份", () => {
+    makeDb("x");
+    // 造一个合法 SQLite 库，但只有别的表
+    const emptyPath = join(dir, "empty.db");
+    const raw = new Database(emptyPath);
+    raw.exec("CREATE TABLE unrelated (id text);");
+    raw.close();
+
+    const name = "local.db.v2-2026-11-03T16-42-50.bak";
+    copyFileSync(emptyPath, join(dir, name));
+
+    expect(() => restoreBackup(dbPath, name, SCHEMA_VERSION)).toThrow("没有任何账号数据");
+  });
+});
+
+describe("安全：列表过滤空备份", () => {
+  it("没有 users 表的备份不出现在列表里", () => {
+    makeDb("x");
+    createBackup(dbPath, SCHEMA_VERSION, "manual");
+
+    // 造一个空壳备份放进目录
+    const emptyPath = join(dir, "shell.db");
+    const raw = new Database(emptyPath);
+    raw.exec("CREATE TABLE t (id text);");
+    raw.close();
+    copyFileSync(emptyPath, join(dir, "local.db.v2-2026-01-01T00-00-00.bak"));
+
+    const list = listBackups(dbPath);
+    // 只有那个真正含 users 表的备份
+    expect(list).toHaveLength(1);
+    expect(list[0]!.name).not.toContain("2026-01-01");
   });
 });
 
