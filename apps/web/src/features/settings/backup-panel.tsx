@@ -8,6 +8,7 @@ import {
   HardDriveDownload,
   RotateCcw,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { BackupFile } from "@toolbox/contracts";
@@ -16,6 +17,7 @@ import { hasLocalApi } from "@/lib/desktop";
 import { getTauriInvoke } from "@/lib/tauri-invoke";
 import { queryKeys, useCurrentSourceKey } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth-session";
+import { formatDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -38,10 +40,31 @@ function formatSize(bytes: number): string {
 /** 相对时间：刚刚 / 3 分钟前 / 2 天前。 */
 function relativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
+  if (diff < 0) return "刚刚";
   if (diff < 60_000) return "刚刚";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < 2_592_000_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  // 超过 30 天就直接显示日期，比「87 天前」好读
+  return formatDateTime(timestamp);
+}
+
+/** 网页端选文件：用完就移除 input，不留在 DOM 里。 */
+function pickFileFromBrowser(): Promise<{ blob: Blob; name: string } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".bak,application/octet-stream";
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+      resolve(file ? { blob: file, name: file.name } : null);
+    };
+    // 用户点取消时不会触发 change，用焦点回归兜底
+    input.oncancel = () => resolve(null);
+
+    input.click();
+  });
 }
 
 /** 恢复操作需要输入的确认词。 */
@@ -163,6 +186,41 @@ export function BackupPanel() {
     }
   }
 
+  /**
+   * 导入外部备份。
+   *
+   * 两个平台选文件的方式不同：
+   * - 网页端：隐藏的 <input type="file">
+   * - 桌面端：Rust 的打开对话框，然后直接写盘（不经浏览器）
+   */
+  async function importFile() {
+    setBusy("import");
+    try {
+      if (hasLocalApi()) {
+        const invoke = getTauriInvoke();
+        if (!invoke) throw new Error("桌面端能力不可用");
+
+        const source = await invoke<string | null>("backup_pick_file");
+        if (!source) return; // 用户取消
+
+        const file = await invoke<BackupFile>("backup_import", { source });
+        toast.success(`已导入 ${file.name}`);
+      } else {
+        const picked = await pickFileFromBrowser();
+        if (!picked) return;
+
+        const file = await api.importBackup(picked.blob, picked.name);
+        toast.success(`已导入 ${file.file.name}`);
+      }
+
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导入失败");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const files = backups.data?.files ?? [];
 
   return (
@@ -195,8 +253,17 @@ export function BackupPanel() {
               <HardDriveDownload className="h-4 w-4" />
               立即备份
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void importFile()}
+              disabled={busy !== null}
+            >
+              <Upload className="h-4 w-4" />
+              导入备份
+            </Button>
             <p className="text-xs text-muted-foreground">
-              升级前会自动备份一份，备份文件永久保留。
+              升级前会自动备份，备份永久保留。导入的备份会按本机库名重命名。
             </p>
           </div>
         </CardContent>
@@ -234,6 +301,7 @@ export function BackupPanel() {
                     <p className="truncate font-mono text-xs">{file.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       v{file.version} · {formatSize(file.size)} · {relativeTime(file.createdAt)}
+                      <span className="ml-1 opacity-60">（{formatDateTime(file.createdAt)}）</span>
                     </p>
                   </div>
 

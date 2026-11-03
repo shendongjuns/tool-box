@@ -54,16 +54,34 @@ export function createFetchTransport(options: FetchTransportOptions): ApiTranspo
         else request.signal.addEventListener("abort", () => controller.abort(), { once: true });
       }
 
+      /*
+       * 三种 body 形态：
+       *   undefined      GET / DELETE，无请求体
+       *   Blob / ArrayBuffer  二进制上传（备份导入），直接用原始字节
+       *   其它          普通对象，JSON 序列化
+       */
+      const isBinary =
+        request.body instanceof Blob ||
+        request.body instanceof ArrayBuffer ||
+        ArrayBuffer.isView(request.body);
+
+      let contentType: string | undefined;
+      if (request.body !== undefined) {
+        contentType = isBinary ? "application/octet-stream" : "application/json";
+      }
+
       try {
         response = await fetch(`${base}${request.path}`, {
           method,
           credentials: options.credentials ?? "include",
           headers: {
-            ...(request.body === undefined ? {} : { "content-type": "application/json" }),
+            ...(contentType ? { "content-type": contentType } : {}),
             accept: "application/json",
             ...(options.headers?.() ?? {}),
           },
-          ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+          ...(request.body === undefined
+            ? {}
+            : { body: isBinary ? (request.body as BodyInit) : JSON.stringify(request.body) }),
           signal: controller.signal,
         });
       } catch (error) {

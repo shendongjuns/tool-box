@@ -329,6 +329,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backup_save_dialog,
             backup_export,
+            backup_pick_file,
+            backup_import,
             local_api_port,
             show_main_window,
             hide_to_tray,
@@ -435,4 +437,38 @@ fn backup_export(name: String, target: String) -> Result<(), String> {
 
     let db_path = data.join("local.db");
     crate::backup::export_backup(&db_path, &name, destination)
+}
+/// 选择要导入的备份文件，返回其路径。
+#[tauri::command]
+async fn backup_pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("数据库备份", &["bak"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+
+    match rx.await {
+        Ok(Some(path)) => Ok(Some(path.to_string())),
+        Ok(None) => Ok(None),
+        Err(_) => Err("对话框已关闭".to_string()),
+    }
+}
+
+/// 导入外部备份文件到本地备份目录。
+///
+/// 校验与重命名都由 backup::import_backup 完成 ——
+/// 它会检查 SQLite 魔数、版本号，并按本机库名重写文件名。
+#[tauri::command]
+fn backup_import(source: String) -> Result<serde_json::Value, String> {
+    let db_path = data_dir().join("local.db");
+    let file = crate::backup::import_backup(
+        &db_path,
+        std::path::Path::new(&source),
+        crate::local_api::SCHEMA_VERSION,
+    )?;
+    Ok(serde_json::to_value(file).unwrap_or(serde_json::json!({})))
 }

@@ -112,6 +112,20 @@ export function createApi(transport: ApiTransport, options: CreateApiOptions = {
 
     createBackup: () => send<CreateBackupResponse>("/api/backup", "POST"),
 
+    /**
+     * 导入外部备份文件。
+     *
+     * 以原始字节上传（不是 JSON），文件名通过 X-Backup-Name 头传递 ——
+     * body 已被文件内容占用，没有位置放元数据。
+     */
+    importBackup: (file: Blob, fileName: string) =>
+      transport.request<CreateBackupResponse>({
+        path: "/api/backup/import",
+        method: "POST",
+        body: file,
+        headers: () => ({ "X-Backup-Name": fileName }),
+      }),
+
     deleteBackup: (name: string) =>
       send<DeleteBackupResponse>(`/api/backup/${encodeURIComponent(name)}`, "DELETE"),
 

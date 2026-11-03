@@ -17,6 +17,7 @@
  *    一眼能看出这是从哪个 schema 版本备份的，
  *    避免把高版本的库恢复到低版本程序上。
  */
+import SqliteDatabase from "better-sqlite3";
 import {
   copyFileSync,
   existsSync,
@@ -49,15 +50,69 @@ export interface BackupFile {
 const BACKUP_RE = /^(.+)\.v(\d+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})(?:-\d+)?\.bak$/;
 
 /** 时间戳格式：2026-11-02T11-30-00（冒号换成了横线，Windows 文件名不允许冒号） */
+/**
+ * 文件名里的时间戳用**本地时间**。
+ *
+ * 之前用 toISOString()（UTC），结果在中国时区下，
+ * 14:43 备份的文件叫 ...T06-43-...，用户完全对不上号。
+ *
+ * 备份文件是给人看的，就该用人的时区。
+ * 跨时区迁移时可能产生歧义，但那种场景远比日常使用罕见，
+ * 而且恢复时并不依赖这个时间戳（只是排序与展示用）。
+ */
 function stamp(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `T${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`
+  );
 }
 
+/**
+ * 把文件名里的时间戳解析成毫秒。
+ *
+ * 按**本地时间**解析，与 stamp() 的生成方式对应。
+ * 用 Date 构造函数的分量形式（年月日时分秒），
+ * 它天然按本地时区解释 —— 不要拼成 ISO 字符串再 parse，
+ * 那样会被当成 UTC。
+ */
 function parseStamp(value: string): number {
-  // 2026-11-02T11-30-00 -> 2026-11-02T11:30:00Z
-  const iso = value.replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})$/, "$1-$2-$3T$4:$5:$6Z");
-  const parsed = Date.parse(iso);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
+  if (!match) return 0;
+  const [, y, mo, d, h, mi, s] = match;
+  const parsed = new Date(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(s),
+  ).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * 把 WAL 内容合并回主数据库文件。
+ *
+ * 用独立的只读连接执行 —— 不干扰主进程的连接池。
+ * PRAGMA wal_checkpoint(TRUNCATE) 会等待所有读事务结束后
+ * 把 WAL 写回主文件，然后把 -wal 截断为空。
+ *
+ * 失败不抛错：极端情况下（比如有长事务挂着）checkpoint 可能
+ * 拿不到排他锁，此时回退到「连 -wal 一起复制」的策略。
+ */
+function checkpointSqlite(dbPath: string): void {
+  try {
+    const conn = new SqliteDatabase(dbPath);
+    try {
+      conn.pragma("wal_checkpoint(TRUNCATE)");
+    } finally {
+      conn.close();
+    }
+  } catch {
+    /* 打不开就跳过，交给后面的 -wal 复制兜底 */
+  }
 }
 
 /** 校验一个文件是不是 SQLite 数据库。 */
@@ -104,9 +159,20 @@ export function createBackup(
     path = join(dir, name);
   }
 
-  // WAL 模式下，最近的写入可能还在 -wal 文件里。
-  // better-sqlite3 在主连接上执行过 checkpoint，这里直接复制主文件即可；
-  // 但为了拿到一致快照，调用方应保证此时没有并发写。
+  /*
+   * 关键：先做 WAL checkpoint。
+   *
+   * SQLite 的 WAL 模式下，最近的写入先落在 -wal 文件里，
+   * 主 .db 文件可能仍是几 KB 的空壳。
+   *
+   * 如果直接复制主文件，备份就是个空库 —— 恢复后数据全丢。
+   * 这个坑极隐蔽：文件存在、大小正常、能打开，只是没有数据。
+   *
+   * 用 TRUNCATE 模式把 WAL 全部合并回主文件并清空 -wal，
+   * 这样复制出来的才是完整快照。
+   */
+  checkpointSqlite(dbPath);
+
   copyFileSync(dbPath, path);
 
   // -wal / -shm 一起带走，否则恢复后可能缺最后一段数据。
@@ -207,6 +273,77 @@ export function deleteBackup(dbPath: string, name: string): void {
       }
     }
   }
+}
+
+/**
+ * 导入外部备份文件。
+ *
+ * 场景：用户从另一台机器（或另一个部署）下载了备份，
+ * 想把它放进本地的备份列表，之后可以像普通备份一样恢复。
+ *
+ * 三个关键处理：
+ *
+ * 1. **文件名要重写**
+ *    外来的文件名可能是 local.db.v2-...，而本机库叫 toolbox.db。
+ *    直接放进目录会被 listBackups 的前缀过滤掉，看不见。
+ *    所以按本机库名重新生成文件名，保留原有的版本号与时间戳。
+ *
+ * 2. **内容要校验**
+ *    只接受真正的 SQLite 文件，避免把任意文件塞进备份目录。
+ *
+ * 3. **版本要检查**
+ *    备份的 schema 版本不能高于当前程序支持的上限，
+ *    否则恢复后会是一个程序读不懂的库。
+ */
+export function importBackup(
+  dbPath: string,
+  sourcePath: string,
+  currentVersion: number,
+): BackupFile {
+  if (!existsSync(sourcePath)) {
+    throw new Error("文件不存在");
+  }
+  if (!looksLikeSqlite(sourcePath)) {
+    throw new Error("这不是有效的数据库文件");
+  }
+
+  const dir = dirname(dbPath);
+  const base = basename(dbPath);
+
+  /*
+   * 尝试从原文件名提取版本与时间戳。
+   * 提取失败（比如用户手动改过名）就用当前版本和当前时间。
+   */
+  const original = basename(sourcePath);
+  const match = original.match(BACKUP_RE);
+  const version = match?.[2] ? Number(match[2]) : currentVersion;
+  const stampPart = match?.[3] ?? stamp();
+
+  if (version > currentVersion) {
+    throw new Error(
+      `这份备份来自更高的版本 v${version}，当前程序只支持到 v${currentVersion}。请升级后再导入。`,
+    );
+  }
+
+  // 用本机库名重写文件名，保留原版本号与时间戳
+  let name = `${base}.v${version}-${stampPart}.bak`;
+  let path = join(dir, name);
+  for (let n = 2; existsSync(path); n += 1) {
+    name = `${base}.v${version}-${stampPart}-${n}.bak`;
+    path = join(dir, name);
+  }
+
+  copyFileSync(sourcePath, path);
+
+  const stat = statSync(path);
+  return {
+    name,
+    size: stat.size,
+    createdAt: parseStamp(stampPart),
+    version,
+    type: "manual",
+    path,
+  };
 }
 
 /**

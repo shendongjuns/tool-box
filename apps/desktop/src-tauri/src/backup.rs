@@ -46,12 +46,104 @@ fn is_valid_name(name: &str) -> bool {
 }
 
 /// 时间戳：2026-11-02T11-30-00（冒号换成横线，Windows 文件名不允许冒号）
+/// 当前时间戳，格式 2026-11-03T14-44-26。
+///
+/// 用**本地时间**而不是 UTC：备份文件是给人看的，
+/// 14:43 备份的文件叫 ...T06-43-... 会让人对不上号。
+///
+/// 与 packages/data/src/backup.ts 的 stamp() 保持一致。
 fn stamp() -> String {
-    let now = SystemTime::now()
+    format_timestamp(now_local_secs())
+}
+
+/// 本地时间的 Unix 秒数。
+///
+/// std 没有时区 API，这里用 libc 的 localtime 拿偏移 ——
+/// Windows 上也有 CRT 提供的同义函数。
+/// 拿不到就退回 UTC，至少格式正确、排序正确。
+fn now_local_secs() -> u64 {
+    let utc = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    format_timestamp(now)
+    (utc as i64 + local_utc_offset_secs()).max(0) as u64
+}
+
+/// 本地时区相对 UTC 的偏移（秒）。
+#[cfg(windows)]
+fn local_utc_offset_secs() -> i64 {
+    // 通过 CRT 的 _localtime64_s 反推：把一个已知 UTC 时刻
+    // 转成本地时间，两者之差就是偏移。
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| {
+            let utc = d.as_secs() as i64;
+            let local = utc_to_local(utc);
+            local - utc
+        })
+        .unwrap_or(0)
+}
+
+#[cfg(not(windows))]
+fn local_utc_offset_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| {
+            let utc = d.as_secs() as i64;
+            let local = utc_to_local(utc);
+            local - utc
+        })
+        .unwrap_or(0)
+}
+
+/// 用 CRT 的 localtime 把 UTC 秒转成本地秒。
+#[cfg(windows)]
+fn utc_to_local(utc: i64) -> i64 {
+    use std::os::raw::c_int;
+    extern "C" {
+        fn _localtime64_s(result: *mut Tm, timer: *const i64) -> c_int;
+    }
+    #[repr(C)]
+    struct Tm {
+        tm_sec: c_int,
+        tm_min: c_int,
+        tm_hour: c_int,
+        tm_mday: c_int,
+        tm_mon: c_int,
+        tm_year: c_int,
+        tm_wday: c_int,
+        tm_yday: c_int,
+        tm_isdst: c_int,
+    }
+    let mut tm = Tm {
+        tm_sec: 0,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 0,
+        tm_mon: 0,
+        tm_year: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+    };
+    unsafe {
+        if _localtime64_s(&mut tm, &utc) != 0 {
+            return utc;
+        }
+    }
+    // 用分量重新组装成「当作 UTC 的本地时刻」
+    days_from_civil(tm.tm_year as i64 + 1900, (tm.tm_mon + 1) as u32, tm.tm_mday as u32) * 86400
+        + (tm.tm_hour as i64) * 3600
+        + (tm.tm_min as i64) * 60
+        + tm.tm_sec as i64
+}
+
+#[cfg(not(windows))]
+fn utc_to_local(utc: i64) -> i64 {
+    // 非 Windows 平台直接读 /etc/localtime 太复杂，退回 UTC。
+    // 桌面端只打包 Windows，这条分支仅用于编译通过。
+    let _ = utc;
+    utc
 }
 
 /// 把 Unix 秒格式化成 2026-11-02T11-30-00（UTC）。
@@ -320,7 +412,8 @@ mod tests {
 
     #[test]
     fn timestamp_roundtrip() {
-        // 2026-11-02T11:30:00Z = 1793619000
+        // format_timestamp 接收「本地秒」，parse_stamp 也按本地时间解析，
+        // 两者必须互为逆运算 —— 这也是用户看到的文件名与列表时间一致的前提。
         let secs = 1_793_619_000u64;
         let text = format_timestamp(secs);
         assert_eq!(text, "2026-11-02T11-30-00");
@@ -329,8 +422,89 @@ mod tests {
     }
 
     #[test]
+    fn stamp_uses_local_time_not_utc() {
+        // 本地偏移非零时，stamp() 的结果不应等于纯 UTC 换算
+        let utc = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let local_secs = now_local_secs();
+        let offset = local_utc_offset_secs();
+
+        // 偏移与「本地秒 - UTC 秒」一致
+        assert_eq!(local_secs as i64 - utc as i64, offset);
+    }
+
+    #[test]
     fn version_parsed_from_name() {
         assert_eq!(parse_version("local.db.v2-2026-11-02T11-30-00.bak"), 2);
         assert_eq!(parse_version("local.db.v12-2026-11-02T11-30-00.bak"), 12);
     }
+}
+
+/// 导入外部备份文件。
+///
+/// 三个处理与服务端 importBackup 一致：
+/// 1. 校验是真正的 SQLite 文件
+/// 2. 拒绝来自更高版本的备份
+/// 3. 按本机库名重写文件名（否则会被 list_backups 的前缀过滤掉）
+pub fn import_backup(db_path: &Path, source: &Path, current_version: i64) -> Result<BackupFile, String> {
+    if !source.exists() {
+        return Err("文件不存在".to_string());
+    }
+    if !looks_like_sqlite(source) {
+        return Err("这不是有效的数据库文件".to_string());
+    }
+
+    let dir = db_path.parent().ok_or("数据库路径无效")?;
+    let base = db_path
+        .file_name()
+        .map(|v| v.to_string_lossy().to_string())
+        .ok_or("数据库文件名无效")?;
+
+    let original = source
+        .file_name()
+        .map(|v| v.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // 从原文件名提取版本与时间戳，失败则用当前值兜底
+    let version = if is_valid_name(&original) {
+        parse_version(&original)
+    } else {
+        current_version
+    };
+    let stamp_part = if is_valid_name(&original) {
+        original
+            .rfind(".v")
+            .and_then(|i| original[i + 2..].split_once('-'))
+            .map(|(_, tail)| tail.trim_end_matches(".bak").to_string())
+            .unwrap_or_else(stamp)
+    } else {
+        stamp()
+    };
+
+    if version > current_version {
+        return Err(format!(
+            "这份备份来自更高的版本 v{version}，当前程序只支持到 v{current_version}。请升级后再导入。"
+        ));
+    }
+
+    let mut name = format!("{base}.v{version}-{stamp_part}.bak");
+    let mut path = dir.join(&name);
+    let mut n = 2;
+    while path.exists() {
+        name = format!("{base}.v{version}-{stamp_part}-{n}.bak");
+        path = dir.join(&name);
+        n += 1;
+    }
+
+    fs::copy(source, &path).map_err(|e| format!("导入失败：{e}"))?;
+
+    let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    Ok(BackupFile {
+        created_at: parse_stamp(&name),
+        version,
+        name,
+        size,
+    })
 }

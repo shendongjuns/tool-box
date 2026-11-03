@@ -1,9 +1,18 @@
 import type { FastifyInstance } from "fastify";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   createBackup,
   deleteBackup,
+  importBackup,
   listBackups,
   restoreBackup,
   SCHEMA_VERSION,
@@ -147,6 +156,55 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       });
     },
   );
+
+  /**
+   * 导入外部备份文件。
+   *
+   * 请求体是原始字节（不是 JSON），所以这里用 addContentTypeParser
+   * 单独给这个路由注册 octet-stream 解析。
+   *
+   * 文件名通过 X-Backup-Name 头传递 —— 因为 body 已经被文件内容占用，
+   * 没有地方放元数据。这个头只用于提取版本号与时间戳，
+   * 实际落盘的文件名会按本机库名重写，所以不担心路径穿越。
+   */
+  /*
+   * 给这个路由单独注册二进制解析。
+   *
+   * Fastify 默认只解析 JSON，文件上传需要自己接管
+   * application/octet-stream。用 addContentTypeParser 而不是
+   * 全局改 bodyLimit，避免影响其它接口。
+   */
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { parseAs: "buffer", bodyLimit: 512 * 1024 * 1024 },
+    (_request, body, done) => done(null, body),
+  );
+
+  app.post("/api/backup/import", { preHandler: app.requireAuth }, async (request) => {
+    const content = request.body as Buffer;
+    if (!Buffer.isBuffer(content) || content.length === 0) {
+      throw badRequest("EMPTY_FILE", "文件是空的");
+    }
+
+    /*
+     * 先落到临时文件，再交给 importBackup 校验。
+     * 直接信任内存里的字节会更简单，但 importBackup 需要走
+     * 与磁盘备份完全相同的校验路径（SQLite 魔数检查）。
+     */
+    const tempDir = mkdtempSync(join(tmpdir(), "toolbox-import-"));
+    const headerName = String(request.headers["x-backup-name"] ?? "imported.bak");
+    // 只用 basename，防止头里塞路径
+    const safeName = basename(headerName).replace(/[^\w.-]/g, "_") || "imported.bak";
+    const tempPath = join(tempDir, safeName);
+
+    try {
+      writeFileSync(tempPath, content);
+      const file = importBackup(dbPath(), tempPath, SCHEMA_VERSION);
+      return createBackupResponseSchema.parse({ file: toPublic(file) });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 
   /** 删除某个备份。 */
   app.delete<{ Params: { name: string } }>(

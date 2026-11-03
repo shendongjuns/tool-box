@@ -3,7 +3,15 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export interface RequestOptions {
   method?: HttpMethod;
   path: string;
+  /**
+   * 请求体。
+   *
+   * - 普通对象：JSON 序列化
+   * - Blob / ArrayBuffer / TypedArray：作为原始字节发送（备份导入）
+   */
   body?: unknown;
+  /** 额外的请求头，每次请求时求值（令牌可能变化） */
+  headers?: () => Record<string, string>;
   signal?: AbortSignal;
 }
 
