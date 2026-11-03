@@ -52,7 +52,15 @@ function LoginPage() {
   const initialized = probeFailed ? true : (bootstrap.data?.initialized ?? true);
 
   // 标题跟随探测结果：还没拿到服务端状态时不预判
-  const title = probeFailed ? "登录" : initialized ? "欢迎回来" : "创建管理员";
+  /*
+   * 注意 initialized === false 的两种成因：
+   *   1. 全新安装，还没注册过
+   *   2. 恢复了一个「注册前」的备份
+   * 两种情况都需要建号，但措辞不能让人以为
+   * 「我的账号被清空了」—— 所以标题用中性的「开始使用」，
+   * 详情里说明原因。
+   */
+  const title = probeFailed ? "登录" : initialized ? "欢迎回来" : "开始使用";
 
   const description = probeFailed
     ? "连不上服务器，可直接尝试登录"
@@ -60,7 +68,7 @@ function LoginPage() {
       ? "正在连接…"
       : initialized
         ? "登录以继续"
-        : "创建第一个账号";
+        : "这个数据源还没有账号，先创建一个";
 
   return (
     <AuthLayout title={title} description={description}>

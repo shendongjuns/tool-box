@@ -194,7 +194,19 @@ fn parse_stamp(name: &str) -> i64 {
     }
     let (year, month, day) = (nums[0], nums[1] as u32, nums[2] as u32);
     let (hour, minute, second) = (nums[3], nums[4], nums[5]);
-    days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second
+
+    /*
+     * 文件名里是**本地时间**，但这里的返回值必须是
+     * Unix 毫秒（UTC 基准）—— 前端用 new Date(ms) 展示，
+     * 它会再按本地时区换算一次。
+     *
+     * 先把本地时刻当成 UTC 算出秒数，再减去时区偏移，
+     * 得到真正的 UTC 秒。少了这一步，前端会看到
+     * 「文件名 16:32，列表显示次日 00:32」的错位。
+     */
+    let as_if_utc =
+        days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second;
+    (as_if_utc - local_utc_offset_secs()) * 1000
 }
 
 /// 年月日换算成从 1970-01-01 起的天数。
@@ -447,14 +459,91 @@ mod tests {
     }
 
     #[test]
-    fn timestamp_roundtrip() {
-        // format_timestamp 接收「本地秒」，parse_stamp 也按本地时间解析，
-        // 两者必须互为逆运算 —— 这也是用户看到的文件名与列表时间一致的前提。
-        let secs = 1_793_619_000u64;
-        let text = format_timestamp(secs);
+    fn format_timestamp_produces_expected_text() {
+        // format_timestamp 把「本地秒」写成 YYYY-MM-DDTHH-MM-SS
+        let text = format_timestamp(1_793_619_000);
         assert_eq!(text, "2026-11-02T11-30-00");
+    }
+
+    #[test]
+    fn parse_stamp_returns_utc_millis() {
+        /*
+         * parse_stamp 的语义：文件名里是本地时刻，
+         * 返回的是 Unix 毫秒（UTC 基准），供前端 new Date(ms) 使用。
+         *
+         * 所以「本地 11:30」应解析成「UTC 11:30 减去时区偏移」。
+         */
+        let name = "local.db.v2-2026-11-02T11-30-00.bak";
+        let ms = parse_stamp(name);
+
+        let offset = local_utc_offset_secs();
+        // 2026-11-02T11:30:00 当作 UTC 的秒数
+        let as_if_utc = 1_793_619_000i64;
+        assert_eq!(ms, (as_if_utc - offset) * 1000);
+    }
+
+    #[test]
+    fn stamp_roundtrip_preserves_local_time() {
+        /*
+         * 这是用户实际报的问题：文件名写 16:32，
+         * 列表却显示次日 00:32（差 8 小时，日期都跳了）。
+         *
+         * 根因是 parse_stamp 返回的毫秒数被前端按本地时区
+         * 二次换算。修复后两者必须严格互逆。
+         */
+        let local = now_local_secs();
+        let text = format_timestamp(local);
         let name = format!("local.db.v2-{text}.bak");
-        assert_eq!(parse_stamp(&name), secs as i64);
+        let parsed_ms = parse_stamp(&name);
+
+        /*
+         * format_timestamp(local) 把「本地秒」写成字符串，
+         * parse_stamp 再把它还原成 Unix 毫秒。
+         * 所以期望值是 local * 1000 —— 这里的 local 本身就是
+         * 「本地时刻当成 UTC 算出的秒」，与文件名语义一致。
+         */
+        /*
+         * now_local_secs() 给的是「本地时刻当成 UTC 的秒数」，
+         * parse_stamp 会减掉时区偏移还原成真正的 UTC 毫秒。
+         */
+        let expected_ms = (local as i64 - local_utc_offset_secs()) * 1000;
+        assert_eq!(
+            parsed_ms, expected_ms,
+            "文件名 {text} 解析成 {parsed_ms}ms，应为 {expected_ms}ms"
+        );
+    }
+
+    #[test]
+    fn back_to_back_create_and_parse_agree() {
+        // 端到端：备份一次，createdAt 应接近此刻
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("local.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+            conn.execute_batch("CREATE TABLE t (id integer);").unwrap();
+        }
+
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let file = create_backup(&db, 2).unwrap();
+
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // 解析出的时间应落在这次调用的时间窗内（允许 2 秒误差）
+        assert!(
+            file.created_at >= before - 2000 && file.created_at <= after + 2000,
+            "created_at={} 不在 [{}, {}] 之间",
+            file.created_at,
+            before - 2000,
+            after + 2000
+        );
     }
 
     #[test]

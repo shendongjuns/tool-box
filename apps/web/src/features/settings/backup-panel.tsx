@@ -139,12 +139,22 @@ export function BackupPanel() {
       const result = await api.restoreBackup(target.name);
       toast.success(
         `已恢复到 ${relativeTime(target.createdAt)}的备份。当前数据已保存为 ${result.safetyCopy}`,
+        { duration: 5000 },
       );
       /*
        * 恢复后整个数据库被替换，sessions 表也在其中 ——
        * 当前令牌在新库里不存在，必须重新登录。
+       *
+       * 注意：账户本身**没有丢**。备份里如果包含账号，
+       * 恢复后原用户名和密码照常可用，只是需要重新登录一次。
+       * 下面的提示要把这点说清楚，避免用户以为要重新注册。
        */
       setAuth(null);
+      /*
+       * toast 挂在 body 上，跨路由不会消失 ——
+       * 用足够长的持续时间让用户在登录页还能看到它。
+       */
+      toast.info("账户未变，请用原账号密码登录", { duration: 8000 });
       await navigate({ to: "/login", replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "恢复失败");
