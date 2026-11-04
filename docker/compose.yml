@@ -1,12 +1,13 @@
 # ToolBox 服务端
 #
-# 两种部署方式：
+# 默认拉取 ghcr.io 上的预构建镜像，不需要克隆仓库或本地编译。
 #
-#   1. 用预构建镜像（推荐）
-#      IMAGE_TAG=2.1.0 docker compose up -d
+#   启动：        docker compose up -d
+#   锁定版本：    TOOLBOX_IMAGE=ghcr.io/shendongjuns/tool-box:v2.1.0 docker compose up -d
+#   升级：        docker compose pull && docker compose up -d
 #
-#   2. 从源码构建
-#      docker compose up -d --build
+# 只有想改代码时才本地构建：
+#   docker compose up -d --build
 #
 # 首次启动前建议先复制 .env.example 为 .env 调整配置。
 # 对外暴露方式（反向代理 / 隧道 / 直连）由部署者决定。

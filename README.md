@@ -53,38 +53,31 @@ pnpm desktop:build    # 打包成安装程序
 
 ### 用 Docker 跑服务端
 
-两种方式，详见 [Wiki 的部署页面](https://github.com/shendongjuns/tool-box/wiki/Deployment)。
-
-**拉预构建镜像**（不用克隆仓库）：
+不用克隆仓库，拉取预构建镜像即可：
 
 ```bash
-mkdir -p toolbox/data && cd toolbox
+mkdir -p toolbox && cd toolbox
 curl -O https://raw.githubusercontent.com/shendongjuns/tool-box/main/docker/compose.yml
 docker compose up -d
 ```
 
-**从源码构建**：
-
-```bash
-git clone https://github.com/shendongjuns/tool-box.git
-cd tool-box/docker
-docker compose up -d --build
-```
-
 访问 <http://127.0.0.1:7788>。
+
+> 镜像目前在 ghcr.io 上是私有包，需要先用 GitHub Token 登录一次。
+> 详细步骤见 [Wiki 的部署页面](https://github.com/shendongjuns/tool-box/wiki/%E9%83%A8%E7%BD%B2)。
 
 ## 文档
 
 完整文档在 **[Wiki](https://github.com/shendongjuns/tool-box/wiki)**：
 
-| 页面                                                                           | 内容                                |
-| ------------------------------------------------------------------------------ | ----------------------------------- |
-| [快速开始](https://github.com/shendongjuns/tool-box/wiki/Quickstart)           | 环境要求、端口配置、开发模式        |
-| [部署](https://github.com/shendongjuns/tool-box/wiki/Deployment)               | Docker 两种方式、反向代理、环境变量 |
-| [升级与备份](https://github.com/shendongjuns/tool-box/wiki/Upgrade-and-Backup) | 数据迁移、自动备份、回滚            |
-| [常见问题](https://github.com/shendongjuns/tool-box/wiki/FAQ)                  | 忘记密码、SSH 指纹、疑难排查        |
-| [免责声明](DISCLAIMER.md)                                                      | 使用范围与责任界定                  |
-| [更新日志](CHANGELOG.md)                                                       | 每个版本改了什么、能不能直接升      |
+| 页面                                                                   | 内容                                |
+| ---------------------------------------------------------------------- | ----------------------------------- |
+| [快速开始](https://github.com/shendongjuns/tool-box/wiki/快速开始)     | 环境要求、端口配置、开发模式        |
+| [部署](https://github.com/shendongjuns/tool-box/wiki/部署)             | Docker 两种方式、反向代理、环境变量 |
+| [升级与备份](https://github.com/shendongjuns/tool-box/wiki/升级与备份) | 数据迁移、自动备份、回滚            |
+| [常见问题](https://github.com/shendongjuns/tool-box/wiki/常见问题)     | 忘记密码、SSH 指纹、疑难排查        |
+| [免责声明](DISCLAIMER.md)                                              | 使用范围与责任界定                  |
+| [更新日志](CHANGELOG.md)                                               | 每个版本改了什么、能不能直接升      |
 
 ## 一些边界
 
