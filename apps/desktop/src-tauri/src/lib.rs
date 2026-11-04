@@ -352,6 +352,9 @@ pub fn run() {
             sftp::sftp_mkdir,
             sftp::sftp_rename,
             sftp::sftp_chmod,
+            sftp::sftp_stat,
+            sftp::sftp_read_text,
+            sftp::sftp_write_text,
             sftp::sftp_download,
             sftp::sftp_upload
         ])

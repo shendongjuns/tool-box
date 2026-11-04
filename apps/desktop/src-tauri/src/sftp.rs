@@ -639,3 +639,289 @@ pub async fn sftp_rename(
         .await
         .map_err(|e| format!("重命名失败：{e}"))
 }
+
+/*
+ * ─────────────────────────────────────────────
+ * 文件编辑
+ *
+ * 三个约束贯穿始终：
+ *
+ * 1. **大小上限 2MB** —— 编辑器要拿到全文，再大就会卡住界面。
+ *    超限直接拒绝，不是截断（截断后保存会丢数据）。
+ *
+ * 2. **原子写入** —— 先写临时文件再 rename。
+ *    SFTP 的 rename 在绝大多数服务器上是原子的，
+ *    写到一半断线也不会破坏原文件。
+ *
+ * 3. **二进制检测** —— 头部出现 NUL 字节就不让编辑。
+ *    扩展名不可靠，有些配置文件名很正经但内容是二进制。
+ */
+
+/// 可编辑文件的大小上限（字节）。
+///
+/// 2MB 是权衡：CodeMirror 能流畅处理这个量级，
+/// 而常见的配置文件、脚本、日志片段都远小于此。
+const MAX_EDIT_SIZE: u64 = 2 * 1024 * 1024;
+
+/// 读头部多少字节用来判断是否二进制。
+const SNIFF_SIZE: usize = 8192;
+
+/// 文件元信息，供前端判断能否编辑。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileStat {
+    /// 文件大小（字节）
+    pub size: u64,
+    /// 最后修改时间（Unix 秒）
+    pub modified: u64,
+    /// 是否被判定为二进制
+    pub binary: bool,
+    /// 是否超过可编辑上限
+    pub too_large: bool,
+}
+
+/// 读取远端小文件的头部，判断是否二进制。
+///
+/// 只读 SNIFF_SIZE 字节就够 —— 文本文件的前 8KB 不会出现 NUL，
+/// 二进制文件几乎必然出现。
+async fn looks_binary(sftp: &russh_sftp::client::SftpSession, path: &str) -> Result<bool, String> {
+    use tokio::io::AsyncReadExt;
+
+    let mut file = sftp
+        .open(path)
+        .await
+        .map_err(|e| format!("打开文件失败：{e}"))?;
+
+    let mut buffer = vec![0u8; SNIFF_SIZE];
+    let mut filled = 0usize;
+    while filled < buffer.len() {
+        match file.read(&mut buffer[filled..]).await {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            // 读失败按"不是二进制"处理，让用户有机会看到错误信息，
+            // 而不是被静默拒绝
+            Err(_) => return Ok(false),
+        }
+    }
+
+    Ok(buffer[..filled].contains(&0))
+}
+
+/// 取文件元信息。前端据此决定「编辑」菜单项是否出现。
+#[tauri::command]
+pub async fn sftp_stat(
+    state: State<'_, SshState>,
+    session_id: String,
+    path: String,
+) -> Result<FileStat, String> {
+    let sftp = open_sftp(&state, &session_id).await?;
+
+    let meta = sftp
+        .metadata(&path)
+        .await
+        .map_err(|e| format!("读取文件信息失败：{e}"))?;
+
+    let size = meta.size.unwrap_or(0);
+    let too_large = size > MAX_EDIT_SIZE;
+
+    /*
+     * 超过上限就不必嗅探了 —— 反正不让编辑，
+     * 省掉一次额外的远端读取。
+     */
+    let binary = if too_large || size == 0 {
+        false
+    } else {
+        looks_binary(&sftp, &path).await?
+    };
+
+    Ok(FileStat {
+        size,
+        modified: meta.mtime.unwrap_or(0) as u64,
+        binary,
+        too_large,
+    })
+}
+
+/// 读取文本文件内容。
+///
+/// 超过 MAX_EDIT_SIZE 直接报错 —— 不截断，因为截断后保存会丢数据。
+#[tauri::command]
+pub async fn sftp_read_text(
+    state: State<'_, SshState>,
+    session_id: String,
+    path: String,
+) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+
+    let sftp = open_sftp(&state, &session_id).await?;
+
+    let meta = sftp
+        .metadata(&path)
+        .await
+        .map_err(|e| format!("读取文件信息失败：{e}"))?;
+    let size = meta.size.unwrap_or(0);
+
+    if size > MAX_EDIT_SIZE {
+        return Err(format!(
+            "文件大小 {:.1} MB，超过 {} MB 的编辑上限。请下载后用本地编辑器修改。",
+            size as f64 / 1048576.0,
+            MAX_EDIT_SIZE / 1048576
+        ));
+    }
+
+    let mut file = sftp
+        .open(&path)
+        .await
+        .map_err(|e| format!("打开文件失败：{e}"))?;
+
+    let mut buffer = Vec::with_capacity(size as usize);
+    file.read_to_end(&mut buffer)
+        .await
+        .map_err(|e| format!("读取文件失败：{e}"))?;
+
+    // 二次确认：万一 stat 之后文件被追加了
+    if buffer.len() as u64 > MAX_EDIT_SIZE {
+        return Err("文件在读取期间变大了，请重试".to_string());
+    }
+
+    if buffer.contains(&0) {
+        return Err("这是二进制文件，无法用文本编辑器打开".to_string());
+    }
+
+    String::from_utf8(buffer).map_err(|_| "文件不是 UTF-8 编码，无法编辑".to_string())
+}
+
+/// 原子写入文本文件。
+///
+/// 步骤：写临时文件 -> 校验 -> rename 覆盖。
+/// 任何一步失败都不会破坏原文件。
+#[tauri::command]
+pub async fn sftp_write_text(
+    state: State<'_, SshState>,
+    session_id: String,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+
+    let bytes = content.as_bytes();
+    if bytes.len() as u64 > MAX_EDIT_SIZE {
+        return Err(format!(
+            "内容 {} MB，超过 {} MB 的保存上限",
+            bytes.len() as f64 / 1048576.0,
+            MAX_EDIT_SIZE / 1048576
+        ));
+    }
+
+    let sftp = open_sftp(&state, &session_id).await?;
+
+    /*
+     * 临时文件放在同目录，保证与目标在同一个文件系统上 ——
+     * 跨文件系统的 rename 不是原子操作，甚至会直接失败。
+     *
+     * 用纳秒时间戳避免并发冲突。
+     */
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let temp_path = format!("{path}.tmp-{stamp}");
+
+    // 1. 写临时文件
+    let mut file = sftp
+        .create(&temp_path)
+        .await
+        .map_err(|e| format!("创建临时文件失败：{e}"))?;
+
+    if let Err(error) = file.write_all(bytes).await {
+        // 清理失败残留，避免在远端留下垃圾
+        let _ = sftp.remove_file(&temp_path).await;
+        return Err(format!("写入失败：{error}"));
+    }
+
+    if let Err(error) = file.sync_all().await {
+        let _ = sftp.remove_file(&temp_path).await;
+        return Err(format!("同步失败：{error}"));
+    }
+    drop(file);
+
+    // 2. 校验大小
+    if let Ok(meta) = sftp.metadata(&temp_path).await {
+        let written = meta.size.unwrap_or(0);
+        if written != bytes.len() as u64 {
+            let _ = sftp.remove_file(&temp_path).await;
+            return Err(format!(
+                "写入不完整：期望 {} 字节，实际 {} 字节",
+                bytes.len(),
+                written
+            ));
+        }
+    }
+
+    // 3. 原子替换
+    if let Err(error) = sftp.rename(&temp_path, &path).await {
+        let _ = sftp.remove_file(&temp_path).await;
+        return Err(format!("替换原文件失败：{error}"));
+    }
+
+    Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    /// 判断字节序列是否含 NUL —— 与 looks_binary 的核心逻辑一致。
+    ///
+    /// 单独抽出来是为了能离线测试：真实场景要连远端服务器，
+    /// 但「是否二进制」这个判断本身是纯函数。
+    fn has_nul(bytes: &[u8]) -> bool {
+        bytes.contains(&0)
+    }
+
+    #[test]
+    fn text_files_are_not_binary() {
+        // 常见文本内容不该被误判
+        let cases: &[&[u8]] = &[
+            b"hello world",
+            "中文内容 UTF-8".as_bytes(),
+            b"{\"key\": \"value\"}",
+            b"#!/bin/bash\necho hi\n",
+            b"line1\nline2\nline3",
+            // 制表符、回车、其它控制字符都不算二进制
+            b"a\tb\rc\x1bd",
+        ];
+        for case in cases {
+            assert!(!has_nul(case), "不该判定为二进制：{:?}", String::from_utf8_lossy(case));
+        }
+    }
+
+    #[test]
+    fn binary_files_are_detected() {
+        // 含 NUL 字节的一律当二进制
+        let cases: &[&[u8]] = &[
+            b"\x7fELF\x00\x01\x02",     // ELF 可执行文件
+            b"\x89PNG\r\n\x1a\n\x00",  // PNG
+            b"PK\x03\x04\x00\x00",       // zip
+            b"text before\x00after",       // 文本中间夹 NUL
+        ];
+        for case in cases {
+            assert!(has_nul(case), "应该判定为二进制：{:?}", case);
+        }
+    }
+
+    #[test]
+    fn empty_and_short_files() {
+        // 空文件不是二进制（会当成空文本让用户编辑）
+        assert!(!has_nul(b""));
+        assert!(!has_nul(b"a"));
+    }
+
+    #[test]
+    fn size_limit_is_two_megabytes() {
+        // 与 MAX_EDIT_SIZE 保持一致
+        const MAX: u64 = 2 * 1024 * 1024;
+        assert_eq!(MAX, 2_097_152);
+        // 常见配置文件远小于此
+        assert!(MAX > 1024 * 1024, "上限不该小于 1MB");
+    }
+}

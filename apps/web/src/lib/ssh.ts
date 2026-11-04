@@ -328,3 +328,46 @@ export function base64ToBlob(base64: string, type = "application/octet-stream"):
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return new Blob([bytes], { type });
 }
+
+/*
+ * ─────────────────────────────────────────────
+ * 文件编辑
+ * ─────────────────────────────────────────────
+ */
+
+/** 文件元信息，用于判断能否编辑。 */
+export interface RemoteFileStat {
+  size: number;
+  modified: number;
+  /** 头部含 NUL 字节，不是文本文件 */
+  binary: boolean;
+  /** 超过 2MB 编辑上限 */
+  tooLarge: boolean;
+}
+
+/** 取远端文件元信息。 */
+export async function sftpStat(sessionId: string, path: string): Promise<RemoteFileStat> {
+  const invoke = await getInvoke();
+  return invoke<RemoteFileStat>("sftp_stat", { sessionId, path });
+}
+
+/** 读取文本文件。超过上限或二进制会抛错。 */
+export async function sftpReadText(sessionId: string, path: string): Promise<string> {
+  const invoke = await getInvoke();
+  return invoke<string>("sftp_read_text", { sessionId, path });
+}
+
+/**
+ * 写入文本文件。
+ *
+ * 服务端用「临时文件 + rename」做原子替换，
+ * 中途失败不会破坏原文件。
+ */
+export async function sftpWriteText(
+  sessionId: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke("sftp_write_text", { sessionId, path, content });
+}

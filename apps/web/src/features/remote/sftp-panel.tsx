@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { FileEdit } from "lucide-react";
+import { FileEditor } from "./editor/file-editor";
 import {
   pickOpenPath,
   pickSavePath,
@@ -94,6 +96,8 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
   const [menu, setMenu] = React.useState<{ x: number; y: number; entry: SftpEntry } | null>(null);
   /** 待确认删除的条目（删除是高危操作，必须二次确认） */
   const [pendingDelete, setPendingDelete] = React.useState<SftpEntry | null>(null);
+  /** 正在编辑的文件路径；null 表示编辑器关闭 */
+  const [editing, setEditing] = React.useState<string | null>(null);
   const { tasks: transfers, add, patch, remove, clearFinished } = useTransfers();
   const [showTransfers, setShowTransfers] = React.useState(false);
 
@@ -558,6 +562,19 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
+      {/* 文件编辑器：全屏面板，带冲突检测与未保存保护 */}
+      {editing ? (
+        <FileEditor
+          sessionId={sessionId}
+          path={editing}
+          open
+          onClose={() => {
+            setEditing(null);
+            void load(path);
+          }}
+        />
+      ) : null}
+
       {/* 右键菜单 */}
       {menu ? (
         <ContextMenu
@@ -571,6 +588,18 @@ export function SftpPanel({ sessionId }: { sessionId: string }) {
                     label: "下载",
                     icon: Download,
                     onSelect: () => void handleDownload(menu.entry),
+                  },
+                  {
+                    label: "编辑",
+                    icon: FileEdit,
+                    onSelect: () => {
+                      /*
+                       * 不在这里做前置检查 —— 交给编辑器内部 stat。
+                       * 右键那一刻拿到的 size/mtime 可能已经过期，
+                       * 与其用旧信息判断，不如让真正读文件的那步报错。
+                       */
+                      setEditing(menu.entry.path);
+                    },
                   },
                 ]),
             {
