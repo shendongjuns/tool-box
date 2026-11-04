@@ -53,7 +53,16 @@ export function ToolWorkspace() {
         <div
           key={tab.toolId}
           data-tool-panel={tab.toolId}
-          className={cn("min-h-0 flex-1", tab.toolId !== activeId && "hidden")}
+          /*
+           * 这一层必须是 flex 容器。
+           *
+           * 它既是父级 flex-col 的子项（需要 flex-1 撑满高度），
+           * 又是 ToolPanel 的父级（ToolPanel 用 flex-1 撑满它）。
+           * 少了 flex flex-col，内层的高度约束就断了 ——
+           * 表现是文件列表无法单独滚动，整页跟着一起滚，
+           * 文件多了想切标签要滚很久。
+           */
+          className={cn("flex min-h-0 flex-1 flex-col", tab.toolId !== activeId && "hidden")}
         >
           <ToolPanel toolId={tab.toolId} selfLayout={SELF_LAYOUT.has(tab.toolId)} />
         </div>

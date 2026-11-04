@@ -76,8 +76,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenCommand={() => setCommandOpen(true)} />
         <main
+          /*
+           * 这里**不能**加 overflow-y-auto。
+           *
+           * 加了之后，内容一旦超过窗口高度，滚动条就长在 main 上，
+           * 内部的 flex-1 链失去高度约束 —— 表现是文件列表、
+           * 终端这些本该独立滚动的区域不再独立，整个页面一起滚。
+           *
+           * 正确做法：main 只负责布局（撑满剩余高度、不分段），
+           * 具体哪个区域要滚动由内层组件自己决定。
+           */
           className={cn(
-            "flex min-h-0 flex-1 flex-col overflow-y-auto",
+            "flex min-h-0 flex-1 flex-col overflow-hidden",
             "bg-[radial-gradient(circle_at_100%_0%,color-mix(in_oklch,var(--primary)_7%,transparent),transparent_45%)]",
           )}
         >
@@ -86,20 +96,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             窗口最大化 / 全屏后，顶栏与内边距都不变，
             但 vh 会把浏览器 chrome 算进去，导致内容溢出或留白。
           */}
-          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-7">
-            {/*
-              工具工作区常驻在这里，而不是在工具路由里。
-
-              原因：工具路由切换会卸载组件，输入内容与滚动位置全丢。
-              放在 AppShell 层后，只要还在 /tools/* 下，
-              ToolWorkspace 就一直挂着，只有离开整个工具区才卸载。
-
-              {children} 在工具页时渲染 null（路由组件只登记标签），
-              所以不会重复渲染。
-            */}
-            <ToolArea />
-            {children}
-          </div>
+          {/*
+            内层容器负责滚动。
+            
+            区分两种页面：
+            - 普通页面（仪表盘/设置）：内容超出时在这里滚动
+            - 工具区（/tools/*）：由 ToolWorkspace 内部的各个面板
+              自己决定谁滚（文件列表、终端输出各滚各的），
+              这里不能滚，否则整页一起动。
+          */}
+          <ContentArea>{children}</ContentArea>
         </main>
       </div>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
@@ -112,6 +118,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
  * 仅在 /tools/* 路由下显示工作区；其余页面显示 children。
  * 用一个判断避免「仪表盘和工具同时出现」。
  */
+/**
+ * 内容区。
+ *
+ * 工具页与非工具页的滚动行为不同：
+ * - 工具页：容器不可滚，让内部面板自己滚（文件列表、终端输出）
+ * - 普通页：容器可滚，内容超出窗口时在这里滚动
+ *
+ * 之前 main 上加了 overflow-y-auto，导致两种页面共用同一个
+ * 滚动容器 —— 文件列表一长，整页跟着滚，切标签要滚很久。
+ */
+function ContentArea({ children }: { children: React.ReactNode }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const inTools = pathname.startsWith("/tools/");
+
+  return (
+    <div
+      className={cn(
+        "mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-6 py-7",
+        // 普通页自己滚；工具页交给内部面板
+        !inTools && "overflow-y-auto",
+      )}
+    >
+      <ToolArea />
+      {children}
+    </div>
+  );
+}
+
 function ToolArea() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const inTools = pathname.startsWith("/tools/");
