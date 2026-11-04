@@ -66,6 +66,19 @@ docker compose up -d
 > 镜像目前在 ghcr.io 上是私有包，需要先用 GitHub Token 登录一次。
 > 详细步骤见 [Wiki 的部署页面](https://github.com/shendongjuns/tool-box/wiki/%E9%83%A8%E7%BD%B2)。
 
+**升级**也分两种，对应你当初的安装方式：
+
+```bash
+# 拉镜像部署的 —— 拉新版重启
+docker compose pull && docker compose up -d
+
+# 源码构建部署的 —— 拉代码重建
+git pull && cd docker && docker compose up -d --build
+```
+
+升级前建议先 `cp -r data data.backup-$(date +%Y%m%d)`。数据在挂载卷里不会被覆盖，
+但多一层保险总没错。
+
 ## 文档
 
 完整文档在 **[Wiki](https://github.com/shendongjuns/tool-box/wiki)**：
