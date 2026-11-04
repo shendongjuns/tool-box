@@ -46,6 +46,8 @@ export function FileEditor({ sessionId, path, open, onClose }: FileEditorProps) 
   const [draft, setDraft] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [conflict, setConflict] = React.useState<RemoteFileStat | null>(null);
+  /** 有未保存修改时点关闭，先弹窗确认 */
+  const [pendingClose, setPendingClose] = React.useState(false);
 
   const fileName = path.split("/").pop() ?? path;
   const dirty = state.kind === "ready" && draft !== state.fromDisk;
@@ -122,7 +124,10 @@ export function FileEditor({ sessionId, path, open, onClose }: FileEditorProps) 
 
   /** 关闭前的未保存检查。 */
   const requestClose = React.useCallback(() => {
-    if (dirty && !window.confirm("有未保存的修改，确定关闭？")) return;
+    if (dirty) {
+      setPendingClose(true);
+      return;
+    }
     onClose();
   }, [dirty, onClose]);
 
@@ -199,6 +204,37 @@ export function FileEditor({ sessionId, path, open, onClose }: FileEditorProps) 
                 保存
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 未保存确认：统一风格的对话框，不用浏览器原生 confirm */}
+      <Dialog open={pendingClose} onOpenChange={setPendingClose}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              放弃未保存的修改？
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            你对 <span className="break-all font-mono text-xs text-foreground">{fileName}</span>{" "}
+            的修改还没有保存，关闭后这些内容会丢失。
+          </p>
+          <DialogFooter>
+            <Button size="sm" variant="ghost" onClick={() => setPendingClose(false)}>
+              继续编辑
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                setPendingClose(false);
+                onClose();
+              }}
+            >
+              放弃修改
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

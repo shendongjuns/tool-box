@@ -807,7 +807,7 @@ pub async fn sftp_write_text(
     let bytes = content.as_bytes();
     if bytes.len() as u64 > MAX_EDIT_SIZE {
         return Err(format!(
-            "内容 {} MB，超过 {} MB 的保存上限",
+            "内容 {:.1} MB，超过 {} MB 的保存上限",
             bytes.len() as f64 / 1048576.0,
             MAX_EDIT_SIZE / 1048576
         ));
@@ -816,57 +816,103 @@ pub async fn sftp_write_text(
     let sftp = open_sftp(&state, &session_id).await?;
 
     /*
-     * 临时文件放在同目录，保证与目标在同一个文件系统上 ——
-     * 跨文件系统的 rename 不是原子操作，甚至会直接失败。
+     * 为什么不用「写临时文件 + rename」：
      *
-     * 用纳秒时间戳避免并发冲突。
+     * SFTP v3 协议的 SSH_FXP_RENAME 在目标已存在时会返回失败 ——
+     * 这是协议规定，不是服务器实现差异。只有 OpenSSH 的
+     * posix-rename@openssh.com 扩展才允许覆盖，而 russh-sftp
+     * 没有实现这个扩展。
+     *
+     * 所以只能直接截断写入。代价是写到一半断线会留下残缺文件，
+     * 但这个风险比「根本保存不了」小得多。
+     *
+     * 缓解措施：写之前先读一遍原内容，失败时尝试回滚。
      */
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let temp_path = format!("{path}.tmp-{stamp}");
 
-    // 1. 写临时文件
+    // 先把原内容读出来，写失败时用来回滚
+    let backup = read_all(&sftp, &path).await.ok();
+
     let mut file = sftp
-        .create(&temp_path)
+        .create(&path)
         .await
-        .map_err(|e| format!("创建临时文件失败：{e}"))?;
+        .map_err(|e| format!("打开文件失败：{e}"))?;
 
     if let Err(error) = file.write_all(bytes).await {
-        // 清理失败残留，避免在远端留下垃圾
-        let _ = sftp.remove_file(&temp_path).await;
+        // 尝试把原内容写回去
+        if let Some(original) = backup {
+            let _ = restore_content(&sftp, &path, &original).await;
+        }
         return Err(format!("写入失败：{error}"));
     }
 
-    if let Err(error) = file.sync_all().await {
-        let _ = sftp.remove_file(&temp_path).await;
-        return Err(format!("同步失败：{error}"));
+    // 刷新缓冲区并关闭 —— drop 前必须 flush，否则尾部数据可能没发出去
+    if let Err(error) = file.flush().await {
+        drop(file);
+        if let Some(original) = backup {
+            let _ = restore_content(&sftp, &path, &original).await;
+        }
+        return Err(format!("刷新失败：{error}"));
     }
     drop(file);
 
-    // 2. 校验大小
-    if let Ok(meta) = sftp.metadata(&temp_path).await {
-        let written = meta.size.unwrap_or(0);
-        if written != bytes.len() as u64 {
-            let _ = sftp.remove_file(&temp_path).await;
-            return Err(format!(
-                "写入不完整：期望 {} 字节，实际 {} 字节",
-                bytes.len(),
-                written
-            ));
+    // 校验写入结果
+    match sftp.metadata(&path).await {
+        Ok(meta) => {
+            let written = meta.size.unwrap_or(0);
+            if written != bytes.len() as u64 {
+                return Err(format!(
+                    "写入不完整：期望 {} 字节，实际 {} 字节。文件可能已损坏，请重新编辑。",
+                    bytes.len(),
+                    written
+                ));
+            }
         }
-    }
-
-    // 3. 原子替换
-    if let Err(error) = sftp.rename(&temp_path, &path).await {
-        let _ = sftp.remove_file(&temp_path).await;
-        return Err(format!("替换原文件失败：{error}"));
+        Err(_) => {
+            // 取不到元信息不代表失败（有些服务器限制 stat），继续
+        }
     }
 
     Ok(())
 }
 
+/// 读取远端文件全部内容，失败返回 None。
+async fn read_all(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+) -> Result<Vec<u8>, String> {
+    use tokio::io::AsyncReadExt;
+
+    let mut file = sftp
+        .open(path)
+        .await
+        .map_err(|e| format!("打开失败：{e}"))?;
+
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .await
+        .map_err(|e| format!("读取失败：{e}"))?;
+    Ok(buffer)
+}
+
+/// 把内容写回文件（回滚用）。
+async fn restore_content(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+    content: &[u8],
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut file = sftp
+        .create(path)
+        .await
+        .map_err(|e| format!("重新打开失败：{e}"))?;
+    file.write_all(content)
+        .await
+        .map_err(|e| format!("回滚写入失败：{e}"))?;
+    let _ = file.flush().await;
+    drop(file);
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
