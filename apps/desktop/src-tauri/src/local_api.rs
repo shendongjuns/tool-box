@@ -384,13 +384,56 @@ fn header(name: &str, value: &str) -> Header {
 /// 就能读走全部会话令牌。
 fn is_allowed_origin(origin: Option<&str>) -> bool {
     match origin {
+        // 非浏览器发起的请求（curl、同源请求）没有 Origin 头
         None => true,
         Some(value) => {
-            value.starts_with("tauri://")
+            // 生产模式：页面由 Tauri 从内嵌资源加载
+            if value.starts_with("tauri://")
                 || value.starts_with("http://tauri.localhost")
                 || value.starts_with("https://tauri.localhost")
+            {
+                return true;
+            }
+
+            /*
+             * 开发模式：页面由 Vite dev server 提供，Origin 是
+             * http://localhost:5173 或 http://127.0.0.1:5173。
+             *
+             * 不放行这一条的话，pnpm desktop:dev 时页面能打开，
+             * 但所有本地 API 请求都会被拒 —— 表现为
+             * 「连不上这个数据源」，而打包后的 exe 却正常。
+             */
+            is_dev_origin(value)
         }
     }
+}
+
+/// 是否是 Vite 开发服务器的来源。
+///
+/// 只在 debug 构建里接受：release 包里页面从 tauri:// 加载，
+/// 不该出现 localhost:5173。多放行一条入口就多一分被利用的可能，
+/// 所以用 cfg!(debug_assertions) 把它限制在开发构建中。
+///
+/// 同时严格限定回环地址 + 特定端口，避免被局域网内的网页利用。
+fn is_dev_origin(origin: &str) -> bool {
+    if !cfg!(debug_assertions) {
+        return false;
+    }
+
+    let Some(rest) = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+    else {
+        return false;
+    };
+
+    // 期望形如 localhost:5173 / 127.0.0.1:5173 / [::1]:5173
+    let Some((host, port)) = rest.rsplit_once(':') else {
+        return false;
+    };
+
+    let is_loopback = host == "localhost" || host == "127.0.0.1" || host == "[::1]";
+    is_loopback && port == "5173"
 }
 
 /// 构造响应头。origin 用于回显允许的来源。

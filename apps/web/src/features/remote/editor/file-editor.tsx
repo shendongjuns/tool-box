@@ -10,7 +10,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { sftpReadText, sftpStat, sftpWriteText, type RemoteFileStat } from "@/lib/ssh";
-import { CodeEditor } from "./code-editor";
+/*
+ * CodeEditor 懒加载。
+ *
+ * CodeMirror 连同语言包约 500KB —— 直接静态导入会把它塞进
+ * remote-page 这个常驻 chunk 里（从 445KB 涨到 1.1MB），
+ * 而用户可能整个会话都不打开编辑器。
+ *
+ * 改成 lazy 之后，只有点「编辑」时才下载这部分代码。
+ */
+const CodeEditor = React.lazy(() =>
+  import("./code-editor").then((module) => ({ default: module.CodeEditor })),
+);
 
 /**
  * 远端文件编辑器。
@@ -175,7 +186,21 @@ export function FileEditor({ sessionId, path, open, onClose }: FileEditorProps) 
               </Button>
             </div>
           ) : (
-            <CodeEditor value={draft} onChange={setDraft} path={path} className="min-h-0 flex-1" />
+            <React.Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载编辑器…
+                </div>
+              }
+            >
+              <CodeEditor
+                value={draft}
+                onChange={setDraft}
+                path={path}
+                className="min-h-0 flex-1"
+              />
+            </React.Suspense>
           )}
 
           <DialogFooter className="shrink-0 items-center justify-between gap-2 sm:justify-between">

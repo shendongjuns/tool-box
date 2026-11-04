@@ -1,5 +1,5 @@
 import * as React from "react";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -11,7 +11,7 @@ import {
 } from "@codemirror/language";
 import { classHighlighter } from "@lezer/highlight";
 import { cn } from "@/lib/utils";
-import { detectLanguage } from "./language";
+import { findLanguageLoader } from "./language";
 
 /**
  * 代码编辑器。
@@ -46,6 +46,15 @@ export function CodeEditor({ value, onChange, path, readOnly, className }: CodeE
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  /**
+   * 语言扩展先留空，异步加载完再通过 dispatch 注入。
+   *
+   * 这样做而不是「等语言加载完再建编辑器」：
+   * 后者会让打开大文件时白屏等 HTTP 往返，
+   * 前者是先显示纯文本，高亮到位后再刷新（视觉上几乎无感）。
+   */
+  const languageCompartment = React.useRef(new Compartment());
+
   React.useEffect(() => {
     const parent = containerRef.current;
     if (!parent) return;
@@ -65,7 +74,8 @@ export function CodeEditor({ value, onChange, path, readOnly, className }: CodeE
        * 具体颜色交给 CSS 变量，这样深浅色切换不用重建编辑器。
        */
       syntaxHighlighting(classHighlighter),
-      detectLanguage(path) ?? [],
+      // 语言扩展放在 compartment 里，稍后异步填充
+      languageCompartment.current.of([]),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         if (applyingExternal.current) return;
@@ -88,6 +98,33 @@ export function CodeEditor({ value, onChange, path, readOnly, className }: CodeE
     // 只在挂载时建一次；value 的变化走下面的同步逻辑
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, readOnly]);
+
+  // 异步加载语言包，加载完注入 compartment
+  React.useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    const loader = findLanguageLoader(path);
+    if (!loader) return;
+
+    let cancelled = false;
+    void loader()
+      .then((extension) => {
+        if (cancelled || !extension) return;
+        // 二次确认 view 还是同一个（快速切换文件时可能已重建）
+        if (viewRef.current !== view) return;
+        view.dispatch({
+          effects: languageCompartment.current.reconfigure(extension),
+        });
+      })
+      .catch(() => {
+        /* 语言包加载失败就保持纯文本，不影响编辑 */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
 
   // 外部 value 变化时同步进编辑器（不重建实例）
   React.useEffect(() => {
