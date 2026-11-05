@@ -1,6 +1,6 @@
 [package]
 name = "toolbox-desktop"
-version = "2.1.0"
+version = "2.2.0"
 description = "ToolBox 2.0 desktop shell"
 authors = ["shendongjuns"]
 edition = "2021"
