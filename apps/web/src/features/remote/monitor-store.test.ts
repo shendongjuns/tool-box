@@ -4,46 +4,17 @@ import {
   isActivated,
   isMonitoring,
   markActivated,
-  pauseMonitor,
-  readBackgroundCollection,
-  resumeMonitor,
-  saveBackgroundCollection,
   startMonitor,
 } from "./monitor-store";
 
 /**
- * 后台采集开关与激活标记的行为验证。
+ * 监控采集引擎的行为验证。
  *
- * 核心约束：
- * - 新会话不自动采集（用户可能只用终端）
- * - 打开过监控页之后才标记为已激活
- * - 切走后是否继续采集，由开关决定
+ * 三条规则：
+ * 1. 新会话不自动采集（用户可能只想用终端）
+ * 2. 打开过监控页之后才标记为已激活
+ * 3. 一旦激活就持续采集，直到会话关闭
  */
-
-describe("后台采集开关", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  it("默认开启", () => {
-    expect(readBackgroundCollection()).toBe(true);
-  });
-
-  it("能保存关闭状态", () => {
-    saveBackgroundCollection(false);
-    expect(readBackgroundCollection()).toBe(false);
-  });
-
-  it("能保存开启状态", () => {
-    saveBackgroundCollection(true);
-    expect(readBackgroundCollection()).toBe(true);
-  });
-
-  it("空字符串视为默认开启", () => {
-    window.localStorage.setItem("toolbox.monitor.background", "");
-    expect(readBackgroundCollection()).toBe(true);
-  });
-});
 
 describe("激活标记", () => {
   it("新会话默认未激活", () => {
@@ -67,90 +38,12 @@ describe("激活标记", () => {
 
     dropMonitor("session-z");
 
-    // 重新连接同一个服务器时应该重新判断 —— 否则会立刻开始采集
+    // 重新连接同一服务器时应重新判断，而不是立刻开始采集
     expect(isActivated("session-z")).toBe(false);
   });
 });
 
-describe("开关与 active 的协同", () => {
-  let collectCount = 0;
-  const collect = async () => {
-    collectCount += 1;
-  };
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    collectCount = 0;
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    dropMonitor("combo-test");
-    vi.useRealTimers();
-  });
-
-  it("关闭开关时若仍在监控页，采集必须继续", async () => {
-    /*
-     * 这是用户明确提出的规则：
-     * 开关只决定「切走之后」是否继续，不影响眼下的采集。
-     *
-     * 模拟：正在看监控页，把开关从开拨到关
-     * 期望：采集不中断
-     */
-    startMonitor("combo-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    const before = collectCount;
-    expect(before).toBeGreaterThan(0);
-
-    saveBackgroundCollection(false);
-    // 关键：不调用 pauseMonitor —— 因为还在监控页
-
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(collectCount).toBeGreaterThan(before);
-  });
-
-  it("关闭开关后切走，采集才暂停", async () => {
-    startMonitor("combo-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    const running = collectCount;
-
-    saveBackgroundCollection(false);
-    // 切走 -> 触发暂停
-    pauseMonitor("combo-test");
-
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(collectCount).toBe(running);
-  });
-
-  it("切回监控页时恢复采集，不受开关影响", async () => {
-    startMonitor("combo-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    pauseMonitor("combo-test");
-    const paused = collectCount;
-
-    // 即使开关是关的，切回来也要继续采
-    saveBackgroundCollection(false);
-    resumeMonitor("combo-test");
-
-    await vi.advanceTimersByTimeAsync(1100);
-    expect(collectCount).toBeGreaterThan(paused);
-  });
-
-  it("开口时立即恢复被暂停的采集", async () => {
-    startMonitor("combo-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    pauseMonitor("combo-test");
-    const paused = collectCount;
-
-    saveBackgroundCollection(true);
-    resumeMonitor("combo-test");
-
-    await vi.advanceTimersByTimeAsync(1100);
-    expect(collectCount).toBeGreaterThan(paused);
-  });
-});
-
-describe("采集引擎的暂停与恢复", () => {
+describe("采集引擎", () => {
   let collectCount = 0;
   const collect = async () => {
     collectCount += 1;
@@ -166,39 +59,81 @@ describe("采集引擎的暂停与恢复", () => {
     vi.useRealTimers();
   });
 
-  it("暂停后不再采集", async () => {
+  it("启动后按间隔持续采集", async () => {
     startMonitor("engine-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    const afterFirst = collectCount;
-    expect(afterFirst).toBeGreaterThan(0);
 
-    pauseMonitor("engine-test");
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(collectCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(collectCount).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(collectCount).toBe(4);
+  });
+
+  it("间隔为 0 时不采集", async () => {
+    startMonitor("engine-test", 0, collect);
     await vi.advanceTimersByTimeAsync(5000);
-
-    expect(collectCount).toBe(afterFirst);
+    expect(collectCount).toBe(0);
   });
 
-  it("恢复后继续采集", async () => {
+  it("重复调用 startMonitor 不会产生第二个定时器", async () => {
     startMonitor("engine-test", 1000, collect);
-    await vi.advanceTimersByTimeAsync(1100);
-    pauseMonitor("engine-test");
+    startMonitor("engine-test", 1000, collect);
+    startMonitor("engine-test", 1000, collect);
 
-    const paused = collectCount;
-    resumeMonitor("engine-test");
     await vi.advanceTimersByTimeAsync(1100);
-
-    expect(collectCount).toBeGreaterThan(paused);
+    // 如果产生了多个定时器，这里会是 3
+    expect(collectCount).toBe(1);
   });
 
-  it("暂停不丢数据，isMonitoring 仍为 true", () => {
+  it("切换间隔后按新间隔采集", async () => {
     startMonitor("engine-test", 1000, collect);
-    pauseMonitor("engine-test");
-    // 引擎还在，只是定时器停了 —— 与 dropMonitor 不同
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(collectCount).toBe(1);
+
+    startMonitor("engine-test", 3000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    // 还没到 3 秒
+    expect(collectCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(collectCount).toBe(2);
+  });
+
+  it("dropMonitor 之后彻底停止", async () => {
+    startMonitor("engine-test", 1000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    const before = collectCount;
+
+    dropMonitor("engine-test");
+    expect(isMonitoring("engine-test")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(collectCount).toBe(before);
+  });
+
+  it("采集抛错不中断循环", async () => {
+    let calls = 0;
+    const flaky = async () => {
+      calls += 1;
+      throw new Error("网络抖动");
+    };
+
+    startMonitor("engine-test", 1000, flaky);
+    await vi.advanceTimersByTimeAsync(3100);
+
+    // 抛错后仍应继续排下一次
+    expect(calls).toBeGreaterThanOrEqual(3);
+  });
+
+  it("isMonitoring 反映真实状态", () => {
+    expect(isMonitoring("engine-test")).toBe(false);
+
+    startMonitor("engine-test", 1000, collect);
     expect(isMonitoring("engine-test")).toBe(true);
-  });
 
-  it("dropMonitor 之后彻底停止", () => {
-    startMonitor("engine-test", 1000, collect);
     dropMonitor("engine-test");
     expect(isMonitoring("engine-test")).toBe(false);
   });

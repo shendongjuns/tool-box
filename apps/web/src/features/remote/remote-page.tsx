@@ -1,14 +1,5 @@
 import * as React from "react";
-import {
-  Activity,
-  FolderOpen,
-  Plus,
-  Power,
-  RefreshCw,
-  TerminalSquare,
-  Unplug,
-  X,
-} from "lucide-react";
+import { Activity, FolderOpen, Plus, RefreshCw, TerminalSquare, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
 import type { MonitorMetrics, Server, ServerInfo } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -41,12 +32,8 @@ import {
   REFRESH_OPTIONS,
   notifyMonitor,
   saveRefreshInterval,
-  markActivated,
   isActivated,
-  pauseMonitor,
-  readBackgroundCollection,
-  resumeMonitor,
-  saveBackgroundCollection,
+  markActivated,
   startMonitor,
   subscribeMonitor,
   writeMonitor,
@@ -494,10 +481,12 @@ function TerminalHost({
  *
  * @param active 当前是否正在查看这个标签。
  *
- * 采集的启动与持续由 active + 后台开关共同决定：
+ * 采集的生命周期：
  * - 从未启动过：只有 active 变 true 才启动（用户第一次打开监控页）
- * - 已启动 + 后台采集开启：active 变 false 也继续跑
- * - 已启动 + 后台采集关闭：active 变 false 就暂停
+ * - 一旦启动：持续采集到会话关闭，切走切回都不停
+ *
+ * 「切走就暂停」被刻意排除：切回来时曲线会断档，
+ * 用户看到的是「机器一直闲着」的错觉，而实际只是没采。
  */
 function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean }) {
   /*
@@ -515,8 +504,6 @@ function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean 
   const [loading, setLoading] = React.useState(!cached?.metrics);
   const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
   const [interval, setIntervalValue] = React.useState<RefreshInterval>(() => readRefreshInterval());
-  /** 切走监控页后是否继续采集 */
-  const [background, setBackground] = React.useState(() => readBackgroundCollection());
 
   /** 从 store 同步到组件 state（单向） */
   const syncFromStore = React.useCallback(() => {
@@ -594,15 +581,14 @@ function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean 
 
     startMonitor(sessionId, interval, runOnce);
 
-    if (active) {
-      resumeMonitor(sessionId);
-      return;
-    }
-
-    // 切走了：按后台采集开关决定停不停
-    if (!readBackgroundCollection()) {
-      pauseMonitor(sessionId);
-    }
+    /*
+     * 一旦启动过，就一直采集到会话关闭。
+     *
+     * 不做「切走就暂停」的原因：
+     * 切回来时曲线会断档，用户看到的是「这几年机器一直闲着」
+     * 的错觉 —— 而实际只是没采。持续性比省那点 SSH 往返更重要。
+     */
+    void active;
   }, [sessionId, interval, active]);
 
   function changeInterval(value: RefreshInterval) {
@@ -673,44 +659,6 @@ function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean 
         ) : (
           <span className="text-[10px] text-muted-foreground">每 {interval / 1000}s 刷新</span>
         )}
-
-        {/* 后台持续采集开关 */}
-        <button
-          type="button"
-          role="switch"
-          aria-checked={background}
-          aria-label="切走后继续采集"
-          title={
-            background
-              ? "切到终端或文件后仍继续采集，历史曲线保持连续"
-              : "切走后暂停采集，省服务器资源"
-          }
-          onClick={() => {
-            const next = !background;
-            setBackground(next);
-            saveBackgroundCollection(next);
-
-            /*
-             * 开关只影响「切走之后」的行为，不影响眼下的采集。
-             *
-             * 关键：正在看监控页时，无论开关怎么拨，采集都必须继续。
-             * 用户此刻就盯着曲线，停掉等于界面卡死不更新。
-             *
-             * - 开着 -> 关掉：什么都不做，采集继续；等切走时才暂停
-             * - 关着 -> 打开：立即恢复（如果切走期间被暂停过）
-             */
-            if (next) resumeMonitor(sessionId);
-          }}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] transition-colors",
-            background
-              ? "border-primary/40 bg-primary/[0.06] text-primary"
-              : "border-border text-muted-foreground hover:bg-accent/60",
-          )}
-        >
-          <Power className="h-3 w-3" />
-          后台采集
-        </button>
 
         {metrics ? (
           <span className="ml-auto text-[10px] text-muted-foreground">
