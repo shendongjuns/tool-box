@@ -855,15 +855,27 @@ pub async fn sftp_write_text(
     }
     drop(file);
 
-    // 校验写入结果
+    /*
+     * 校验写入结果。
+     *
+     * 大小不符说明写入被截断（磁盘满、连接中断）。
+     * 此时文件已经损坏，**必须回滚** —— 否则用户看到「保存失败」
+     * 却留下一个半截文件，比原样不动更糟。
+     */
     match sftp.metadata(&path).await {
         Ok(meta) => {
             let written = meta.size.unwrap_or(0);
             if written != bytes.len() as u64 {
+                if let Some(original) = backup {
+                    let _ = restore_content(&sftp, &path, &original).await;
+                    return Err(format!(
+                        "写入不完整（期望 {} 字节，实际 {written} 字节），已恢复原内容",
+                        bytes.len()
+                    ));
+                }
                 return Err(format!(
-                    "写入不完整：期望 {} 字节，实际 {} 字节。文件可能已损坏，请重新编辑。",
-                    bytes.len(),
-                    written
+                    "写入不完整：期望 {} 字节，实际 {written} 字节。文件可能已损坏，请重新编辑。",
+                    bytes.len()
                 ));
             }
         }

@@ -60,3 +60,11 @@ minimumReleaseAgeExclude:
 # 经 fastify -> ajv 传递引入。4.2.2 已修复，此处强制提升。
 overrides:
   fast-uri: ^4.2.3
+
+  # glob <=14.0.1 存在 ReDoS 风险（GHSA-g3hv-75wg-m249），
+  # 经 @fastify/static 传递引入（静态文件服务用）。
+  glob: ^14.0.2
+
+  # minimatch <11.0.1 存在 ReDoS 风险，
+  # 经 typescript-eslint 传递引入（只在开发期用）。
+  minimatch: ^11.0.1
