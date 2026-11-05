@@ -1,11 +1,21 @@
 import * as React from "react";
-import { Cpu, HardDrive, MemoryStick, Network, Search, Server, Thermometer, X } from "lucide-react";
+import {
+  Clock,
+  Cpu,
+  HardDrive,
+  MemoryStick,
+  Network,
+  Search,
+  Server,
+  Thermometer,
+  X,
+} from "lucide-react";
 import type { MonitorMetrics, ServerInfo } from "@toolbox/contracts";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CpuChart, DiskBars, GpuCharts, MemoryChart, NetworkChart, NpuCharts } from "./charts";
-import { formatBytes } from "./format";
+import { formatBytes, formatUptime } from "./format";
 
 /** 使用率对应的文字色。 */
 function toneClass(percent: number): string {
@@ -100,6 +110,12 @@ export function MonitorPanel({
             {info.os ? <span className="text-muted-foreground">{info.os}</span> : null}
             {info.kernel ? (
               <span className="text-muted-foreground">kernel {info.kernel}</span>
+            ) : null}
+            {metrics.uptimeSeconds !== null ? (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                已运行 {formatUptime(metrics.uptimeSeconds)}
+              </span>
             ) : null}
             {info.cpuModel ? (
               <span className="max-w-[20rem] truncate text-muted-foreground">

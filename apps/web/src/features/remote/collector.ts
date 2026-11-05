@@ -33,6 +33,8 @@ const METRICS_COMMAND = [
   "df -P -B1 2>/dev/null || df -P 2>/dev/null || true",
   "echo '==NET=='",
   "cat /proc/net/dev 2>/dev/null || true",
+  "echo '==UPTIME=='",
+  "cat /proc/uptime 2>/dev/null || true",
   "echo '==LOAD=='",
   "cat /proc/loadavg 2>/dev/null || true",
   "echo '==NPROC=='",
@@ -137,6 +139,17 @@ export class MonitorCollector {
     }
     if (netNow) this.prevNet = { ...netNow, at: now };
 
+    /*
+     * 系统运行时长。
+     *
+     * /proc/uptime 第一列是「自启动以来的秒数」（带小数）。
+     * 拿不到就返回 null，界面上不显示 —— 而不是显示 0，
+     * 那会让人误以为刚重启过。
+     */
+    const uptimeRaw = (sections.uptime ?? "").trim().split(/\s+/)[0] ?? "";
+    const uptimeSeconds = Number.parseFloat(uptimeRaw);
+    const uptime = Number.isFinite(uptimeSeconds) ? Math.floor(uptimeSeconds) : null;
+
     // 负载
     const load = (sections.load ?? "").trim().split(/\s+/);
     const load1 = Number(load[0]) || 0;
@@ -171,6 +184,7 @@ export class MonitorCollector {
       load1,
       load5,
       load15,
+      uptimeSeconds: uptime,
       processes,
     };
   }

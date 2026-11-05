@@ -559,8 +559,15 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-3">
-      {/* 刷新控制条 */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/*
+        刷新控制条固定在顶部。
+        
+        用 sticky 而不是把控制条提到滚动容器外面 ——
+        后者需要重构 MonitorTab 的层级，而 sticky 只需一个类。
+        top-0 + z-index 保证它盖住滚动上来的图表；
+        bg 必须不透明，否则内容会从下面透出来。
+      */}
+      <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 bg-background/95 px-1 py-1.5 backdrop-blur">
         <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
           {REFRESH_OPTIONS.map((option) => (
             <button

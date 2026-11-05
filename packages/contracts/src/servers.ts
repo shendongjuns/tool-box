@@ -102,6 +102,8 @@ export const monitorMetricsSchema = z.object({
   load1: z.number(),
   load5: z.number(),
   load15: z.number(),
+  /** 系统已运行秒数。取不到时为 null。 */
+  uptimeSeconds: z.number().nullable(),
   processes: z.array(monitorProcessSchema),
 });
 export type MonitorMetrics = z.infer<typeof monitorMetricsSchema>;
