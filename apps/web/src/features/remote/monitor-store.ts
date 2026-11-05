@@ -24,6 +24,52 @@ export const REFRESH_OPTIONS: { value: RefreshInterval; label: string }[] = [
 const STORAGE_KEY = "toolbox.monitor.interval";
 const DEFAULT_INTERVAL: RefreshInterval = 1000;
 
+/* ───────────── 后台持续采集开关 ───────────── */
+
+const BACKGROUND_KEY = "toolbox.monitor.background";
+
+/**
+ * 是否在切走监控页后继续采集。默认开启。
+ *
+ * 开启时：会话标签没关就一直采集，切到终端/文件再切回来，
+ *       历史曲线是连续的。
+ * 关闭时：切走即暂停，省后台资源（每次采集都是一次 SSH 往返）。
+ */
+export function readBackgroundCollection(): boolean {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(BACKGROUND_KEY);
+  // 没设置过就是默认开启 —— 注意不能写 !raw，那样默认值会变成 false
+  if (raw === null || raw === "") return true;
+  return raw === "1";
+}
+
+export function saveBackgroundCollection(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(BACKGROUND_KEY, enabled ? "1" : "0");
+}
+
+/* ───────────── 首次启动标记 ───────────── */
+
+/**
+ * 记录哪些会话已经「启动过」采集。
+ *
+ * 采集不应该在会话建立时自动开始 —— 用户可能只想用终端，
+ * 从不看监控，那样每秒一次的 SSH 往返纯属浪费。
+ *
+ * 只有用户第一次打开监控页时才启动，之后按开关决定是否持续。
+ */
+const activated = new Set<string>();
+
+/** 该会话是否已经启动过采集。 */
+export function isActivated(sessionId: string): boolean {
+  return activated.has(sessionId);
+}
+
+/** 标记为已启动。 */
+export function markActivated(sessionId: string): void {
+  activated.add(sessionId);
+}
+
 /** 读取上次选择的刷新间隔。默认 1s。 */
 export function readRefreshInterval(): RefreshInterval {
   if (typeof window === "undefined") return DEFAULT_INTERVAL;
@@ -161,7 +207,34 @@ export function dropMonitor(sessionId: string): void {
     engines.delete(sessionId);
   }
   cache.delete(sessionId);
+  activated.delete(sessionId);
   notifyMonitor(sessionId);
+}
+
+/**
+ * 暂停采集但保留数据。
+ *
+ * 与 dropMonitor 的区别：这个只是停掉定时器，缓存和历史都留着。
+ * 用于「关闭后台采集」或「切走监控页」时临时停下来。
+ */
+export function pauseMonitor(sessionId: string): void {
+  const engine = engines.get(sessionId);
+  if (!engine) return;
+  if (engine.timer !== null) {
+    window.clearTimeout(engine.timer);
+    engine.timer = null;
+  }
+}
+
+/**
+ * 恢复采集。
+ *
+ * 不重新创建引擎，只是重新排程 —— 历史数据自然接上。
+ */
+export function resumeMonitor(sessionId: string): void {
+  const engine = engines.get(sessionId);
+  if (!engine || engine.stopped) return;
+  schedule(sessionId);
 }
 
 /** 引擎是否在跑。 */

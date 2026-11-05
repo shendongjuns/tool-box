@@ -1,5 +1,14 @@
 import * as React from "react";
-import { Activity, FolderOpen, Plus, RefreshCw, TerminalSquare, Unplug, X } from "lucide-react";
+import {
+  Activity,
+  FolderOpen,
+  Plus,
+  Power,
+  RefreshCw,
+  TerminalSquare,
+  Unplug,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { MonitorMetrics, Server, ServerInfo } from "@toolbox/contracts";
 import { useApi } from "@/lib/api-context";
@@ -32,6 +41,12 @@ import {
   REFRESH_OPTIONS,
   notifyMonitor,
   saveRefreshInterval,
+  markActivated,
+  isActivated,
+  pauseMonitor,
+  readBackgroundCollection,
+  resumeMonitor,
+  saveBackgroundCollection,
   startMonitor,
   subscribeMonitor,
   writeMonitor,
@@ -439,7 +454,7 @@ function SessionWorkspace({
           session.tab !== "monitor" && "hidden",
         )}
       >
-        <MonitorTab sessionId={session.sshSessionId} />
+        <MonitorTab sessionId={session.sshSessionId} active={session.tab === "monitor"} />
       </div>
     </div>
   );
@@ -474,7 +489,17 @@ function TerminalHost({
  * 只负责「读 store 快照 + 触发采集配置」，定时器在 monitor-store 里，
  * 因此切到终端/文件或切走会话都不会停止后台记录。
  */
-function MonitorTab({ sessionId }: { sessionId: string }) {
+/**
+ * 监控面板。
+ *
+ * @param active 当前是否正在查看这个标签。
+ *
+ * 采集的启动与持续由 active + 后台开关共同决定：
+ * - 从未启动过：只有 active 变 true 才启动（用户第一次打开监控页）
+ * - 已启动 + 后台采集开启：active 变 false 也继续跑
+ * - 已启动 + 后台采集关闭：active 变 false 就暂停
+ */
+function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean }) {
   /*
    * 组件状态只是 store 的「镜像」。
    *
@@ -490,6 +515,8 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = React.useState(!cached?.metrics);
   const [history, setHistory] = React.useState<MonitorMetrics[]>(cached?.history ?? []);
   const [interval, setIntervalValue] = React.useState<RefreshInterval>(() => readRefreshInterval());
+  /** 切走监控页后是否继续采集 */
+  const [background, setBackground] = React.useState(() => readBackgroundCollection());
 
   /** 从 store 同步到组件 state（单向） */
   const syncFromStore = React.useCallback(() => {
@@ -549,8 +576,34 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
       notifyMonitor(sessionId);
     };
 
+    /*
+     * 首次启动的判定：
+     *
+     * 从没启动过 + 现在正在看 -> 启动
+     * 从没启动过 + 没在看   -> 不启动（用户可能只想用终端）
+     * 已启动过             -> 按后台开关决定
+     */
+    const alreadyRunning = isActivated(sessionId);
+
+    if (!alreadyRunning) {
+      if (!active) return; // 用户还没打开过监控页，不浪费 SSH 往返
+      markActivated(sessionId);
+      startMonitor(sessionId, interval, runOnce);
+      return;
+    }
+
     startMonitor(sessionId, interval, runOnce);
-  }, [sessionId, interval]);
+
+    if (active) {
+      resumeMonitor(sessionId);
+      return;
+    }
+
+    // 切走了：按后台采集开关决定停不停
+    if (!readBackgroundCollection()) {
+      pauseMonitor(sessionId);
+    }
+  }, [sessionId, interval, active]);
 
   function changeInterval(value: RefreshInterval) {
     setIntervalValue(value);
@@ -620,6 +673,35 @@ function MonitorTab({ sessionId }: { sessionId: string }) {
         ) : (
           <span className="text-[10px] text-muted-foreground">每 {interval / 1000}s 刷新</span>
         )}
+
+        {/* 后台持续采集开关 */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={background}
+          aria-label="切走后继续采集"
+          title={
+            background
+              ? "切到终端或文件后仍继续采集，历史曲线保持连续"
+              : "切走后暂停采集，省服务器资源"
+          }
+          onClick={() => {
+            const next = !background;
+            setBackground(next);
+            saveBackgroundCollection(next);
+            if (next) resumeMonitor(sessionId);
+            else pauseMonitor(sessionId);
+          }}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] transition-colors",
+            background
+              ? "border-primary/40 bg-primary/[0.06] text-primary"
+              : "border-border text-muted-foreground hover:bg-accent/60",
+          )}
+        >
+          <Power className="h-3 w-3" />
+          后台采集
+        </button>
 
         {metrics ? (
           <span className="ml-auto text-[10px] text-muted-foreground">
