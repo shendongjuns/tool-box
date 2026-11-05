@@ -689,8 +689,17 @@ function MonitorTab({ sessionId, active }: { sessionId: string; active: boolean 
             const next = !background;
             setBackground(next);
             saveBackgroundCollection(next);
+
+            /*
+             * 开关只影响「切走之后」的行为，不影响眼下的采集。
+             *
+             * 关键：正在看监控页时，无论开关怎么拨，采集都必须继续。
+             * 用户此刻就盯着曲线，停掉等于界面卡死不更新。
+             *
+             * - 开着 -> 关掉：什么都不做，采集继续；等切走时才暂停
+             * - 关着 -> 打开：立即恢复（如果切走期间被暂停过）
+             */
             if (next) resumeMonitor(sessionId);
-            else pauseMonitor(sessionId);
           }}
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] transition-colors",

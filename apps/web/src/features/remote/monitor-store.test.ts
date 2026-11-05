@@ -72,6 +72,84 @@ describe("激活标记", () => {
   });
 });
 
+describe("开关与 active 的协同", () => {
+  let collectCount = 0;
+  const collect = async () => {
+    collectCount += 1;
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    collectCount = 0;
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    dropMonitor("combo-test");
+    vi.useRealTimers();
+  });
+
+  it("关闭开关时若仍在监控页，采集必须继续", async () => {
+    /*
+     * 这是用户明确提出的规则：
+     * 开关只决定「切走之后」是否继续，不影响眼下的采集。
+     *
+     * 模拟：正在看监控页，把开关从开拨到关
+     * 期望：采集不中断
+     */
+    startMonitor("combo-test", 1000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    const before = collectCount;
+    expect(before).toBeGreaterThan(0);
+
+    saveBackgroundCollection(false);
+    // 关键：不调用 pauseMonitor —— 因为还在监控页
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(collectCount).toBeGreaterThan(before);
+  });
+
+  it("关闭开关后切走，采集才暂停", async () => {
+    startMonitor("combo-test", 1000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    const running = collectCount;
+
+    saveBackgroundCollection(false);
+    // 切走 -> 触发暂停
+    pauseMonitor("combo-test");
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(collectCount).toBe(running);
+  });
+
+  it("切回监控页时恢复采集，不受开关影响", async () => {
+    startMonitor("combo-test", 1000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    pauseMonitor("combo-test");
+    const paused = collectCount;
+
+    // 即使开关是关的，切回来也要继续采
+    saveBackgroundCollection(false);
+    resumeMonitor("combo-test");
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(collectCount).toBeGreaterThan(paused);
+  });
+
+  it("开口时立即恢复被暂停的采集", async () => {
+    startMonitor("combo-test", 1000, collect);
+    await vi.advanceTimersByTimeAsync(1100);
+    pauseMonitor("combo-test");
+    const paused = collectCount;
+
+    saveBackgroundCollection(true);
+    resumeMonitor("combo-test");
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(collectCount).toBeGreaterThan(paused);
+  });
+});
+
 describe("采集引擎的暂停与恢复", () => {
   let collectCount = 0;
   const collect = async () => {
